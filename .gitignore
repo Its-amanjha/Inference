@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+data/
+.env
+*.egg-info/
+.superpowers/
+.impeccable/review/
+test-results/
+build/
+dist/
+IMPLEMENTATION.md
+AGENTS.md
+docs/original-brief.md
+docs/superpowers/
