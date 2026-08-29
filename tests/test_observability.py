@@ -1,0 +1,196 @@
+import gzip
+import json
+import time
+
+import httpx
+import pytest
+from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest, ExportTraceServiceResponse
+
+from test_fleet import fleet, add
+
+
+def batch(trace='a'*32,span='b'*16,status=1,attributes=None):
+    now=time.time_ns()
+    return {'resourceSpans':[{'resource':{'attributes':[{'key':'instance_id','value':{'stringValue':'forged'}}]},'scopeSpans':[{'spans':[{'traceId':trace,'spanId':span,'name':'Node','startTimeUnixNano':str(now-1000),'endTimeUnixNano':str(now),'status':{'code':status},'attributes':attributes or []}]}]}]}
+
+
+async def issue(fleet,instance=None):
+    instance=instance or await add(fleet)
+    r=await fleet.client.post('/api/otel/tokens',headers=fleet.headers,json={'instance_id':instance,'name':'Exporter'})
+    assert r.status_code==200,r.text
+    return instance,r.json()
+
+
+async def send(fleet,token,payload):
+    return await fleet.client.post('/api/otel/v1/traces',headers={'Authorization':'Bearer '+token,'Content-Type':'application/json'},content=json.dumps(payload))
+
+
+async def test_machine_token_assigns_instance_and_deduplicates(fleet):
+    instance,token=await issue(fleet)
+    payload=batch(attributes=[{'key':'gen_ai.prompt','value':{'stringValue':'secret prompt'}}])
+    for _ in range(2):
+        r=await send(fleet,token['token'],payload)
+        assert r.status_code==200,r.text
+    rows=await fleet.app.state.db.fetchall('SELECT * FROM otel_spans')
+    assert len(rows)==1 and rows[0]['instance_id']==instance
+    assert 'secret prompt' not in str(rows)
+    assert 'forged' not in rows[0]['instance_id']
+    listed=await fleet.client.get('/api/otel/tokens',params={'instance_id':instance})
+    assert token['token'] not in listed.text and 'token_hash' not in listed.text
+    saved=await fleet.app.state.db.fetchone('SELECT token_hash FROM telemetry_tokens')
+    assert saved['token_hash']!=token['token']
+
+
+async def test_otlp_requires_machine_auth_even_with_session_and_revocation(fleet):
+    instance,token=await issue(fleet)
+    assert (await fleet.client.post('/api/otel/v1/traces',json=batch())).status_code==401
+    assert (await fleet.client.get('/api/otel/v1/traces')).status_code in (404,405)
+    revoked=await fleet.client.delete('/api/otel/tokens/'+token['id'],headers=fleet.headers)
+    assert revoked.status_code==200
+    assert (await send(fleet,token['token'],batch())).status_code==401
+    assert await fleet.app.state.db.fetchall('SELECT * FROM otel_spans')==[]
+
+
+async def test_protobuf_gzip_and_partial_rejection(fleet):
+    instance,token=await issue(fleet)
+    proto=ExportTraceServiceRequest()
+    span=proto.resource_spans.add().scope_spans.add().spans.add()
+    span.trace_id=bytes.fromhex('c'*32)
+    span.span_id=bytes.fromhex('d'*16)
+    span.name='Fixture'
+    span.start_time_unix_nano=100
+    span.end_time_unix_nano=200
+    r=await fleet.client.post('/api/otel/v1/traces',headers={'Authorization':'Bearer '+token['token'],'Content-Type':'application/x-protobuf','Content-Encoding':'gzip'},content=gzip.compress(proto.SerializeToString()))
+    assert r.status_code==200,r.text
+    assert r.headers['content-type']=='application/x-protobuf'
+    response=ExportTraceServiceResponse.FromString(r.content)
+    assert response.partial_success.rejected_spans==0
+    invalid=batch(span='0'*16)
+    r=await send(fleet,token['token'],invalid)
+    assert r.status_code==200,r.text
+    assert r.json()['partialSuccess']['rejectedSpans']=='1'
+
+
+async def test_trace_queries_keep_instances_separate_and_unknown_cost_null(fleet):
+    first,one=await issue(fleet)
+    second=await add(fleet,'Other','https://other.example')
+    _,two=await issue(fleet,second)
+    for token in (one,two):
+        assert (await send(fleet,token['token'],batch())).status_code==200
+    traces=await fleet.client.get('/api/otel/traces')
+    assert len(traces.json()['data'])==2
+    detail=await fleet.client.get('/api/otel/traces/'+'a'*32,params={'instance_id':first})
+    assert len(detail.json()['data'])==1
+    assert detail.json()['cost_usd'] is None
+    assert detail.json()['unknown_cost_spans']==1
+    assert (await fleet.client.get('/api/otel/traces/'+'a'*32)).status_code==422
+
+
+async def test_confirmed_span_errors_are_triaged_once(fleet):
+    instance,token=await issue(fleet)
+    payload=batch(status=2)
+    await send(fleet,token['token'],payload)
+    await send(fleet,token['token'],payload)
+    errors=await fleet.client.get('/api/errors',params={'instance_id':instance})
+    assert errors.status_code==200,errors.text
+    assert len(errors.json()['data'])==1
+    identifier=errors.json()['data'][0]['id']
+    resolved=await fleet.client.post(f'/api/errors/{identifier}/resolve',headers=fleet.headers)
+    assert resolved.status_code==200
+    assert (await fleet.client.get('/api/errors',params={'status':'open'})).json()['data']==[]
+
+
+async def test_revocation_during_parse_prevents_insert(fleet,monkeypatch):
+    from backend.modules.observability import router
+    instance,token=await issue(fleet)
+    # Revoke precisely after body read, before parser result is committed.
+    original_read=router.read_body
+    async def body_then_revoke(request):
+        body=await original_read(request)
+        await fleet.app.state.db.execute('UPDATE telemetry_tokens SET revoked_at=CURRENT_TIMESTAMP WHERE id=?',(token['id'],))
+        return body
+    monkeypatch.setattr(router,'read_body',body_then_revoke)
+    r=await send(fleet,token['token'],batch())
+    assert r.status_code==401
+    assert await fleet.app.state.db.fetchall('SELECT * FROM otel_spans')==[]
+
+
+async def test_classification_preserves_trace_identity_and_counts_continuation_errors(fleet):
+    from datetime import datetime,timezone,timedelta
+    instance,token=await issue(fleet)
+    attrs=[{'key':'n8n.execution.id','value':{'stringValue':'execution'}},{'key':'n8n.node.id','value':{'stringValue':'node'}},{'key':'n8n.node.name','value':{'stringValue':'Node'}}]
+    for trace in ('a'*32,'c'*32):
+        await send(fleet,token['token'],batch(trace=trace,attributes=attrs))
+    fleet.replies[('alpha.example','GET','/api/v1/executions/execution')]=httpx.Response(200,json={'id':'execution','status':'success','stoppedAt':(datetime.now(timezone.utc)-timedelta(minutes=1)).isoformat(),'data':{'resultData':{'runData':{'Node':[{'error':{'message':'private failure payload'}}]}}}})
+    for _ in range(2):
+        r=await fleet.client.post('/api/otel/classify',headers=fleet.headers,json={'instance_id':instance,'execution_id':'execution'})
+        assert r.status_code==200,r.text
+    rows=await fleet.app.state.db.fetchall('SELECT checked_at,health_status FROM otel_spans')
+    assert len(rows)==2 and all(row['checked_at'] and row['health_status']=='error' for row in rows)
+    assert len(fleet.calls)==1
+    assert (await fleet.client.get('/api/otel/summary')).json()['error_spans']==2
+    traces=(await fleet.client.get('/api/otel/traces')).json()['data']
+    assert all(row['error_spans']==1 for row in traces)
+    assert 'private failure payload' not in str(await fleet.app.state.db.fetchall('SELECT * FROM execution_cursors'))
+
+
+async def test_trace_cost_aggregate_preserves_all_stored_decimal_digits(fleet):
+    instance,token=await issue(fleet)
+    await send(fleet,token['token'],batch())
+    exact='0.123456789012345678901234567890123456789'
+    await fleet.app.state.db.execute('UPDATE otel_spans SET cost_exact=?',(exact,))
+    r=await fleet.client.get('/api/otel/traces/'+'a'*32,params={'instance_id':instance})
+    assert r.json()['cost_usd']==exact
+
+
+async def test_retention_uses_received_time_and_validates_configuration(fleet):
+    instance,token=await issue(fleet)
+    await send(fleet,token['token'],batch())
+    await fleet.app.state.db.execute("UPDATE otel_spans SET received_at=datetime('now','-2 days'),start_ns=9000000000000000000,end_ns=9000000000000000001")
+    r=await fleet.client.put('/api/otel/retention',headers=fleet.headers,json={'days':1})
+    assert r.status_code==200,r.text
+    assert await fleet.app.state.db.fetchall('SELECT * FROM otel_spans')==[]
+    assert (await fleet.client.put('/api/otel/retention',headers=fleet.headers,json={'days':0})).status_code==422
+
+
+async def test_machine_exemption_does_not_remove_admin_csrf_and_bounds_concurrency(fleet):
+    instance,token=await issue(fleet)
+    assert (await fleet.client.post('/api/otel/tokens',json={'instance_id':instance,'name':'Missing csrf'})).status_code==403
+    for _ in range(4):
+        await fleet.app.state.ingest_slots.acquire()
+    try:
+        assert (await send(fleet,token['token'],batch())).status_code==503
+    finally:
+        for _ in range(4):
+            fleet.app.state.ingest_slots.release()
+    assert await fleet.app.state.db.fetchall('SELECT * FROM otel_spans')==[]
+
+
+async def test_zero_output_opt_in_uses_persisted_successful_history(fleet):
+    from datetime import datetime,timezone,timedelta
+    instance,token=await issue(fleet)
+    for i in range(11):
+        execution='run'+str(i)
+        attrs=[{'key':key,'value':{'stringValue':value}} for key,value in [('n8n.execution.id',execution),('n8n.workflow.id','workflow'),('n8n.node.id','node'),('n8n.node.name','Node')]]
+        attrs.extend([{'key':'n8n.node.input_items','value':{'intValue':'1'}},{'key':'n8n.node.output_items','value':{'intValue':'0' if i==10 else '1'}}])
+        await send(fleet,token['token'],batch(trace=f'{i+1:032x}',attributes=attrs))
+        fleet.replies[('alpha.example','GET',f'/api/v1/executions/{execution}')]=httpx.Response(200,json={'status':'success','stoppedAt':(datetime.now(timezone.utc)-timedelta(minutes=1)).isoformat(),'data':{'resultData':{'runData':{'Node':[{'executionStatus':'success'}]}}}})
+        r=await fleet.client.post('/api/otel/classify',headers=fleet.headers,json={'instance_id':instance,'execution_id':execution,'zero_output_nodes':['node']})
+        assert r.status_code==200,r.text
+        assert r.json()['data'][0]['health_status']==('low' if i==10 else 'ok')
+
+
+async def test_ingested_cost_uses_exact_model_override_and_preserves_provenance(fleet):
+    instance,token=await issue(fleet)
+    changed=await fleet.client.put('/api/otel/prices/vendor/model-v1',headers=fleet.headers,json={'input_per_million':'2','output_per_million':'8'})
+    assert changed.status_code==200,changed.text
+    attrs=[{'key':'gen_ai.response.model','value':{'stringValue':'vendor/model-v1'}},{'key':'gen_ai.usage.input_tokens','value':{'intValue':'1000'}},{'key':'gen_ai.usage.output_tokens','value':{'intValue':'250'}}]
+    r=await send(fleet,token['token'],batch(attributes=attrs))
+    assert r.status_code==200,r.text
+    result=(await fleet.client.get('/api/otel/traces/'+'a'*32,params={'instance_id':instance})).json()
+    assert result['cost_usd']=='0.004'
+    assert result['data'][0]['pricing']['pricing_source']=='override'
+    attrs[0]['value']['stringValue']='vendor/model-v2'
+    await send(fleet,token['token'],batch(trace='f'*32,attributes=attrs))
+    unknown=(await fleet.client.get('/api/otel/traces/'+'f'*32,params={'instance_id':instance})).json()
+    assert unknown['cost_usd'] is None
