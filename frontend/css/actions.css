@@ -1,0 +1,48 @@
+/* Action hierarchy: destructive styling, overflow menus, state badges and target-naming confirmations. */
+
+/* Destructive actions: crimson outline in lists and menus, solid crimson inside a confirmation. */
+.button.danger { background:transparent; color:#b3132f; border:1px solid #c8203a; font-weight:500; padding:8px 20px; filter:none; }
+.button.danger:hover:not(:disabled) { background:#fff0f2; color:#930f27; border-color:#930f27; filter:none; }
+.button.danger:active:not(:disabled) { background:#ffe0e6; }
+.confirm-dialog .button.danger { background:#b3132f; color:#ffffff; border-color:#b3132f; font-weight:600; }
+.confirm-dialog .button.danger:hover:not(:disabled) { background:#930f27; border-color:#930f27; color:#ffffff; }
+[data-theme=dark] .button.danger,[data-theme=n8n] .button.danger { background:#3d1a23; color:#ffc2cd; border-color:#d7263d; }
+[data-theme=dark] .button.danger:hover:not(:disabled),[data-theme=n8n] .button.danger:hover:not(:disabled) { background:#55202d; color:#ffd9e0; border-color:#e8475d; }
+[data-theme=dark] .confirm-dialog .button.danger,[data-theme=n8n] .confirm-dialog .button.danger { background:#c41d35; color:#ffffff; border-color:#c41d35; }
+[data-theme=dark] .confirm-dialog .button.danger:hover:not(:disabled),[data-theme=n8n] .confirm-dialog .button.danger:hover:not(:disabled) { background:#a8182d; border-color:#e8475d; color:#ffffff; }
+
+/* Overflow menu: expands in flow on its own row, so no ancestor overflow can clip it. */
+.action-menu { min-width:0; }
+.toolbar>.action-menu[open] { flex-basis:100%; }
+.action-menu>summary { display:inline-flex; align-items:center; gap:8px; min-height:42px; padding:8px 18px; border:1px solid color-mix(in srgb,var(--color-smoke) 85%,var(--surface-card-surface)); border-radius:50px; color:var(--color-ink-black); font-weight:500; cursor:pointer; list-style:none; user-select:none; }
+.action-menu>summary::-webkit-details-marker { display:none; }
+.action-menu>summary:hover { background:var(--color-ash-mist); }
+.action-menu>summary .icon { width:16px; height:16px; transition:transform .15s ease-out; }
+.action-menu[open]>summary .icon { transform:rotate(180deg); }
+.action-menu-list { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:12px; padding-top:12px; border-top:1px solid var(--border); }
+[data-theme=n8n] .action-menu>summary { border-radius:8px; }
+
+/* State shown next to the control that changes it. */
+.state-cell { display:flex; flex-wrap:wrap; align-items:center; gap:10px; }
+.title-row { display:flex; flex-wrap:wrap; align-items:center; gap:10px 12px; }
+.title-row>h2,.title-row>h3 { margin:0; }
+.run-status { display:inline-flex; flex-wrap:wrap; align-items:center; gap:6px 8px; }
+.status-lines { display:grid; grid-template-columns:max-content minmax(0,1fr); gap:8px 20px; margin:0; align-items:center; }
+.status-lines dt { color:var(--color-smoke); }
+.status-lines dd { margin:0; color:var(--color-ink-black); overflow-wrap:anywhere; }
+.docker-status details summary,.factor-step details summary { cursor:pointer; color:var(--color-smoke); padding:4px 0; }
+.card.docker-status { gap:16px; }
+.factor-step { display:flex; flex-direction:column; gap:4px; }
+.factor-step .toolbar { margin-bottom:0; }
+
+/* Confirmation dialog. */
+dialog.confirm-dialog { width:min(460px,calc(100vw - 32px)); padding:24px; border-radius:20px; }
+[data-theme=n8n] dialog.confirm-dialog { border-radius:12px; }
+dialog.confirm-dialog::backdrop { background:rgba(10,12,16,.5); }
+.confirm-dialog h2 { font-size:18px; margin:0 0 12px; }
+.confirm-target { margin:0 0 8px; color:var(--color-ink-black); overflow-wrap:anywhere; }
+.confirm-consequence { margin:0 0 20px; color:var(--color-graphite); line-height:1.55; }
+.confirm-dialog .field { margin-bottom:20px; }
+.confirm-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:12px; }
+.confirm-actions .button { margin-top:0; }
+@media(max-width:480px) { .confirm-actions { flex-direction:column-reverse; } .confirm-actions .button { width:100%; } }
