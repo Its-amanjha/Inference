@@ -1,0 +1,69 @@
+/* Error triage: severity, time and execution evidence for the investigation queue and Errors view. */
+
+/* Severity pill: icon, text and status color together; color never carries meaning alone. */
+.badge.severity-pill { align-items:center; gap:6px; padding:3px 10px 3px 8px; }
+.severity-pill>.icon { width:14px; height:14px; flex:none; }
+.relative-time { white-space:nowrap; font-variant-numeric:tabular-nums; }
+.triage-missing { color:var(--color-smoke); }
+.finding-meta .finding-sep { color:var(--color-smoke); }
+
+/* Dashboard metrics: the value is a paragraph so the label names the metric. Mirrors the former .metric-cell h2 rules. */
+.metric-cell p.metric-number { font-family:var(--font-display); font-weight:600; color:var(--color-ink-black); font-size:30px; line-height:1.2; margin:14px 0 0; letter-spacing:-.035em; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
+.metric-cell p.metric-number.metric-text { font-size:18px; line-height:1.4; }
+.metric-unknown p.metric-number { color:var(--color-smoke); font-weight:500; }
+
+/* Errors view toolbar: loaded-page type filters and result count. */
+.triage-filterbar { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px 20px; margin:-4px 0 14px; }
+.triage-filters { display:flex; flex-wrap:wrap; gap:8px; }
+.triage-filters .triage-chip { min-height:34px; padding:6px 14px; font-size:13px; transition:background-color .15s ease-out,color .15s ease-out,border-color .15s ease-out; }
+.triage-filters .triage-chip[aria-pressed=true] { background:var(--selection-fill); color:var(--selection-text); border-color:var(--selection-text); }
+.triage-summary { display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 12px; font-size:13px; color:var(--color-smoke); }
+.triage-summary p { margin:0; }
+.triage-summary .triage-count { color:var(--color-graphite); font-weight:500; font-variant-numeric:tabular-nums; }
+.triage-announce { margin:0 0 12px; font-size:13px; color:var(--color-graphite); }
+.triage-announce:empty { margin:0; }
+.triage-results { margin-bottom:16px; }
+.triage-results:focus { outline:none; }
+
+/* Dense triage table. */
+.table-wrap.triage-table-wrap { border:1px solid var(--border); border-radius:16px; background:var(--surface-card-surface); max-height:max(420px,calc(100dvh - 300px)); }
+[data-theme=n8n] .table-wrap.triage-table-wrap { border-radius:12px; }
+.triage-table { font-size:13px; }
+.triage-table th { position:sticky; top:0; z-index:1; padding:10px 12px; white-space:nowrap; border-bottom:0; box-shadow:inset 0 -1px 0 var(--border); }
+.triage-table td { padding:10px 12px; vertical-align:baseline; overflow-wrap:normal; }
+.triage-table tbody tr { height:44px; transition:background-color .15s ease-out; }
+.triage-table tbody tr:hover { background:var(--color-ash-mist); }
+.triage-table .triage-num { text-align:right; font-variant-numeric:tabular-nums; }
+.triage-table .triage-actions-head { text-align:right; }
+.triage-severity,.triage-when,.triage-execution { white-space:nowrap; }
+.triage-execution { font-variant-numeric:tabular-nums; }
+.triage-subject { min-width:16rem; width:40%; }
+.triage-title { display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 8px; }
+.triage-title strong { color:var(--color-ink-black); font-weight:600; overflow-wrap:anywhere; }
+.triage-title .triage-node { color:var(--color-smoke); overflow-wrap:anywhere; }
+.triage-table .triage-message { margin:2px 0 0; max-width:72ch; color:var(--color-graphite); overflow-wrap:anywhere; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; overflow:hidden; }
+.triage-table .triage-message.triage-missing { color:var(--color-smoke); }
+.triage-full { margin-top:4px; font-size:12px; }
+.triage-full summary { width:fit-content; cursor:pointer; color:var(--selection-text); font-weight:500; }
+.triage-full p { margin:6px 0 0; max-width:72ch; font-size:13px; color:var(--color-graphite); white-space:pre-wrap; overflow-wrap:anywhere; }
+.triage-subject:has(.triage-full[open]) .triage-message { display:none; }
+.triage-instance { min-width:7rem; overflow-wrap:anywhere; }
+.triage-action-group { display:flex; justify-content:flex-end; gap:6px; }
+.triage-table td .triage-action-group .button { margin:0; white-space:nowrap; }
+
+@media(max-width:700px) {
+  .metric-cell p.metric-number { font-size:26px; }
+  .metric-cell p.metric-number.metric-text { font-size:16px; }
+  .triage-filterbar { flex-direction:column; align-items:flex-start; }
+  /* Each row becomes a stacked card of label/value pairs. */
+  .table-wrap.triage-table-wrap { max-height:none; overflow:visible; border:0; border-radius:0; background:transparent; scrollbar-gutter:auto; }
+  .triage-table,.triage-table tbody,.triage-table tr,.triage-table td { display:block; }
+  .triage-table thead { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
+  .triage-table tbody tr { height:auto; margin-bottom:10px; padding:4px 14px; border:1px solid var(--border); border-radius:12px; background:var(--surface-card-surface); }
+  .triage-table tbody tr:hover { background:var(--surface-card-surface); }
+  .triage-table td { display:grid; grid-template-columns:minmax(76px,28%) minmax(0,1fr); gap:12px; align-items:baseline; width:auto; min-width:0; padding:9px 0; border-bottom:1px solid var(--border); text-align:left; white-space:normal; }
+  .triage-table td::before { content:attr(data-label); color:var(--color-smoke); font-size:12px; font-weight:500; }
+  .triage-table tbody tr td:last-child { border-bottom:0; }
+  .triage-table .triage-num { text-align:left; }
+  .triage-action-group { justify-content:flex-start; flex-wrap:wrap; }
+}

@@ -1,0 +1,30 @@
+/* Live updates: pending-update bar and dismissible, de-duplicated toasts. */
+
+/* Updates bar: above the page heading; the view underneath is only rebuilt when the reader asks. */
+.page > .live-updates { display:flex; align-items:center; flex-wrap:wrap; gap:8px 12px; margin:0 0 16px; padding:8px 8px 8px 16px; border:1px solid var(--border); border-radius:12px; background:var(--surface-card-surface); color:var(--color-ink-black); font-size:13px; line-height:1.4; animation:live-fade-in .2s cubic-bezier(.16,1,.3,1); }
+.page > .live-updates .live-updates-text { flex:1 1 auto; min-width:0; }
+.page > .live-updates .live-updates-count { color:var(--color-smoke); font-size:12px; font-variant-numeric:tabular-nums; }
+.page > .live-updates .live-updates-count:empty { display:none; }
+.page > .live-updates .button { min-height:34px; padding:6px 14px; font-size:12px; }
+@keyframes live-fade-in { from{opacity:0} to{opacity:1} }
+
+/* Toasts: bottom-right so they never cover header or page-heading actions. */
+#toasts.toasts { top:auto; left:auto; right:24px; bottom:calc(24px + env(safe-area-inset-bottom, 0px)); width:min(380px, calc(100vw - 48px)); max-width:none; gap:8px; pointer-events:none; }
+#toasts .toast { pointer-events:auto; display:flex; align-items:flex-start; gap:8px; padding:8px 8px 8px 16px; border-radius:16px; font-size:13px; line-height:1.45; animation:live-toast-in .2s cubic-bezier(.16,1,.3,1); }
+#toasts .toast-message { flex:1 1 auto; min-width:0; padding:6px 0; overflow-wrap:anywhere; }
+#toasts .toast-count { flex:none; margin-top:5px; padding:1px 8px; border-radius:50px; background:var(--color-ash-mist); color:var(--color-graphite); font-size:12px; font-weight:600; font-variant-numeric:tabular-nums; }
+#toasts .toast-dismiss { flex:none; display:inline-grid; place-items:center; width:32px; height:32px; padding:0; border:0; border-radius:8px; background:transparent; color:var(--color-graphite); cursor:pointer; transition:background-color .15s ease-out, color .15s ease-out; }
+#toasts .toast-dismiss:hover { background:var(--color-ash-mist); color:var(--color-ink-black); }
+#toasts .toast-dismiss:focus-visible { outline-offset:0; }
+#toasts .toast-dismiss .icon { width:16px; height:16px; }
+@keyframes live-toast-in { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+
+@media(max-width:700px) {
+  #toasts.toasts { left:16px; right:16px; width:auto; bottom:calc(16px + env(safe-area-inset-bottom, 0px)); }
+  #toasts .toast-dismiss { width:40px; height:40px; }
+  #toasts .toast-message { padding:10px 0; }
+  #toasts .toast-count { margin-top:9px; }
+}
+
+/* Sidebar group names are labels for their link groups, not headings. */
+.nav-group .nav-group-title { font:500 12px/1.4 var(--font-body); letter-spacing:.025em; color:var(--color-smoke); padding:0 12px; margin:0 0 7px; }

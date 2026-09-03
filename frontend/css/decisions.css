@@ -1,0 +1,52 @@
+/* Decision summaries: readable promotion changes, approval sentences and raw-payload disclosures. */
+.decision-head { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px 12px; }
+.decision-head>h2,.decision-head>h3 { margin:0; min-width:0; overflow-wrap:anywhere; }
+.decision-badge { align-items:center; gap:6px; }
+.decision-badge .icon { width:14px; height:14px; flex:none; }
+.decision-status { display:flex; flex-wrap:wrap; gap:8px; }
+.decision-status .badge { white-space:normal; }
+.decision-headline { margin:0; max-width:75ch; font-size:16px; font-weight:500; line-height:1.5; color:var(--color-ink-black); overflow-wrap:anywhere; }
+
+.decision-section { display:flex; flex-direction:column; gap:10px; padding-top:16px; border-top:1px solid var(--border); min-width:0; }
+.decision-section>p { margin:0; }
+.decision-section-title { display:flex; align-items:center; gap:8px; margin:0; font-size:15px; letter-spacing:0; }
+.decision-section-title .icon { width:16px; height:16px; flex:none; }
+.decision-count { display:inline-flex; justify-content:center; min-width:24px; padding:1px 8px; border-radius:var(--radius-pill); background:var(--color-ash-mist); color:var(--color-smoke); font-size:12px; font-weight:500; font-variant-numeric:tabular-nums; }
+.decision-group-label { margin:4px 0 0; font-size:12px; font-weight:600; color:var(--color-smoke); }
+
+.decision-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; }
+.decision-list li { display:flex; align-items:flex-start; gap:8px; min-width:0; line-height:1.5; overflow-wrap:anywhere; }
+.decision-list li>.icon { width:16px; height:16px; margin-top:3px; flex:none; color:var(--color-smoke); }
+.decision-hint { display:block; font-size:12px; color:var(--color-smoke); }
+.decision-blocking .decision-section-title,.decision-blocking .decision-list li>.icon { color:#a80b30; }
+.decision-warning .decision-section-title,.decision-warning .decision-list li>.icon { color:#815000; }
+.decision-mapped .decision-section-title .icon,.decision-mapped .decision-list li>.icon { color:#006c43; }
+
+.capability-list { gap:0; }
+.capability-list li { align-items:center; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--border); }
+.capability-list li:last-child { border-bottom:0; }
+
+.decision-facts { margin:0; padding-left:18px; font-size:12px; line-height:1.6; color:var(--color-smoke); overflow-wrap:anywhere; }
+.decision-card>p,.decision-probe>p { margin:0; }
+.decision-probe { gap:12px; }
+.decision-summary { margin:8px 0; font-size:14px; font-weight:500; line-height:1.45; color:var(--color-ink-black); overflow-wrap:anywhere; }
+.approval-card .decision-head { margin-bottom:8px; }
+.approval-card .decision-head>h3 { font-size:14px; line-height:1.45; letter-spacing:0; }
+.approval-card>p { margin:8px 0; }
+
+.raw-payload { font-size:12px; color:var(--color-smoke); }
+.raw-payload>summary { min-height:24px; padding:4px 0; line-height:16px; font-size:12px; font-weight:500; cursor:pointer; }
+.raw-payload>summary:hover { color:var(--color-ink-black); }
+.raw-payload>summary:focus-visible { outline:2px solid var(--focus); outline-offset:2px; border-radius:4px; }
+.raw-payload>pre { margin:8px 0 0; font-size:12px; }
+
+/* Assistant settings headings sat flush against the preceding content. */
+.assistant-page .assistant-settings .provider-setup>h3:first-child { margin-top:24px; }
+.assistant-page .assistant-settings[open]>h3 { margin-top:32px; }
+
+[data-theme=dark] .decision-blocking .decision-section-title,[data-theme=dark] .decision-blocking .decision-list li>.icon,
+[data-theme=n8n] .decision-blocking .decision-section-title,[data-theme=n8n] .decision-blocking .decision-list li>.icon { color:#ffafc1; }
+[data-theme=dark] .decision-warning .decision-section-title,[data-theme=dark] .decision-warning .decision-list li>.icon,
+[data-theme=n8n] .decision-warning .decision-section-title,[data-theme=n8n] .decision-warning .decision-list li>.icon { color:#f4d18a; }
+[data-theme=dark] .decision-mapped .decision-section-title .icon,[data-theme=dark] .decision-mapped .decision-list li>.icon,
+[data-theme=n8n] .decision-mapped .decision-section-title .icon,[data-theme=n8n] .decision-mapped .decision-list li>.icon { color:#91e5bc; }
