@@ -1,0 +1,63 @@
+// Action hierarchy helpers: target-naming confirmations, overflow menus and state badges.
+import {el,button,field} from './html.js';
+import {icon,registerIcons} from './icons.js';
+
+registerIcons({chevron:'m6 9 6 6 6-6'});
+
+let active=null, sequence=0;
+
+export function humanize(value){
+  const text=String(value??'').replace(/[_-]+/g,' ').trim();
+  return text?text[0].toUpperCase()+text.slice(1):'Unknown';
+}
+
+export function stateBadge(kind,label,raw){
+  return el('span',{class:kind?`badge ${kind}`:'badge',title:raw===undefined||raw===null?undefined:String(raw)},label);
+}
+
+// Overflow actions expand in flow so card and panel overflow never clips them.
+export function actionMenu(items,label='More actions'){
+  const list=el('div',{class:'action-menu-list'},items.filter(Boolean));
+  const summary=el('summary',{},el('span',{},label),icon('chevron'));
+  const menu=el('details',{class:'action-menu'},summary,list);
+  menu.addEventListener('keydown',event=>{if(event.key==='Escape'&&menu.open){event.stopPropagation();menu.open=false;summary.focus();}});
+  return menu;
+}
+
+// Resolves true only when the person explicitly confirms. One dialog is open at a time.
+export function confirmAction({title,target,consequence,confirmLabel='Confirm',danger=false,requireText}={}){
+  if(active)return Promise.resolve(false);
+  const invoker=document.activeElement instanceof HTMLElement?document.activeElement:null;
+  const id=`confirm-${++sequence}`;
+  return new Promise(resolve=>{
+    let result=false;
+    const input=requireText?el('input',{type:'text',autocomplete:'off',autocapitalize:'off',spellcheck:'false'}):null;
+    const cancel=button('Cancel',()=>finish(false),'ghost');
+    const confirm=button(confirmLabel,()=>finish(true),danger?'danger':'button');
+    if(input){confirm.disabled=true;input.addEventListener('input',()=>{confirm.disabled=input.value!==requireText;});}
+    const targetNodes=typeof target==='string'?el('strong',{},target):target;
+    const describedBy=[target!==undefined&&target!==null?`${id}-target`:null,consequence?`${id}-consequence`:null].filter(Boolean).join(' ');
+    const form=el('form',{class:'confirm-form',novalidate:true},
+      el('h2',{id:`${id}-title`},title),
+      targetNodes!==undefined&&targetNodes!==null?el('p',{class:'confirm-target',id:`${id}-target`},targetNodes):null,
+      consequence?el('p',{class:'confirm-consequence',id:`${id}-consequence`},consequence):null,
+      input?field(`Type ${requireText} to confirm`,input):null,
+      el('div',{class:'confirm-actions'},cancel,confirm));
+    const dialog=el('dialog',{class:danger?'confirm-dialog is-danger':'confirm-dialog','aria-labelledby':`${id}-title`,'aria-describedby':describedBy||undefined},form);
+    form.addEventListener('submit',event=>{event.preventDefault();if(!confirm.disabled)finish(true);});
+    const onRoute=()=>finish(false);
+    function finish(value){result=value;if(dialog.open)dialog.close();}
+    dialog.addEventListener('cancel',()=>{result=false;});
+    dialog.addEventListener('close',()=>{
+      window.removeEventListener('hashchange',onRoute);
+      dialog.remove();active=null;
+      if(invoker?.isConnected)invoker.focus();
+      resolve(result);
+    },{once:true});
+    active=dialog;
+    window.addEventListener('hashchange',onRoute);
+    document.body.append(dialog);
+    dialog.showModal();
+    (input||(danger?cancel:confirm)).focus();
+  });
+}
