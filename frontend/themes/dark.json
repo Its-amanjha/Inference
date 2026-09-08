@@ -1,0 +1,24 @@
+{
+  "id": "dark",
+  "tokens": {
+    "--color-ash-mist": "#18191b",
+    "--color-paper-white": "#232427",
+    "--color-ink-black": "#f7f7f7",
+    "--color-graphite": "#e0e0e0",
+    "--color-smoke": "#b1b1b1",
+    "--surface-page-canvas": "#18191b",
+    "--surface-card-surface": "#232427",
+    "--surface-nav-pill": "#232427",
+    "--surface-input": "#292a2e",
+    "--border": "rgba(255,255,255,.14)",
+    "--shadow-card": "none",
+    "--shadow-glow-ring": "none",
+    "--focus": "#69adff",
+    "--color-signal-blue": "#0080ff",
+    "--action-fill": "#f0f3f7",
+    "--action-text": "#18191b",
+    "--selection-fill": "#18324e",
+    "--selection-text": "#9bcaff",
+    "--color-sky-wash": "#c5e0fb"
+  }
+}
