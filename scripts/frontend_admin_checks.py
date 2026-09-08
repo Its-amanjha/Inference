@@ -1,0 +1,109 @@
+"""Browser administration/backup checks against isolated real application data."""
+from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
+import secrets
+import sqlite3
+import sys
+import tempfile
+
+from playwright.sync_api import expect
+
+
+def exercise_admin(page):
+    page.evaluate("location.hash = 'settings'")
+    page.get_by_role('button', name='Add user', exact=True).click()
+    page.get_by_label('Username', exact=True).fill('browser_viewer')
+    page.get_by_label('Password', exact=True).fill(secrets.token_urlsafe(24))
+    page.get_by_label('Role', exact=True).select_option('viewer')
+    page.get_by_role('button', name='Save user', exact=True).click()
+    expect(page.get_by_role('cell', name='browser_viewer', exact=True)).to_have_count(1)
+    row = page.get_by_role('row').filter(has=page.get_by_role('cell', name='browser_viewer', exact=True))
+    row.get_by_role('button', name='Edit', exact=True).click()
+    page.get_by_label('Role', exact=True).select_option('operator')
+    page.get_by_role('button', name='Save user', exact=True).click()
+    expect(row.get_by_role('cell', name='operator', exact=True)).to_have_count(1)
+    preferences = page.locator('section').filter(has=page.get_by_role('heading', name='Your preferences', exact=True))
+    preferences.get_by_label('Rows per page', exact=True).fill('10')
+    preferences.get_by_label('Error notifications', exact=True).uncheck()
+    preferences.get_by_role('button', name='Save preferences', exact=True).click()
+    page.get_by_text('Preferences saved.', exact=True).wait_for()
+    page.reload(wait_until='domcontentloaded')
+    expect(preferences.get_by_label('Rows per page', exact=True)).to_have_value('10')
+    expect(preferences.get_by_label('Error notifications', exact=True)).not_to_be_checked()
+    page.evaluate("document.querySelector('#toasts').replaceChildren(); window.smokeSocket.onmessage({data:JSON.stringify({event:'errors.changed'})})")
+    expect(page.locator('#toasts .toast')).to_have_count(0)
+    page.evaluate("window.smokeSocket.onmessage({data:JSON.stringify({event:'backups.changed'})})")
+    expect(page.get_by_text('Backup history updated.', exact=True)).to_have_count(1)
+    with page.expect_request(lambda request: '/api/errors?' in request.url) as errors_request:
+        page.evaluate("location.hash = 'errors'")
+    assert 'limit=10' in errors_request.value.url
+    with page.expect_request(lambda request: '/api/otel/traces?' in request.url) as traces_request:
+        page.evaluate("location.hash = 'observe'")
+    assert 'limit=10' in traces_request.value.url
+    page.evaluate("location.hash = 'settings'")
+    preferences.get_by_label('Error notifications', exact=True).check()
+    preferences.get_by_role('button', name='Save preferences', exact=True).click()
+    page.get_by_text('Preferences saved.', exact=True).wait_for()
+    page.evaluate("window.smokeSocket.onmessage({data:JSON.stringify({event:'errors.changed'})})")
+    expect(page.get_by_text('Execution errors updated.', exact=True)).to_have_count(1)
+
+    passphrase = secrets.token_urlsafe(24)
+    page.evaluate("location.hash = 'secrets'")
+    page.get_by_role('button', name='Create secret', exact=True).click()
+    page.get_by_label('Vault name', exact=True).fill('BROWSER_BACKUP')
+    page.get_by_label('New secret value', exact=True).fill(passphrase)
+    page.get_by_role('button', name='Save encrypted secret', exact=True).click()
+    page.get_by_text('Secret saved.', exact=True).wait_for()
+    expect(page.get_by_text('$BROWSER_BACKUP', exact=True)).to_have_count(1)
+    assert passphrase not in page.locator('body').inner_text()
+
+    page.evaluate("location.hash = 'backup'")
+    page.get_by_role('button', name='Add schedule', exact=True).click()
+    page.get_by_label('Name', exact=True).fill('Browser recovery copy')
+    page.get_by_label('Interval in minutes', exact=True).fill('1440')
+    page.get_by_label('Export passphrase reference', exact=True).fill('$BROWSER_BACKUP')
+    page.get_by_label('Enabled', exact=True).uncheck()
+    page.get_by_role('button', name='Save schedule', exact=True).click()
+    page.get_by_role('heading', name='Browser recovery copy', exact=True).wait_for()
+    expect(page.get_by_role('button', name='Run now', exact=True)).to_have_count(0)
+    expect(page.get_by_role('button', name='Enable', exact=True)).to_have_count(1)
+    page.get_by_role('button', name='Edit', exact=True).click()
+    page.get_by_label('Enabled', exact=True).check()
+    page.get_by_role('button', name='Save schedule', exact=True).click()
+    with page.expect_response(lambda response: '/api/backups/schedules/' in response.url and response.url.endswith('/run')) as run:
+        page.get_by_role('button', name='Run now', exact=True).click()
+    assert run.value.status == 200, run.value.text()
+    assert run.value.json()['status'] == 'succeeded', run.value.text()
+    page.get_by_text('Backup outcome: succeeded', exact=True).wait_for()
+    with page.expect_download() as downloaded:
+        page.get_by_role('button', name='Download', exact=True).click()
+    assert downloaded.value.failure() is None
+
+    # Destructive schedule actions sit in the overflow menu and confirm in a dialog naming the target.
+    schedule = page.locator('section.card').filter(has=page.get_by_role('heading', name='Browser recovery copy', exact=True))
+    schedule.locator('summary').filter(has_text='More actions').click()
+    schedule.get_by_role('button', name='Delete schedule', exact=True).click()
+    dialog = page.get_by_role('dialog', name='Delete schedule')
+    expect(dialog.get_by_text('Browser recovery copy', exact=True)).to_have_count(1)
+    expect(dialog.get_by_role('button', name='Cancel', exact=True)).to_be_focused()
+    dialog.get_by_role('button', name='Cancel', exact=True).click()
+    expect(page.get_by_role('dialog')).to_have_count(0)
+    expect(page.get_by_role('heading', name='Browser recovery copy', exact=True)).to_have_count(1)
+
+    # Recover the browser-downloaded archive into a fresh temporary destination.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from backend.modules.backups.restore import restore_archive
+    with tempfile.TemporaryDirectory(prefix='inference-browser-restore-') as folder:
+        archive = Path(folder) / 'download.ibackup'
+        downloaded.value.save_as(archive)
+        data = archive.read_bytes()
+        assert passphrase.encode() not in data
+        destination = Path(folder) / 'restored'
+        # Playwright owns an event loop; offline restore owns a separate one.
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            executor.submit(restore_archive, data, passphrase, destination).result(timeout=30)
+        with closing(sqlite3.connect(destination / 'dashboard.db')) as connection:
+            assert connection.execute("SELECT role FROM users WHERE username='browser_viewer'").fetchone() == ('operator',)
+        assert (destination / 'notes' / 'Smoke.md').is_file()
+    print('PASS: browser user creation/role edit, encrypted secret, pause/enable schedule, manual run/download, named delete-schedule confirmation cancel, and offline restore of downloaded archive.', flush=True)
