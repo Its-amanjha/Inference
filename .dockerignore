@@ -1,0 +1,10 @@
+**
+!Dockerfile
+!pyproject.toml
+!requirements-linux-amd64.lock
+!backend/
+!backend/**
+!frontend/
+!frontend/**
+**/__pycache__
+**/*.pyc

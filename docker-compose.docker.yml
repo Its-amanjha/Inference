@@ -1,0 +1,7 @@
+# Opt-in host Docker management; Unix socket access grants host-level control.
+services:
+  inference:
+    group_add:
+      - "${INFERENCE_DOCKER_GID:-${VECTIS_DOCKER_GID:?Set the host Docker socket numeric group ID}}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
