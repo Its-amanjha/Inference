@@ -1,0 +1,172 @@
+{
+  "patch": {
+    "pending_action": {
+      "id": "Zk3vRepairFixture01",
+      "name": "propose_workflow_patch",
+      "status": "pending",
+      "expires_at": 1789489200.0,
+      "chat_id": "c1xFixtureChat",
+      "warning": null,
+      "arguments": {
+        "instance_id": "source",
+        "workflow_id": "wf-orders",
+        "base_content_hash": "3f1c2b6a9d8e7f00112233445566778899aabbccddeeff00112233445566aabb",
+        "summary": "Use the v2 orders endpoint and read all items.",
+        "operations": [
+          {"op": "set_parameter", "node": "HTTP Request", "path": "url", "value": "https://api.example.com/v2/orders"},
+          {"op": "set_code", "node": "Code", "code": "return items;"}
+        ]
+      },
+      "target": {
+        "instance_id": "source",
+        "instance_name": "Source",
+        "workflow_id": "wf-orders",
+        "workflow_name": "Order synchronization",
+        "active": true,
+        "version_id": "7c1e2d3f-4a5b-4c6d-8e9f-0a1b2c3d4e5f",
+        "content_hash": "3f1c2b6a9d8e7f00112233445566778899aabbccddeeff00112233445566aabb"
+      },
+      "preview": {
+        "contract": 1,
+        "kind": "workflow_patch",
+        "summary_text": "Change 2 nodes in workflow “Order synchronization”: HTTP Request URL and Code node source.",
+        "model_summary": "Use the v2 orders endpoint and read all items.",
+        "diff": {
+          "operation": "update",
+          "changed": true,
+          "nodes_added": [],
+          "nodes_removed": [],
+          "nodes_changed": [
+            {"name": "HTTP Request", "fields": ["parameters"]},
+            {"name": "Code", "fields": ["parameters"]}
+          ],
+          "connections_changed": false,
+          "settings_changed": false
+        },
+        "changes": [
+          {"kind": "parameter", "node": "HTTP Request", "path": "parameters.url",
+           "before": "https://api.example.com/v1/orders", "after": "https://api.example.com/v2/orders",
+           "masked": false, "truncated": false},
+          {"kind": "code", "node": "Code", "path": "parameters.jsCode", "language": "javaScript",
+           "lines": [{"op": "remove", "text": "return item;"}, {"op": "add", "text": "return items;"}],
+           "truncated": false}
+        ],
+        "changes_omitted": 0,
+        "risks": [],
+        "preconditions": [
+          {"code": "workflow_active", "satisfied": false, "tool": "deactivate_workflow", "action_id": "Qp9DeactivateFixture"}
+        ],
+        "apply": {"label": "Apply change", "danger": false, "typed_confirmation": null}
+      }
+    }
+  },
+  "restore": {
+    "pending_action": {
+      "id": "Rs7vRestoreFixture01",
+      "name": "propose_restore_workflow",
+      "status": "pending",
+      "expires_at": 1789489800.0,
+      "chat_id": "c1xFixtureChat",
+      "warning": null,
+      "arguments": {
+        "instance_id": "source",
+        "workflow_id": "wf-orders",
+        "base_content_hash": "9d2a4b6c8e0f1a3b5c7d9e1f2a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b",
+        "repair_id": "Zk3vRepairFixture01"
+      },
+      "target": {
+        "instance_id": "source",
+        "instance_name": "Source",
+        "workflow_id": "wf-orders",
+        "workflow_name": "Order synchronization",
+        "active": false,
+        "version_id": "9d2a1b3c-5d7e-4f90-a1b2-c3d4e5f60718",
+        "content_hash": "9d2a4b6c8e0f1a3b5c7d9e1f2a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b"
+      },
+      "preview": {
+        "contract": 1,
+        "kind": "workflow_restore",
+        "summary_text": "Restore workflow “Order synchronization” to the version saved before repair Zk3vRepairFixture01.",
+        "model_summary": null,
+        "diff": {
+          "operation": "update",
+          "changed": true,
+          "nodes_added": [],
+          "nodes_removed": [],
+          "nodes_changed": [{"name": "HTTP Request", "fields": ["parameters"]}, {"name": "Code", "fields": ["parameters"]}],
+          "connections_changed": false,
+          "settings_changed": false
+        },
+        "changes": [
+          {"kind": "parameter", "node": "HTTP Request", "path": "parameters.url",
+           "before": "https://api.example.com/v2/orders", "after": "https://api.example.com/v1/orders",
+           "masked": false, "truncated": false},
+          {"kind": "code", "node": "Code", "path": "parameters.jsCode", "language": "javaScript",
+           "lines": [{"op": "remove", "text": "return items;"}, {"op": "add", "text": "return item;"}],
+           "truncated": false}
+        ],
+        "changes_omitted": 0,
+        "risks": [],
+        "preconditions": [],
+        "apply": {"label": "Restore version", "danger": false, "typed_confirmation": null}
+      }
+    }
+  },
+  "context": {
+    "contract": 1,
+    "trust": "untrusted_remote_text",
+    "instance_id": "source",
+    "bytes": 1042,
+    "workflow": {
+      "id": "wf-orders",
+      "name": "Order synchronization",
+      "active": true,
+      "version_id": "7c1e2d3f-4a5b-4c6d-8e9f-0a1b2c3d4e5f",
+      "content_hash": "3f1c2b6a9d8e7f00112233445566778899aabbccddeeff00112233445566aabb",
+      "settings": {"executionOrder": "v1"},
+      "connections": {"Webhook": {"main": [[{"node": "HTTP Request", "type": "main", "index": 0}]]}},
+      "nodes": [
+        {"name": "Webhook", "type": "n8n-nodes-base.webhook", "type_version": 2, "disabled": false,
+         "parameters": {"path": "orders", "httpMethod": "POST"}, "credential_types": []},
+        {"name": "HTTP Request", "type": "n8n-nodes-base.httpRequest", "type_version": 4.2, "disabled": false,
+         "parameters": {"url": "https://api.example.com/v1/orders",
+                        "headerParameters": {"parameters": [{"name": "Authorization", "value": "[redacted:secret]"}]}},
+         "credential_types": ["httpHeaderAuth"]},
+        {"name": "Code", "type": "n8n-nodes-base.code", "type_version": 2, "disabled": false,
+         "parameters": {"jsCode": "return item;"}, "credential_types": []}
+      ],
+      "redacted_paths": ["HTTP Request.parameters.headerParameters.parameters[0].value"],
+      "truncated_paths": [],
+      "summarized_nodes": []
+    },
+    "error": {
+      "error_id": "42",
+      "execution_id": "4821",
+      "status": "error",
+      "last_node": "HTTP Request",
+      "name": "NodeApiError",
+      "message": "Request failed with status code 404",
+      "description": null,
+      "http_code": "404",
+      "node_errors": [{"node": "HTTP Request", "message": "Request failed with status code 404"}],
+      "saved_vs_failed_run": {"changed": false},
+      "detail": "available"
+    },
+    "redaction": {"applied": true, "count": 1}
+  },
+  "confirm_result": {
+    "id": "Zk3vRepairFixture01",
+    "status": "succeeded",
+    "result": {
+      "ok": true,
+      "tool": "propose_workflow_patch",
+      "instance_id": "source",
+      "workflow_id": "wf-orders",
+      "repair_id": "Zk3vRepairFixture01",
+      "verified": true,
+      "active": false,
+      "version_id": "9d2a1b3c-5d7e-4f90-a1b2-c3d4e5f60718",
+      "content_hash": "9d2a4b6c8e0f1a3b5c7d9e1f2a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b"
+    }
+  }
+}
