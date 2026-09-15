@@ -96,7 +96,7 @@ Response: `{id, mode: "repair", status, content, steps, pending_actions, context
 - `steps`: `[{n, kind: "context_read"|"model_request", tool, provider_id, status: "done"|"rate_limited"|"failed", code, bytes, message}]`. A provider 429 gives `status: "rate_limited"`, `code: "provider_rate_limited"` and `retry_after_seconds` when known.
 - `context_log`: `[{tools, delivery: "tool_result"|"data_message", bytes, redaction_count, notes}]` for the turn's injected context; `notes` may contain `repair_error_text_disabled`.
 
-`POST /chat` with `{provider_id, chat_id, continue_turn: true, message?}` sends the next single request of a pending turn (after reads, or to retry an interrupted request without re-reading context). A turn waits 15 minutes; otherwise `409 turn_not_pending`. A continuation whose `context` differs (target or `send_error_text`) returns `409 target_mismatch`; if error text was sent in the turn and an administrator has since disabled it, the turn is dropped with `409 repair_error_text_disabled`.
+`POST /chat` with `{provider_id, chat_id, continue_turn: true, message?}` sends the next single request of a pending turn (after reads, or to retry an interrupted request without re-reading context). A turn waits 15 minutes; otherwise `409 turn_not_pending`. A continuation whose `context` differs (target or `send_error_text`) returns `409 target_mismatch`; if error text was sent in the turn and an administrator has since disabled it, the turn is dropped with `409 repair_error_text_disabled`; likewise, if the turn's context included `webhook_directory` and an administrator has since turned sharing off, the turn is dropped with `409 repair_webhook_directory_disabled`.
 
 Tool calls in a turn are all validated first (schema, count ≤8, pinned instance and workflow). Any failure rejects the whole round (`target_mismatch`, `invalid_tool_arguments`, `invalid_patch`, `context_stale`, `history_unavailable`, `approval_limit`): no read runs, no proposal is stored, and the error results are kept so `continue_turn` lets the model correct itself. Proposals and their linked deactivations are stored in one transaction. Only `get_workflow_context` views the model was given in the current turn count as "seen": code truncated in every such view of the same content cannot be replaced.
 
@@ -108,7 +108,9 @@ Workflow context masks secret-like values as `[redacted:secret]`, lists `redacte
 
 Error text reaches a provider only in repair conversations, only when `send_error_text` is true and only while the administrator switch allows it (`detail: "withheld"` otherwise). Standard chats never receive it.
 
-`GET /repair/settings` (viewer) returns `{error_text_enabled}` (default `true`). `PUT /repair/settings` (admin, CSRF) accepts `{error_text_enabled: bool}`, stores it in `documents` and is audited as `assistant.repair_settings_updated`.
+When a workflow is included, the context may add `webhook_directory`: up to 100 trigger routes of *other active* workflows on the same instance, as `{workflow_id, workflow_name, method, route}` with the route masked like other context strings. It never contains parameters, credentials or node details, and it is omitted when the workflow list cannot be read. It exists so the model can find the service a node should call instead of guessing (a live test showed a model pointing an HTTP Request at its own workflow's webhook). Webhook routes are shared with the provider in repair conversations; review them in "What the AI sees".
+
+`GET /repair/settings` (viewer) returns `{error_text_enabled, webhook_directory_enabled}` (both default `true`). `PUT /repair/settings` (admin, CSRF) accepts either or both booleans as a partial update (at least one, else 422); both effective values are stored in `documents`, returned and audited as `assistant.repair_settings_updated`. With `webhook_directory_enabled` false the context never includes `webhook_directory`; a corrupt stored setting withholds both error text and the directory until an administrator saves again.
 
 ### Proposals
 
@@ -116,6 +118,7 @@ Preparing a proposal re-fetches the workflow and never sends POST or PUT:
 
 - `base_content_hash` must equal the current `content_hash` (SHA-256 of name, nodes, connections and allow-listed settings; `active`, `versionId`, IDs, `updatedAt` and pinned data are excluded), else `409 context_stale`.
 - Patch: operations apply to a detached copy; unknown nodes, no-op changes, credential edits, placeholders or truncated code give `422 invalid_patch`.
+- Patch: a change that makes any non-trigger node address the workflow's own enabled trigger route (`/webhook/`, `/webhook-test/`, `/webhook-waiting/`, `/form/`, `/form-test/`, `/form-waiting/` plus its path or webhookId, on any host, including expressions and sub-paths) gives `422 self_call_blocked` before any approval exists. Restore previews that reintroduce such a call list risk `self_webhook_call`.
 - Restore from `repair_id`: the encrypted pre-repair snapshot of the same instance and workflow. Restore from `version_id`: `GET /workflows/{id}/{versionId}` replaces nodes and connections while name and settings keep their current values (stated in `warning`). Missing, foreign, forbidden, unlicensed or pruned sources give `404 history_unavailable`.
 - A result identical to the saved workflow gives `422 invalid_patch`; documents over 1 MiB give `422 workflow_too_large`.
 - The server computes `preview` (diff summary, masked parameter/code/setting changes, risks, apply label). If the workflow is not inactive, a linked `deactivate_workflow` proposal is created and listed in `preview.preconditions` as `{code: "workflow_active", satisfied: false, tool: "deactivate_workflow", action_id}`.
@@ -137,7 +140,7 @@ Success returns `{id, status: "succeeded", result}` where `result` is the contra
 
 ### Repair error codes
 
-`context_stale`, `approval_stale`, `workflow_active`, `upstream_outcome_unknown`, `target_mismatch`, `history_unavailable`, `repair_error_text_disabled`, `invalid_patch`, plus `turn_not_pending`, `invalid_repair_target`, `workflow_too_large`, `approval_required` (repair proposals cannot run through `/tools/run` execution) and `provider_changed`.
+`context_stale`, `approval_stale`, `workflow_active`, `upstream_outcome_unknown`, `target_mismatch`, `history_unavailable`, `repair_error_text_disabled`, `repair_webhook_directory_disabled` (409: continuing a turn that already sent the directory after an administrator turned it off), `invalid_patch`, `self_call_blocked` (422: the patch would make the workflow call its own trigger route), plus `turn_not_pending`, `invalid_repair_target`, `workflow_too_large`, `approval_required` (repair proposals cannot run through `/tools/run` execution) and `provider_changed`.
 
 ## MCP
 

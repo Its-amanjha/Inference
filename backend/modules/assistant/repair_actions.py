@@ -66,6 +66,21 @@ async def error_text_enabled(request: Request) -> bool:
     return isinstance(value, dict) and value.get('error_text_enabled') is True
 
 
+async def webhook_directory_enabled(request: Request) -> bool:
+    """Admin switch for sharing other workflows' trigger routes with providers.
+
+    Defaults on (including settings saved before the switch existed); a corrupt setting withholds the directory.
+    """
+    row = await request.app.state.db.fetchone('SELECT value_json FROM documents WHERE key=?', (SETTINGS_KEY,))
+    if row is None:
+        return True
+    try:
+        value = json.loads(row['value_json'])
+    except (TypeError, ValueError):
+        return False
+    return isinstance(value, dict) and value.get('webhook_directory_enabled', True) is True
+
+
 def context_bytes(context: dict[str, Any]) -> bytes:
     """The exact bytes returned by GET /repair/context; their length equals context["bytes"]."""
     return canonical_bytes(context)
@@ -170,11 +185,23 @@ async def load_context(request: Request, target: dict[str, Any], *, include_work
     effective = bool(send_error_text and admin_allows)
     context = build_context(instance_id, workflow=document, execution=execution, error_row=error_row,
                             send_error_text=effective, focus_nodes=tuple(focus_nodes))
+    if document is not None and await webhook_directory_enabled(request):
+        # Other workflows' trigger addresses let the model find the service a node should call instead of guessing
+        # (live test: a model that saw only the target pointed it at its own webhook). Optional context only.
+        from .repair_context import attach_webhook_directory, webhook_endpoints
+        try:
+            listing = await N8nClient(request).request(instance_id, 'GET', '/workflows', params={'limit': 100})
+        except Exception:
+            listing = None
+        rows = listing.get('data') if isinstance(listing, dict) else None
+        context = attach_webhook_directory(context, webhook_endpoints(rows if isinstance(rows, list) else [],
+                                                                      exclude_workflow_id=workflow_id))
     await _authorize(request, 'viewer')  # Live check after awaited remote reads.
     error = context.get('error') if isinstance(context, dict) else None
     return {'context': context, 'workflow_id': workflow_id, 'document': document,
             # Stored error messages count too: only "withheld" guarantees no error text was included.
             'error_text_sent': bool(error) and error.get('detail') != 'withheld',
+            'directory_sent': isinstance(context, dict) and 'webhook_directory' in context,
             'withheld_by_admin': bool(error) and bool(send_error_text) and not admin_allows}
 
 
@@ -291,6 +318,14 @@ async def prepare(request: Request, name: str, arguments: dict[str, Any], *, lin
                                            truncated_paths=truncated)
             except PatchError as exc:
                 fail(422, 'invalid_patch', _patch_message(exc))
+            # A workflow that calls its own trigger re-runs itself endlessly (seen live: 3,816 executions).
+            from .repair_diff import introduced_self_calls
+            loops = introduced_self_calls(before, desired)
+            if loops:
+                first = loops[0]
+                fail(422, 'self_call_blocked', f"This change would make “{str(first['node'])[:64]}” call this workflow's own "
+                     f"trigger {str(first['detail'])[:96]}, which starts the workflow again in an endless loop. Point it at "
+                     "the service it should reach instead; other workflows' trigger addresses are listed in webhook_directory.")
             kind, summary_text, model_summary, warning = 'workflow_patch', None, args.summary, None
         else:
             desired, summary_text, warning = await _restore_source(request, args, document, before)

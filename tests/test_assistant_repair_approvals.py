@@ -104,6 +104,45 @@ async def audit_outcomes(state, action):
     return [row['outcome'] for row in rows]
 
 
+async def test_self_calling_patch_is_blocked_before_any_approval(repair):
+    digest = (await read_context(repair))['workflow']['content_hash']
+    response = await run(repair, 'propose_workflow_patch', patch_arguments(repair, digest, [
+        {'op': 'set_parameter', 'node': 'HTTP Request', 'path': 'url', 'value': 'http://localhost:5678/webhook/orders'}]))
+    assert response.status_code == 422, response.text
+    assert response.json()['code'] == 'self_call_blocked' and 'endless loop' in response.json()['detail']
+    assert (await repair.app.state.db.fetchone('SELECT COUNT(*) AS n FROM approval_actions'))['n'] == 0
+    assert not remote_writes(repair)
+
+
+async def test_context_lists_other_active_workflow_triggers_only(repair):
+    service = {'id': 'svc', 'name': 'Order service', 'active': True, 'connections': {}, 'settings': {}, 'nodes': [
+        {'id': 's1', 'name': 'Webhook', 'type': 'n8n-nodes-base.webhook', 'typeVersion': 2, 'position': [0, 0],
+         'parameters': {'path': 'order-status', 'httpMethod': 'GET', 'options': {'secret': 'SERVICE-PRIVATE'}}}]}
+    repair.replies[('alpha.example', 'GET', '/api/v1/workflows')] = httpx.Response(
+        200, json={'data': [service, workflow(active=True)], 'nextCursor': None})
+    result = await read_context(repair)
+    contract.RepairContextResponse.model_validate(result)
+    assert result['webhook_directory'] == [
+        {'workflow_id': 'svc', 'workflow_name': 'Order service', 'method': 'GET', 'route': '/webhook/order-status'}]
+    assert 'SERVICE-PRIVATE' not in json.dumps(result)
+    assert not remote_writes(repair)
+
+
+async def test_admin_switch_withholds_webhook_directory_and_keeps_other_setting(repair):
+    service = {'id': 'svc', 'name': 'Order service', 'active': True, 'connections': {}, 'settings': {}, 'nodes': [
+        {'id': 's1', 'name': 'Webhook', 'type': 'n8n-nodes-base.webhook', 'typeVersion': 2, 'position': [0, 0],
+         'parameters': {'path': 'order-status', 'httpMethod': 'GET'}}]}
+    repair.replies[('alpha.example', 'GET', '/api/v1/workflows')] = httpx.Response(200, json={'data': [service], 'nextCursor': None})
+    assert (await read_context(repair))['webhook_directory']
+    saved = await repair.client.put('/api/assistant/repair/settings', headers=repair.headers, json={'webhook_directory_enabled': False})
+    assert saved.status_code == 200 and saved.json() == {'error_text_enabled': True, 'webhook_directory_enabled': False}
+    assert 'webhook_directory' not in await read_context(repair)
+    assert (await repair.client.get('/api/assistant/repair/settings')).json() == {'error_text_enabled': True, 'webhook_directory_enabled': False}
+    assert (await repair.client.put('/api/assistant/repair/settings', headers=repair.headers, json={})).status_code == 422
+    await repair.app.state.db.execute("UPDATE documents SET value_json='not json' WHERE key='assistant:settings:repair'")
+    assert 'webhook_directory' not in await read_context(repair)
+
+
 async def test_context_is_masked_contract_shaped_and_read_only(repair):
     result = await read_context(repair)
     contract.RepairContextResponse.model_validate(result)

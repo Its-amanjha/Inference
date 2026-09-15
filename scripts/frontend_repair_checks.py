@@ -50,6 +50,7 @@ UI = {
     'badge_yes': 'Supports repair: yes',
     'check_tool_calling': 'Check tool calling',
     'admin_error_text': 'Allow error text in repair conversations',
+    'admin_webhook_directory': 'Share other workflows’ trigger addresses with the AI',
     'settings_button': 'Assistant settings',
     'message': 'Your message',
     'send': 'Send message',
@@ -681,10 +682,10 @@ def is_repair_settings_put(response):
     return urlsplit(response.url).path == '/api/assistant/repair/settings' and response.request.method == 'PUT'
 
 
-def admin_error_text_box(page):
-    """The administrator switch, in Assistant settings or in the Settings view."""
+def admin_switch_box(page, label):
+    """An administrator switch, in Assistant settings or in the Settings view."""
     main = page.locator('#main')
-    box = main.get_by_label(UI['admin_error_text'], exact=True)
+    box = main.get_by_label(label, exact=True)
     try:
         box.wait_for(state='attached', timeout=2000)
     except PlaywrightTimeout:
@@ -699,8 +700,8 @@ def admin_error_text_box(page):
     return box
 
 
-def set_admin_error_text(page, log, enabled):
-    box = admin_error_text_box(page)
+def set_admin_switch(page, log, label, key, enabled):
+    box = admin_switch_box(page, label)
     start = len(log.responses)
     box.set_checked(enabled)
     try:
@@ -708,11 +709,15 @@ def set_admin_error_text(page, log, enabled):
     except AssertionError:
         # The switch may save through its form's button rather than on change.
         holder = page.locator('#main').locator('form, section, details').filter(
-            has=page.get_by_label(UI['admin_error_text'], exact=True)).last
+            has=page.get_by_label(label, exact=True)).last
         holder.get_by_role('button', name=re.compile(r'^save', re.I)).first.click()
         saved = log.wait(start, is_repair_settings_put, 'the repair settings save')
     assert saved.status == 200, f'Repair settings save: HTTP {saved.status} ({response_json(saved).get("code")})'
-    assert ok(page, '/api/assistant/repair/settings').get('error_text_enabled') is enabled, 'Repair settings did not persist'
+    assert ok(page, '/api/assistant/repair/settings').get(key) is enabled, 'Repair settings did not persist'
+
+
+def set_admin_error_text(page, log, enabled):
+    set_admin_switch(page, log, UI['admin_error_text'], 'error_text_enabled', enabled)
 
 
 def exercise_error_text_switch(page, log, state, ids, error_id):
@@ -731,6 +736,16 @@ def exercise_error_text_switch(page, log, state, ids, error_id):
     finally:
         set_admin_error_text(page, log, True)
     print('PASS: administrator switch withholds scrubbed error text from the context and the provider; restored afterwards.', flush=True)
+
+
+def exercise_directory_switch(page, log):
+    """The trigger-address sharing switch saves on its own change and leaves the error-text switch as it was."""
+    set_admin_switch(page, log, UI['admin_webhook_directory'], 'webhook_directory_enabled', False)
+    try:
+        assert ok(page, '/api/assistant/repair/settings').get('error_text_enabled') is True, 'Turning off the directory changed the error-text switch'
+    finally:
+        set_admin_switch(page, log, UI['admin_webhook_directory'], 'webhook_directory_enabled', True)
+    print("PASS: administrator switch for sharing other workflows' trigger addresses saves and restores; error-text switch unchanged.", flush=True)
 
 
 # Served instead of real dashboard metrics: the fleet aggregate check already used the 4/minute budget.
@@ -792,6 +807,7 @@ def exercise_repair(page, fixture_url, state, artifacts):
         chat_id = exercise_chat(page, log, state, ids)
         exercise_proposals(page, log, state, ids, chat_id, context_path, artifacts)
         exercise_error_text_switch(page, log, state, ids, error_id)
+        exercise_directory_switch(page, log)
         exercise_links(page, ids, error_id)
         assert all(REPAIR_SECRET not in request['body'] for request in state['provider']['requests']), 'A secret reached the provider'
         unreadable, exempt = log.assert_clean(REPAIR_SECRET)

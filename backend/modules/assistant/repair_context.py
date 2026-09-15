@@ -346,3 +346,52 @@ def build_context(instance_id: str, *, workflow: dict | None, execution: dict | 
             break
         response['bytes'] = size
     return response
+
+
+MAX_WEBHOOK_ENDPOINTS = 100
+
+
+def webhook_endpoints(workflows: list | None, *, exclude_workflow_id: str | None = None) -> list[dict]:
+    """Trigger addresses of active workflows on the instance: id, name, method and route only.
+
+    Parameters, credentials and node details are never included. Paths pass through the same masking as
+    other context strings, because unguessable webhook paths are sometimes used as shared secrets.
+    """
+    endpoints = []
+    for workflow in workflows or []:
+        if not isinstance(workflow, dict) or workflow.get('active') is not True:
+            continue
+        workflow_id = str(workflow.get('id', ''))[:128]
+        if not workflow_id or workflow_id == exclude_workflow_id:
+            continue
+        for node in workflow.get('nodes') or []:
+            if not isinstance(node, dict) or node.get('disabled') is True or not isinstance(node.get('type'), str):
+                continue
+            short = node['type'].rsplit('.', 1)[-1].lower()
+            if short == 'respondtowebhook' or not ('webhook' in short or short in ('formtrigger', 'form')):
+                continue
+            parameters = node.get('parameters') if isinstance(node.get('parameters'), dict) else {}
+            path = parameters.get('path') if isinstance(parameters.get('path'), str) and parameters['path'].strip('/') else node.get('webhookId')
+            if not isinstance(path, str) or not path.strip('/'):
+                continue
+            method = parameters.get('httpMethod') if isinstance(parameters.get('httpMethod'), str) else 'GET'
+            prefix = 'form' if short in ('formtrigger', 'form') else 'webhook'
+            masked_path, _ = mask_text(path.strip('/')[:256])
+            endpoints.append({'workflow_id': workflow_id, 'workflow_name': str(workflow.get('name', ''))[:128],
+                              'method': method.upper()[:10], 'route': f'/{prefix}/{masked_path}'})
+            if len(endpoints) >= MAX_WEBHOOK_ENDPOINTS:
+                return endpoints
+    return endpoints
+
+
+def attach_webhook_directory(response: dict, endpoints: list[dict]) -> dict:
+    """Add the directory to a built context and re-converge its self-describing byte count."""
+    if not endpoints:
+        return response
+    response = {**response, 'webhook_directory': list(endpoints), 'bytes': 0}
+    for _ in range(8):
+        size = len(canonical_bytes(response))
+        if size == response['bytes']:
+            break
+        response['bytes'] = size
+    return response

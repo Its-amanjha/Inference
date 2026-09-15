@@ -59,6 +59,28 @@ def dumps(value):
     return json.dumps(value, ensure_ascii=False)
 
 
+def test_webhook_directory_lists_other_active_triggers_without_parameters():
+    from backend.modules.assistant.repair_context import attach_webhook_directory, webhook_endpoints
+    service = {'id': 'wf-service', 'name': 'Order service', 'active': True, 'nodes': [
+        {'name': 'Webhook', 'type': 'n8n-nodes-base.webhook',
+         'parameters': {'path': 'order-status', 'httpMethod': 'get', 'options': {'secret': SECRET}},
+         'credentials': {'httpBasicAuth': {'id': 'cred-private-id'}}},
+        {'name': 'Reply', 'type': 'n8n-nodes-base.respondToWebhook', 'parameters': {}}]}
+    paused = {**deepcopy(service), 'id': 'wf-paused', 'active': False}
+    form = {'id': 'wf-form', 'name': 'Intake', 'active': True,
+            'nodes': [{'name': 'Form', 'type': 'n8n-nodes-base.formTrigger', 'webhookId': 'intake-form', 'parameters': {}}]}
+    endpoints = webhook_endpoints([service, paused, form, workflow(), 'junk'], exclude_workflow_id='wf-orders')
+    assert endpoints == [
+        {'workflow_id': 'wf-service', 'workflow_name': 'Order service', 'method': 'GET', 'route': '/webhook/order-status'},
+        {'workflow_id': 'wf-form', 'workflow_name': 'Intake', 'method': 'GET', 'route': '/form/intake-form'}]
+    assert SECRET not in dumps(endpoints) and 'cred-private-id' not in dumps(endpoints)
+    context = build_context('source', workflow=workflow(), execution=None, error_row=None, send_error_text=True)
+    attached = attach_webhook_directory(context, endpoints)
+    contract.RepairContextResponse.model_validate(attached)
+    assert attached['bytes'] == len(json.dumps(attached, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode('utf-8'))
+    assert attach_webhook_directory(context, []) is context
+
+
 def test_content_hash_ignores_metadata_and_key_order_but_not_content():
     original = workflow()
     digest = content_hash(original)

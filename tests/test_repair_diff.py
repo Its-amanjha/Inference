@@ -51,6 +51,44 @@ def spec(name, kind='n8n-nodes-base.noOp', **extra):
     return {'op': 'add_node', 'node': {'name': name, 'type': kind, 'type_version': 1, 'position': [0, 400], **extra}}
 
 
+def set_url(document, url):
+    return apply(document, {'op': 'set_parameter', 'node': 'HTTP Request', 'path': 'url', 'value': url})
+
+
+def test_self_call_to_own_webhook_is_flagged_and_reported():
+    from backend.modules.assistant.repair_diff import introduced_self_calls
+    before = workflow()
+    desired = set_url(before, 'http://127.0.0.1:5678/webhook/orders')
+    view = preview(before, desired, kind='workflow_patch')
+    contract.Preview.model_validate(view)
+    loops = [risk for risk in view['risks'] if risk['code'] == 'self_webhook_call']
+    assert loops == [{'code': 'self_webhook_call', 'node': 'HTTP Request', 'detail': '/webhook/orders'}]
+    assert introduced_self_calls(before, desired) == loops
+
+
+@pytest.mark.parametrize('url', ['={{ $env.N8N_URL }}/webhook-test/orders', 'https://n8n.example.com/webhook/orders/extra',
+                                 'http://n8n:5678/webhook/ORDERS', 'http://localhost:5678/webhook/hook-1'])
+def test_self_call_detection_is_host_independent(url):
+    from backend.modules.assistant.repair_diff import introduced_self_calls
+    assert [risk['node'] for risk in introduced_self_calls(workflow(), set_url(workflow(), url))] == ['HTTP Request']
+
+
+@pytest.mark.parametrize('url', ['http://127.0.0.1:5678/webhook/order-service', 'https://api.example.com/v2/orders',
+                                 'http://n8n/webhook/ordersx'])
+def test_other_routes_are_not_self_calls(url):
+    from backend.modules.assistant.repair_diff import introduced_self_calls
+    assert introduced_self_calls(workflow(), set_url(workflow(), url)) == []
+
+
+def test_existing_self_calls_and_disabled_triggers_are_not_new_findings():
+    from backend.modules.assistant.repair_diff import introduced_self_calls
+    looping = set_url(workflow(), 'http://localhost/webhook/orders')
+    later = apply(looping, {'op': 'set_code', 'node': 'Code', 'code': 'return items;'})
+    assert introduced_self_calls(looping, later) == []
+    quiet = apply(workflow(), {'op': 'set_disabled', 'node': 'Webhook', 'disabled': True})
+    assert introduced_self_calls(quiet, set_url(quiet, 'http://localhost/webhook/orders')) == []
+
+
 def test_set_and_remove_parameter_walk_paths_on_a_detached_copy():
     source = workflow()
     result = apply(source,

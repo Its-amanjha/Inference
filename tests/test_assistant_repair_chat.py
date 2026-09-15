@@ -197,7 +197,7 @@ async def test_admin_switch_and_conversation_toggle_withhold_error_text(workspac
     denied = await workspace.client.put('/api/assistant/repair/settings', json={'error_text_enabled': False})
     assert denied.status_code == 403
     saved = await workspace.client.put('/api/assistant/repair/settings', headers=workspace.headers, json={'error_text_enabled': False})
-    assert saved.status_code == 200 and saved.json() == {'error_text_enabled': False}
+    assert saved.status_code == 200 and saved.json() == {'error_text_enabled': False, 'webhook_directory_enabled': True}
     assert await workspace.app.state.db.fetchone("SELECT id FROM audit_events WHERE action='assistant.repair_settings_updated'")
     workspace.script = [answer('Diagnosis without error text.')]
     data = (await chat(workspace, message='Fix it', context=target(workspace))).json()
@@ -212,7 +212,7 @@ async def test_admin_switch_and_conversation_toggle_withhold_error_text(workspac
     data = (await chat(workspace, message='Fix it', context=target(workspace, send_error_text=False))).json()
     assert ERROR_TEXT not in json.dumps(workspace.provider[1]) and data['context_log'][0]['notes'] == []
     await workspace.app.state.db.execute("UPDATE users SET role='viewer' WHERE username='owner'")
-    assert (await workspace.client.get('/api/assistant/repair/settings')).json() == {'error_text_enabled': True}
+    assert (await workspace.client.get('/api/assistant/repair/settings')).json() == {'error_text_enabled': True, 'webhook_directory_enabled': True}
     assert (await workspace.client.put('/api/assistant/repair/settings', headers=workspace.headers, json={'error_text_enabled': False})).status_code == 403
 
 
@@ -224,6 +224,28 @@ async def test_admin_disabling_error_text_blocks_continuing_a_turn_that_sent_it(
     blocked = await chat(workspace, chat_id=first['id'], continue_turn=True)
     assert blocked.status_code == 409 and blocked.json()['code'] == 'repair_error_text_disabled'
     assert len(workspace.provider) == 1
+
+
+async def test_admin_disabling_webhook_directory_blocks_continuing_a_turn_that_sent_it(workspace):
+    service = {'id': 'svc', 'name': 'Order service', 'active': True, 'connections': {}, 'settings': {}, 'nodes': [
+        {'id': 's1', 'name': 'Webhook', 'type': 'n8n-nodes-base.webhook', 'typeVersion': 2, 'position': [0, 0],
+         'parameters': {'path': 'order-status', 'httpMethod': 'GET'}}]}
+
+    async def listing(request):
+        return httpx.Response(200, json={'data': [service], 'nextCursor': None})
+
+    workspace.replies[('alpha.example', 'GET', '/api/v1/workflows')] = listing
+    workspace.script = [answer('', [tool_call('get_workflow_context', {'instance_id': workspace.instance, 'workflow_id': 'wf'})])]
+    first = (await chat(workspace, message='Look', context=target(workspace))).json()
+    assert first['status'] == 'awaiting_continue' and '/webhook/order-status' in json.dumps(workspace.provider[0])
+    saved = await workspace.client.put('/api/assistant/repair/settings', headers=workspace.headers, json={'webhook_directory_enabled': False})
+    assert saved.json() == {'error_text_enabled': True, 'webhook_directory_enabled': False}
+    blocked = await chat(workspace, chat_id=first['id'], continue_turn=True)
+    assert blocked.status_code == 409 and blocked.json()['code'] == 'repair_webhook_directory_disabled'
+    assert len(workspace.provider) == 1
+    workspace.script = [answer('Diagnosis without the directory.')]
+    fresh = (await chat(workspace, chat_id=first['id'], message='Look again', context=target(workspace))).json()
+    assert fresh['status'] == 'completed' and '/webhook/order-status' not in json.dumps(workspace.provider[1])
 
 
 async def test_tools_disabled_model_gets_delimited_user_data_message(workspace):

@@ -32,6 +32,7 @@ const ERRORS={
   upstream_outcome_unknown:'n8n did not confirm the write, so the change may or may not have been saved.',
   history_unavailable:'Workflow history is unavailable for this workflow, so the earlier version cannot be restored. Nothing was written.',
   repair_error_text_disabled:'An administrator turned off error text in repair conversations.',
+  repair_webhook_directory_disabled:'An administrator turned off sharing other workflows’ trigger addresses with the AI.',
   invalid_patch:'The change no longer applies cleanly to the workflow. Nothing was written.',
 };
 export const statusForError=code=>({context_stale:'stale',approval_stale:'stale',upstream_outcome_unknown:'uncertain'})[code];
@@ -125,7 +126,8 @@ function changeItem(change){
 }
 
 const RISK={new_egress_host:'Sends data to a new host',code_node_added:'Adds a Code node',command_node_added:'Adds a node that can run system commands',
-  error_workflow_changed:'Changes which error workflow runs',trigger_changed:'Changes how the workflow is triggered',node_removed:'Removes a node'};
+  error_workflow_changed:'Changes which error workflow runs',trigger_changed:'Changes how the workflow is triggered',node_removed:'Removes a node',
+  self_webhook_call:'Calls this workflow’s own trigger (can loop forever)'};
 const PRECONDITION={workflow_active:['Workflow is inactive','Workflow is active. Deactivate it before applying.']};
 const RECONCILE={matches_desired:'The workflow now matches this change, so it was written.',matches_before:'The workflow still matches the version before this change. Nothing was written.',
   different:'The workflow matches neither this change nor the version before it. Something else changed it; review it in n8n.',not_found:'The workflow was not found on this instance.'};

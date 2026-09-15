@@ -50,6 +50,8 @@ ERROR_CODES = (
     'history_unavailable',         # version history missing, unlicensed or pruned
     'repair_error_text_disabled',  # an administrator turned off sending error text to providers
     'invalid_patch',               # operations do not apply cleanly (unknown node, no-op, credential edit)
+    'self_call_blocked',           # the patch would make the workflow call its own trigger address (endless loop)
+    'repair_webhook_directory_disabled',  # an administrator turned off sharing other workflows' trigger routes
 )
 
 ToolCallingStatus = Literal['supported', 'unsupported', 'untested']
@@ -386,7 +388,7 @@ Change = Annotated[
 ]
 
 RiskCode = Literal['new_egress_host', 'code_node_added', 'command_node_added', 'error_workflow_changed',
-                   'trigger_changed', 'node_removed']
+                   'trigger_changed', 'node_removed', 'self_webhook_call']
 
 
 class Risk(BaseModel):
@@ -502,6 +504,15 @@ class Redaction(BaseModel):
     count: int = Field(ge=0)
 
 
+class WebhookEndpoint(BaseModel):
+    """A trigger address of another active workflow on the same instance; no parameters or credentials."""
+    model_config = SERVER
+    workflow_id: str
+    workflow_name: str
+    method: str
+    route: str
+
+
 class RepairContextResponse(BaseModel):
     """What the AI sees; GET /api/assistant/repair/context returns these exact bytes."""
     model_config = SERVER
@@ -512,6 +523,8 @@ class RepairContextResponse(BaseModel):
     workflow: WorkflowContext | None = None
     error: ErrorContext | None = None
     redaction: Redaction
+    # Lets the model find the service a workflow is meant to call instead of guessing its own trigger address.
+    webhook_directory: list[WebhookEndpoint] = Field(default_factory=list)
 
 
 class RepairResult(BaseModel):

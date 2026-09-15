@@ -20,6 +20,7 @@ const TOOL_SUPPORT = {supported: ['Supports repair: yes', 'success'], unsupporte
 const UNTESTED_TEXT = "This model hasn't passed the tool-calling check, so it may explain the error without proposing a change.";
 const UNSUPPORTED_TEXT = "This model can't propose changes; choose another model.";
 const ERROR_TEXT_OFF = 'An administrator turned off error text in repair conversations.';
+const DIRECTORY_OFF = 'An administrator turned off sharing other workflows’ trigger addresses with the AI.';
 
 export async function render(container) {
   const controller = new AbortController();
@@ -452,9 +453,13 @@ export async function render(container) {
     }
   };
   const chatFailure = (error, turn) => {
-    if (error.code === 'repair_error_text_disabled') {
-      applyErrorTextSetting(false);
-      messages.append(el('div', {className: 'repair-turn-retry', role: 'status'}, el('p', {}, `${ERROR_TEXT_OFF} Try again to send it without the error text.`), retryButton(turn)));
+    if (error.code === 'repair_error_text_disabled' || error.code === 'repair_webhook_directory_disabled') {
+      const errorText = error.code === 'repair_error_text_disabled';
+      if (errorText) applyErrorTextSetting(false); else resetContext(true);
+      // The server dropped the paused turn, so Try again starts a new turn with the same message instead of continuing.
+      messages.append(el('div', {className: 'repair-turn-retry', role: 'status'},
+        el('p', {}, errorText ? `${ERROR_TEXT_OFF} Try again to send it without the error text.` : `${DIRECTORY_OFF} Try again to send it without them.`),
+        retryButton({message: turn.message, continueTurn: false})));
       return;
     }
     const limited = error.code === 'provider_rate_limited' || (error.status === 429 && error.code !== 'assistant_rate_limit');
@@ -551,14 +556,16 @@ export async function render(container) {
   const explain = context.get('explain') || repairPrompt || (errorId ? `Help me investigate error ${errorId.slice(0,128)} for instance ${(context.get('instance_id') || state.instanceId).slice(0,128)}. Use available metadata and suggest next steps.` : '');
   if (explain) input.value = explain.slice(0, 16000);
 
-  let repairSettingsReady = false, repairSettingsError = null;
+  let repairSettingsReady = false, repairSettingsError = null, directoryAllowed = true, shareDirectory = null;
   const loadRepairSettings = async () => {
     try {
       const result = await request('/repair/settings');
       if (signal.aborted) return;
       if (typeof result?.error_text_enabled === 'boolean') applyErrorTextSetting(result.error_text_enabled);
+      if (typeof result?.webhook_directory_enabled === 'boolean') directoryAllowed = result.webhook_directory_enabled;
       repairSettingsReady = true;
       if (allowErrorText) allowErrorText.disabled = false;
+      if (shareDirectory) { shareDirectory.checked = directoryAllowed; shareDirectory.disabled = false; }
     } catch (error) {
       if (signal.aborted) return;
       repairSettingsError = error;
@@ -592,11 +599,25 @@ export async function render(container) {
       finally { mcpSave.disabled = false; }
     });
     settings.append(el('h3', {}, 'Remote MCP tools'), el('p', {className: 'muted'}, 'Discover a server’s tools here, then ask the assistant to propose an invocation. Every MCP call requires your confirmation.'), mcpForm, catalogs);
-    // Repair conversations: the installation-wide switch for sending scrubbed error text to providers.
-    // Built when settings first open, after the provider form, so the control only exists where it can be seen.
+    // Repair conversations: installation-wide switches for what repair turns may send to providers.
+    // Built when settings first open, after the provider form, so the controls only exist where they can be seen.
     const renderRepairSettings = () => {
       allowErrorText = el('input', {type: 'checkbox', checked: errorTextAllowed, disabled: !repairSettingsReady});
+      shareDirectory = el('input', {type: 'checkbox', checked: directoryAllowed, disabled: !repairSettingsReady});
       repairFeedback = el('div', {'aria-live': 'polite'});
+      listen(shareDirectory, 'change', async () => {
+        const value = shareDirectory.checked, changed = value !== directoryAllowed;
+        shareDirectory.disabled = true; repairFeedback.replaceChildren();
+        try {
+          const saved = await request('/repair/settings', {method: 'PUT', json: {webhook_directory_enabled: value}});
+          if (signal.aborted) return;
+          directoryAllowed = typeof saved?.webhook_directory_enabled === 'boolean' ? saved.webhook_directory_enabled : value;
+          shareDirectory.checked = directoryAllowed;
+          if (changed) resetContext(true);
+          notice(repairFeedback, 'Repair setting saved.');
+        } catch (error) { if (!signal.aborted) { shareDirectory.checked = !value; notice(repairFeedback, error); } }
+        finally { if (!signal.aborted) shareDirectory.disabled = false; }
+      });
       listen(allowErrorText, 'change', async () => {
         const value = allowErrorText.checked, changed = value !== errorTextAllowed;
         allowErrorText.disabled = true; repairFeedback.replaceChildren();
@@ -611,7 +632,9 @@ export async function render(container) {
         finally { if (!signal.aborted) allowErrorText.disabled = false; }
       });
       settings.append(el('h3', {}, 'Repair conversations'), el('label', {className: 'repair-check'}, allowErrorText, el('span', {}, 'Allow error text in repair conversations')),
-        el('p', {className: 'muted'}, 'When on, people can choose to send the scrubbed error message from a failed execution to the model. Secret values stay masked either way.'), repairFeedback);
+        el('p', {className: 'muted'}, 'When on, people can choose to send the scrubbed error message from a failed execution to the model. Secret values stay masked either way.'),
+        el('label', {className: 'repair-check'}, shareDirectory, el('span', {}, 'Share other workflows’ trigger addresses with the AI')),
+        el('p', {className: 'muted'}, 'When on, repair context lists the names and trigger addresses of other active workflows on the same instance, so the AI can point a node at the right one instead of guessing. Nothing else from those workflows is sent.'), repairFeedback);
       if (repairSettingsError) notice(repairFeedback, repairSettingsError);
     };
     listen(settings, 'toggle', () => { if (settings.open && !allowErrorText) renderRepairSettings(); });

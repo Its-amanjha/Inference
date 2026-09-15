@@ -75,8 +75,16 @@ class Chat(BaseModel):
 
 
 class RepairSettings(BaseModel):
+    """Partial update: omitted switches keep their stored values."""
     model_config = ConfigDict(extra='forbid', strict=True)
-    error_text_enabled: bool
+    error_text_enabled: bool | None = None
+    webhook_directory_enabled: bool | None = None
+
+    @model_validator(mode='after')
+    def at_least_one(self) -> 'RepairSettings':
+        if self.error_text_enabled is None and self.webhook_directory_enabled is None:
+            raise ValueError('Provide at least one repair setting.')
+        return self
 
 
 class TimeArguments(BaseModel):
@@ -406,6 +414,10 @@ async def repair_chat(request: Request, body: Chat, actor: dict[str, Any], confi
         if turn['error_text_sent'] and not await repair_actions.error_text_enabled(request):
             await persist(request, actor, chat_id, stored, None, repair=True)
             fail(409, 'repair_error_text_disabled', 'An administrator turned off sending error text. Send a new message to start a turn without it.')
+        if turn.get('directory_sent') and not await repair_actions.webhook_directory_enabled(request):
+            await persist(request, actor, chat_id, stored, None, repair=True)
+            fail(409, 'repair_webhook_directory_disabled', "An administrator turned off sharing other workflows' trigger addresses. "
+                 'Send a new message to start a turn without them.')
         prior = stored[:max(0, len(stored) - turn['visible'])]
         transcript = list(stored)
         if body.message is not None:
@@ -416,7 +428,7 @@ async def repair_chat(request: Request, body: Chat, actor: dict[str, Any], confi
         prior = stored[-18:]
         transcript = prior + [{'role': 'user', 'content': body.message}]
         turn = {'target': body.context.model_dump(), 'messages': [{'role': 'user', 'content': body.message}], 'visible': 1,
-                'requests': 0, 'injected': False, 'error_text_sent': False, 'context_log': [], 'views': []}
+                'requests': 0, 'injected': False, 'error_text_sent': False, 'directory_sent': False, 'context_log': [], 'views': []}
     target = turn['target']
     turn.setdefault('views', [])
 
@@ -470,6 +482,7 @@ async def repair_chat(request: Request, body: Chat, actor: dict[str, Any], confi
                                     'redaction_count': context['redaction']['count'],
                                     'notes': ['repair_error_text_disabled'] if loaded['withheld_by_admin'] else []}]
             turn['error_text_sent'] = loaded['error_text_sent']
+            turn['directory_sent'] = loaded['directory_sent']
             if context.get('workflow') is not None:
                 turn['views'].append(_view(context['workflow']))
         turn['injected'] = True
@@ -552,6 +565,8 @@ async def repair_chat(request: Request, body: Chat, actor: dict[str, Any], confi
             error = result.get('error') if isinstance(result, dict) else None
             if isinstance(error, dict) and error.get('detail') != 'withheld':
                 turn['error_text_sent'] = True
+            if isinstance(result, dict) and 'webhook_directory' in result:
+                turn['directory_sent'] = True
         except HTTPException as exc:
             if _code(exc) in AUTH_CODES:
                 raise
@@ -623,25 +638,30 @@ async def tool_test(provider_id: str, request: Request) -> dict[str, Any]:
 
 @router.get('/repair/settings')
 async def repair_settings(request: Request) -> dict[str, Any]:
-    from .repair_actions import error_text_enabled
+    from .repair_actions import error_text_enabled, webhook_directory_enabled
     require_role(request, 'viewer')
     await approvals.current(request, 'viewer')
-    return {'error_text_enabled': await error_text_enabled(request)}
+    return {'error_text_enabled': await error_text_enabled(request),
+            'webhook_directory_enabled': await webhook_directory_enabled(request)}
 
 
 @router.put('/repair/settings')
 async def update_repair_settings(body: RepairSettings, request: Request) -> dict[str, Any]:
-    from .repair_actions import SETTINGS_KEY
+    from .repair_actions import SETTINGS_KEY, error_text_enabled, webhook_directory_enabled
     actor = require_role(request, 'admin')
     async with instance_guard(request, SETTINGS_KEY):
+        # Partial update: both switches are always stored, so an omitted one keeps its effective value
+        # (a corrupt stored setting resolves to the withholding value and is replaced here).
+        value = {'error_text_enabled': await error_text_enabled(request),
+                 'webhook_directory_enabled': await webhook_directory_enabled(request),
+                 **body.model_dump(exclude_none=True)}
         async with request.app.state.db.transaction() as tx:
             await require_current_role(request, 'admin', tx)
             await tx.execute('INSERT INTO documents(key,value_json) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=CURRENT_TIMESTAMP',
-                             (SETTINGS_KEY, json.dumps({'error_text_enabled': body.error_text_enabled})))
+                             (SETTINGS_KEY, json.dumps(value)))
             await tx.execute('INSERT INTO audit_events(actor,action,target,details_json,outcome) VALUES(?,?,?,?,?)',
-                             (actor['username'], 'assistant.repair_settings_updated', SETTINGS_KEY,
-                              json.dumps({'error_text_enabled': body.error_text_enabled}), 'success'))
-    return {'error_text_enabled': body.error_text_enabled}
+                             (actor['username'], 'assistant.repair_settings_updated', SETTINGS_KEY, json.dumps(value), 'success'))
+    return value
 
 
 @router.get('/repair/context')

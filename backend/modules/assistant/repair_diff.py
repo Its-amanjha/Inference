@@ -481,7 +481,56 @@ def _risks(old: dict, new: dict) -> list[dict]:
         risks.append({'code': 'trigger_changed', 'node': name, 'detail': detail})
     risks += [{'code': 'node_removed', 'node': name, 'detail': str(node.get('type', ''))[:256]}
               for name, node in old_nodes.items() if name not in new_nodes]
+    risks += _self_call_risks(old, new)
     return risks
+
+
+# n8n serves trigger nodes under these route prefixes; a workflow calling one of its own routes re-triggers itself.
+_TRIGGER_ROUTE = re.compile(r'/(webhook|webhook-test|webhook-waiting|form|form-test|form-waiting)/([A-Za-z0-9_\-.~:%/]+)')
+
+
+def _trigger_tokens(document: dict) -> set[str]:
+    """Paths and webhook ids under which the workflow's own enabled trigger nodes are reachable."""
+    tokens = set()
+    for node in document['nodes']:
+        if not is_webhook_type(node.get('type')) or node.get('disabled') is True:
+            continue
+        parameters = node.get('parameters') if isinstance(node.get('parameters'), dict) else {}
+        for value in (parameters.get('path'), node.get('webhookId')):
+            if isinstance(value, str) and value.strip('/'):
+                tokens.add(value.strip('/').lower())
+    return tokens
+
+
+def _self_calls(document: dict) -> set[tuple[str, str]]:
+    """(node, route) pairs where a non-trigger node addresses one of the workflow's own trigger routes.
+
+    Host-independent on purpose: the same n8n is reachable as localhost, a container name or a public URL,
+    and expression URLs such as ``={{ $env.BASE }}/webhook/x`` still contain the literal route.
+    """
+    tokens = _trigger_tokens(document)
+    found: set[tuple[str, str]] = set()
+    if not tokens:
+        return found
+    for node in document['nodes']:
+        if is_webhook_type(node.get('type')):
+            continue
+        for text in _strings(node.get('parameters')):
+            for match in _TRIGGER_ROUTE.finditer(text):
+                route = match.group(2).strip('/').lower()
+                if any(route == token or route.startswith(token + '/') for token in tokens):
+                    found.add((node['name'], f"/{match.group(1)}/{match.group(2).strip('/')}"))
+    return found
+
+
+def _self_call_risks(old: dict, new: dict) -> list[dict]:
+    return [{'code': 'self_webhook_call', 'node': node, 'detail': mask_text(route)[0][:256]}
+            for node, route in sorted(_self_calls(new) - _self_calls(old))]
+
+
+def introduced_self_calls(before: dict, desired: dict) -> list[dict]:
+    """Self-calls the desired workflow adds compared with the one it replaces (contract Risk dicts)."""
+    return _self_call_risks(_diffable(before), _diffable(desired))
 
 
 def _count(number: int, noun: str) -> str:
