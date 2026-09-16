@@ -44,6 +44,32 @@ async def add(fleet,name='Alpha',url='https://alpha.example',key='alpha-secret-k
     return r.json()['id']
 
 
+async def test_workflow_proxy_masks_secret_parameters_for_browsers(fleet):
+    instance=await add(fleet)
+    document={'id':'wf','name':'Order sync','active':False,'connections':{},'settings':{},'nodes':[
+        {'id':'n1','name':'HTTP Request','type':'n8n-nodes-base.httpRequest','typeVersion':4.2,'position':[0,0],
+         'parameters':{'url':'https://api.example.com/v1/orders','sendHeaders':True,
+                       'headerParameters':{'parameters':[{'name':'Authorization','value':'Bearer sk-live-PROXY-SECRET-TOKEN-1234567890'}]}}},
+        {'id':'c1','name':'Code','type':'n8n-nodes-base.code','typeVersion':2,'position':[250,0],
+         'parameters':{'jsCode':'return items;'}}]}
+    fleet.replies[('alpha.example','GET','/api/v1/workflows/wf')]=httpx.Response(200,json=document)
+    fleet.replies[('alpha.example','GET','/api/v1/workflows')]=httpx.Response(200,json={'data':[document],'nextCursor':None})
+    detail=await fleet.client.get('/api/n8n_proxy/workflows/wf',params={'instance_id':instance})
+    assert detail.status_code==200,detail.text
+    assert 'sk-live-PROXY-SECRET-TOKEN' not in detail.text
+    body=detail.json()
+    assert body['name']=='Order sync' and body['instance_id']==instance
+    assert body['nodes'][0]['parameters']['url']=='https://api.example.com/v1/orders'
+    assert body['nodes'][1]['parameters']['jsCode']=='return items;'
+    listing=await fleet.client.get('/api/n8n_proxy/workflows',params={'instance_id':instance})
+    assert listing.status_code==200 and 'sk-live-PROXY-SECRET-TOKEN' not in listing.text
+    assert listing.json()['data'][0]['name']=='Order sync'
+    # CodeLab reads its own endpoint and still receives the real code it must write back.
+    code=await fleet.client.get('/api/n8n_proxy/workflows/wf/nodes/c1',params={'instance_id':instance})
+    assert code.status_code==200,code.text
+    assert code.json()['code']=='return items;'
+
+
 async def test_instance_crud_keeps_credentials_private_and_removes_only_local_record(fleet):
     instance=await add(fleet,url='https://alpha.example/n8n/')
     row=await fleet.app.state.db.fetchone('SELECT * FROM instances WHERE id=?',(instance,))

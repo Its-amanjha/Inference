@@ -49,7 +49,7 @@ The error row comes from real token-scoped OTLP ingestion. The scenario then che
 9. With the administrator switch "Allow error text in repair conversations" off, the context withholds the error text and the provider request does not contain it. The switch is then turned back on.
 10. "Repair with AI" links on the Errors table, the Workflows table and dashboard findings carry the instance and workflow IDs, plus the error ID for errors. Dashboard metrics come from a fixture, because the fleet aggregate check before this scenario uses the real budget of 4 requests per minute.
 
-The secret must not appear in the DOM, form values, provider requests or browser API traffic. The one exception is raw workflow reads under `/api/n8n_proxy/workflows`: fleet views proxy n8n documents to operators, so the check reports those paths instead of failing.
+The secret must not appear in the DOM, form values, provider requests or browser API traffic, in any view. There is no exemption: `/api/n8n_proxy/workflows` masks secret parameter values before they reach a browser, so a secret in any API response fails the run.
 
 ### Live check
 

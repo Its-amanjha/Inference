@@ -172,6 +172,18 @@ def list_view(payload: dict[str,Any],instance_id: str) -> dict[str,Any]:
     return {'data':data,'next_cursor':cursor,'instance_id':instance_id}
 
 
+def masked_document(payload: Any) -> Any:
+    """Workflow documents reach browsers with secret parameter values replaced.
+
+    Operators browse, inspect and promote workflows from these views; none of that needs the keys typed into
+    node parameters. The masking primitives are the ones the repair context already uses, imported here so the
+    fleet module keeps no import-time dependency on the assistant. Code editing reads its own endpoint in
+    codelab.py, which still returns the real node code it has to write back.
+    """
+    from backend.modules.assistant.repair_context import mask_value
+    return mask_value(payload,'',[],limit=None)
+
+
 async def probe_result(request: Request,instance_id: str) -> dict[str,Any]:
     snapshot=await instance_row(request,instance_id)
     started=monotonic()
@@ -259,7 +271,8 @@ async def workflows(request: Request,instance_id: str=Query(min_length=1,max_len
                     cursor: str | None=Query(default=None,max_length=2048),active: bool | None=None,name: str | None=Query(default=None,max_length=120)) -> dict[str,Any]:
     params: dict[str,Any]={'limit':limit,'excludePinnedData':'true'}
     params.update({key:value for key,value in {'cursor':cursor,'name':name,'active':str(active).lower() if active is not None else None}.items() if value is not None})
-    return list_view(await N8nClient(request).request(instance_id,'GET','/workflows',params=params),instance_id)
+    view=list_view(await N8nClient(request).request(instance_id,'GET','/workflows',params=params),instance_id)
+    return {**view,'data':[masked_document(row) for row in view['data']]}
 
 
 @router.get('/dashboard')
@@ -271,7 +284,7 @@ async def dashboard(request: Request, instance_id: str | None=Query(default=None
 @router.get('/workflows/{workflow_id}')
 async def workflow(workflow_id: str,request: Request,instance_id: str=Query(min_length=1,max_length=128)) -> dict[str,Any]:
     resource_id(workflow_id)
-    return {**await N8nClient(request).request(instance_id,'GET',f'/workflows/{workflow_id}'),'instance_id':instance_id}
+    return {**masked_document(await N8nClient(request).request(instance_id,'GET',f'/workflows/{workflow_id}')),'instance_id':instance_id}
 
 
 def resource_id(value: str) -> None:

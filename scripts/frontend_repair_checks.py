@@ -73,9 +73,6 @@ CONFIRM_PATH = '/api/assistant/tools/confirm'
 CONTEXT_PATH = '/api/assistant/repair/context'
 DEACTIVATE_WRITE = ('source', 'POST', f'workflows/{REPAIR_WORKFLOW_ID}/deactivate')
 PUT_WRITE = ('source', 'PUT', f'workflows/{REPAIR_WORKFLOW_ID}')
-# Raw workflow documents that fleet views proxy to operators (Workflows, CodeLab, approval-card name lookups).
-# They are not repair traffic: a secret there is reported, not failed. Every other API response is strict.
-RAW_PROXY_PATHS = ('/api/n8n_proxy/workflows',)
 
 
 def call_api(page, path, method='GET', body=None):
@@ -161,12 +158,11 @@ class NetworkLog:
         return wait_until(self.page, lambda: next(iter(self.after(start, predicate)), None), what, timeout)
 
     def assert_clean(self, secret):
-        """No secret in API request bodies or readable API responses.
+        """No secret in API request bodies or readable API responses, in any view.
 
-        Strict for everything received while the AI workspace (repair) view was open. Pre-existing fleet views
-        outside it (Workflows, CodeLab) still read raw workflow documents through the proxy; those are reported.
+        The workflow proxy masks secret parameter values, so fleet views no longer receive them either.
         """
-        unreadable, exempt = 0, set()
+        unreadable = 0
         for request in self.requests:
             try:
                 sent = request.post_data or ''
@@ -185,12 +181,8 @@ class NetworkLog:
             except PlaywrightError:
                 unreadable += 1
                 continue
-            if secret in body:
-                # CodeLab (#codelab) is a pre-existing raw-document editor, so only the AI conversation view is strict.
-                assert route != 'assistant', f'Secret returned to the repair workspace by {path}'
-                assert path.startswith(RAW_PROXY_PATHS), f'Secret returned to the browser by {path} (view #{route})'
-                exempt.add(f'{path} (view #{route or "dashboard"})')
-        return unreadable, sorted(exempt)
+            assert secret not in body, f'Secret returned to the browser by {path} (view #{route or "dashboard"})'
+        return unreadable
 
 
 def assert_page_clean(page, where):
@@ -810,9 +802,7 @@ def exercise_repair(page, fixture_url, state, artifacts):
         exercise_directory_switch(page, log)
         exercise_links(page, ids, error_id)
         assert all(REPAIR_SECRET not in request['body'] for request in state['provider']['requests']), 'A secret reached the provider'
-        unreadable, exempt = log.assert_clean(REPAIR_SECRET)
-        if exempt:
-            print('NOTE: raw workflow proxy reads carried the fixture secret (fleet views, not repair traffic): ' + ', '.join(exempt), flush=True)
+        unreadable = log.assert_clean(REPAIR_SECRET)
         print(f'PASS: no fixture secret in the DOM, form values, provider requests or browser API traffic '
               f'({len(log.responses)} responses, {unreadable} bodies unavailable).', flush=True)
     finally:
