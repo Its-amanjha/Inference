@@ -119,6 +119,9 @@ def create_app(data_dir: Path | None=None, settings: Settings | None=None) -> Fa
             await initialize_docker(app)
             from backend.modules.notes.router import initialize as initialize_notes
             initialize_notes(app)
+            # Skills ship with the release: sync the library from disk once the schema is ready.
+            from backend.modules.skills.loader import initialize as initialize_skills
+            await initialize_skills(app)
             app.state.backup_lock = asyncio.Lock()
             from backend.modules.backups.schedules import initialize as initialize_backups, maintenance as backup_maintenance
             await initialize_backups(app)

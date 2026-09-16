@@ -21,7 +21,16 @@ import aiosqlite
 Params = Sequence[Any] | Mapping[str, Any]
 Row = dict[str, Any]
 T = TypeVar("T")
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
+
+# Bundled skill library, synced from backend/skills/ at boot. Disk is the source of truth; this table
+# is the queryable cache the API and the assistant's get_skill tool both read.
+_SKILLS = {
+    'skills': {
+        'id': 'TEXT PRIMARY KEY', 'name': 'TEXT NOT NULL', 'description': "TEXT NOT NULL DEFAULT ''",
+        'content': 'TEXT NOT NULL', 'updated_at': 'TEXT DEFAULT CURRENT_TIMESTAMP',
+    },
+}
 
 _BACKUPS = {
     'backup_schedules': {
@@ -322,6 +331,11 @@ async def _initialize(connection: aiosqlite.Connection) -> None:
             await _execute(connection, 'CREATE INDEX idx_backup_due ON backup_schedules(enabled,next_run_at)')
             await _execute(connection, 'CREATE INDEX idx_backup_runs_time ON backup_runs(created_at,id)')
             await _execute(connection, 'PRAGMA user_version=6')
+            current = 6
+        if current == 6:
+            await _create_tables(connection, _SKILLS)
+            await _execute(connection, 'PRAGMA user_version=7')
+        await _validate_tables(connection, _SKILLS)
         await _validate_tables(connection, _BACKUPS)
         await _validate_tables(connection, _ASSISTANT)
         await _validate_tables(connection,_TELEMETRY)

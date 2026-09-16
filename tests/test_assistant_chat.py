@@ -72,7 +72,9 @@ async def test_viewer_cannot_change_provider_or_get_mutation_tools(fleet):
     denied = await fleet.client.put('/api/assistant/config/provider', headers=fleet.headers, json={'id': 'local', 'config': {}})
     assert denied.status_code == 403
     tools = (await fleet.client.get('/api/assistant/tools')).json()['data']
-    assert {t['function']['name'] for t in tools} == {'list_workflows', 'list_errors', 'get_execution', 'get_workflow_context', 'get_error_context'}
+    # get_skill joins the viewer reads; the point of this test is that no mutation tool appears.
+    assert {t['function']['name'] for t in tools} == {'list_workflows', 'list_errors', 'get_execution', 'get_workflow_context',
+                                                      'get_error_context', 'get_skill'}
 
 
 async def test_disabled_tool_model_rejects_tool_calls(fleet):

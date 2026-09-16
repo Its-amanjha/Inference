@@ -16,6 +16,9 @@ from .providers import flatten_schema
 from .repair_contract import ARGUMENT_MODELS, PROPOSAL_TOOLS, READ_TOOLS, TOOL_DESCRIPTIONS
 
 Identifier = Annotated[str, Field(pattern=r'^[A-Za-z0-9_-]{1,128}$')]
+# One skill runs to ~23 KB and MAX_CALLS allows eight tool calls per turn, so an uncapped result
+# could push ~180 KB into a single provider request. Truncation is reported in the result.
+MAX_SKILL_RESULT = 24 * 1024
 
 
 class InstanceArguments(BaseModel):
@@ -35,6 +38,12 @@ class ExecutionArguments(InstanceArguments):
     execution_id: Identifier
 
 
+class SkillArguments(BaseModel):
+    """Names one installed skill. No instance: skills are local application content."""
+    model_config = ConfigDict(extra='forbid', strict=True)
+    skill_name: Annotated[str, Field(pattern=r'^[a-z0-9][a-z0-9-]{0,63}$')]
+
+
 class NodeArguments(WorkflowArguments):
     node_id: Identifier
     code: str = Field(max_length=MAX_CODE_BYTES)
@@ -50,13 +59,16 @@ class NodeArguments(WorkflowArguments):
 REPAIR_READS = frozenset(READ_TOOLS)
 REPAIR_PROPOSALS = frozenset(PROPOSAL_TOOLS)
 REPAIR_TOOLS = REPAIR_READS | REPAIR_PROPOSALS
-# Repair conversations see only repair tools plus the linked activation switches.
-REPAIR_SCOPE = REPAIR_TOOLS | {'activate_workflow', 'deactivate_workflow'}
+# Repair conversations see only repair tools plus the linked activation switches, and the skill
+# library: repair is exactly where n8n code guidance is needed.
+REPAIR_SCOPE = REPAIR_TOOLS | {'activate_workflow', 'deactivate_workflow', 'get_skill'}
 MUTATIONS = frozenset({'activate_workflow', 'deactivate_workflow', 'delete_execution', 'update_node'}) | REPAIR_PROPOSALS
 _CATALOG = {
     'list_workflows': (ListArguments, 'List workflow identifiers, names and activation state for one instance.'),
     'get_execution': (ExecutionArguments, 'Read execution status metadata, without execution inputs or outputs.'),
     'list_errors': (ListArguments, 'List structural error metadata without messages or execution payloads.'),
+    'get_skill': (SkillArguments, 'Read one installed n8n skill guide by name, for writing or debugging n8n '
+                                  'JavaScript, Python, expressions, error handling or node configuration.'),
     'activate_workflow': (WorkflowArguments, 'Propose activating a workflow. Requires human confirmation.'),
     'deactivate_workflow': (WorkflowArguments, 'Propose deactivating a workflow. Requires human confirmation.'),
     'delete_execution': (ExecutionArguments, 'Propose deleting an execution. Requires human confirmation.'),
@@ -192,6 +204,15 @@ async def execute(request: Request, name: str, args: dict, *, expected_fingerpri
             return await repair_actions.error_context_tool(request, args, send_error_text=send_error_text,
                                                            expected_workflow_id=expected_workflow_id)
         fail(409, 'approval_required', 'Repair proposals are applied only through confirmation.')
+    if name == 'get_skill':
+        # Handled before instance_id is read: skills are local content and name no instance.
+        from backend.modules.skills.router import read_skill
+        row = await read_skill(request, args['skill_name'])
+        content = row['content']
+        truncated = len(content) > MAX_SKILL_RESULT
+        return {'skill': row['id'], 'name': row['name'], 'description': row['description'],
+                # Truncation is reported, never silent: a model must not treat a cut guide as complete.
+                'content': content[:MAX_SKILL_RESULT], 'truncated': truncated}
     instance = args['instance_id']
     client = N8nClient(request)
     if name == 'list_workflows':

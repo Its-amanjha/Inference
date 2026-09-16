@@ -45,18 +45,21 @@ def test_strict_arguments(name, args):
 
 def test_declarations_follow_roles():
     names = lambda role, **scope: {item['function']['name'] for item in tools.declarations(role, **scope)}
-    assert names('viewer') == {'list_workflows', 'get_execution', 'list_errors', 'get_workflow_context', 'get_error_context'}
+    # get_skill reads bundled local guides: viewer level, no instance argument, never a mutation.
+    assert names('viewer') == {'list_workflows', 'get_execution', 'list_errors', 'get_workflow_context', 'get_error_context', 'get_skill'}
     assert names('operator') == names('viewer') | tools.MUTATIONS
     assert {'propose_workflow_patch', 'propose_restore_workflow'} <= tools.MUTATIONS
     assert names('invalid') == set()
     assert tools.role('update_node') == 'operator'
     assert tools.role('propose_workflow_patch') == tools.role('propose_restore_workflow') == 'operator'
     assert tools.role('get_workflow_context') == tools.role('get_error_context') == 'viewer'
+    assert tools.role('get_skill') == 'viewer' and 'get_skill' not in tools.MUTATIONS
+    # Skills are available in both scopes: repair is exactly where n8n code guidance is needed.
     assert names('operator', scope='standard') == {'list_workflows', 'get_execution', 'list_errors', 'activate_workflow',
-                                                   'deactivate_workflow', 'delete_execution', 'update_node'}
+                                                   'deactivate_workflow', 'delete_execution', 'update_node', 'get_skill'}
     assert names('operator', scope='repair') == {'get_workflow_context', 'get_error_context', 'propose_workflow_patch',
-                                                 'propose_restore_workflow', 'activate_workflow', 'deactivate_workflow'}
-    assert names('viewer', scope='repair') == {'get_workflow_context', 'get_error_context'}
+                                                 'propose_restore_workflow', 'activate_workflow', 'deactivate_workflow', 'get_skill'}
+    assert names('viewer', scope='repair') == {'get_workflow_context', 'get_error_context', 'get_skill'}
 
 
 def test_declarations_are_flattened_for_every_provider():

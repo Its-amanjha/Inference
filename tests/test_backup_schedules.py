@@ -172,6 +172,7 @@ async def test_cancelled_run_finishes_local_write_and_unlocks(fleet, monkeypatch
 
 
 async def test_restore_migrates_existing_version_five_archive(fleet, tmp_path):
+    from backend.database import SCHEMA_VERSION
     from backend.modules.backups.archive import encrypt_archive, decrypt_archive
     from backend.modules.backups.restore import restore_archive
     password = 'separate export password for schedules'
@@ -193,7 +194,8 @@ async def test_restore_migrates_existing_version_five_archive(fleet, tmp_path):
     await asyncio.to_thread(restore_archive, encrypt_archive(files, password), password, destination)
     connection = sqlite3.connect(destination / 'dashboard.db')
     try:
-        assert connection.execute('PRAGMA user_version').fetchone()[0] == 6
+        # Restoring an old archive migrates it to the current schema, whatever that version is now.
+        assert connection.execute('PRAGMA user_version').fetchone()[0] == SCHEMA_VERSION
         assert connection.execute('SELECT * FROM backup_schedules').fetchall() == []
     finally:
         connection.close()
