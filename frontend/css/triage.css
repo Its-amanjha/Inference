@@ -16,7 +16,15 @@
 .triage-filterbar { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px 20px; margin:-4px 0 14px; }
 .triage-filters { display:flex; flex-wrap:wrap; gap:8px; }
 .triage-filters .triage-chip { min-height:32px; padding:0 12px; font-size:13px; transition:background-color .15s ease-out,color .15s ease-out,border-color .15s ease-out; }
-@media(max-width:700px) { .triage-filters .triage-chip { min-height:44px; } }
+/* At 390px the four chips need 466px against 358px of content width, so they scroll on one line rather than
+   wrapping into a ragged second row; their natural widths differ too much for an even grid. */
+@media(max-width:700px) {
+  .triage-filterbar { display:block; }
+  .triage-filters { flex-wrap:nowrap; overflow-x:auto; overscroll-behavior-x:contain; scrollbar-width:none; padding-bottom:2px; }
+  .triage-filters::-webkit-scrollbar { display:none; }
+  .triage-filters .triage-chip { min-height:44px; flex:none; }
+  .triage-summary { margin-top:10px; }
+}
 .triage-filters .triage-chip[aria-pressed=true] { background:var(--selection-fill); color:var(--selection-text); border-color:var(--selection-text); }
 .triage-summary { display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 12px; font-size:13px; color:var(--color-smoke); }
 .triage-summary p { margin:0; }
