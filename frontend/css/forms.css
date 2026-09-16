@@ -68,7 +68,10 @@
 form.stack { gap:16px; }
 .form-row { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; align-items:start; }
 .form-actions { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:8px; margin-left:auto; }
-.form-actions .button { min-height:36px; padding:0 16px; font-size:13px; margin:0; }
+.form-actions .button { margin:0; }
+/* A button beside a labelled control lines up with the control, not with the label above it. */
+.toolbar:has(>.field) { align-items:flex-end; }
+.toolbar>h2,.toolbar>h3 { margin:0; }
 .form-messages:empty { display:none; }
 .form-messages>.notice,.form-messages>.error { margin:0 0 8px; }
 .form-subgroup { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; padding:16px; border:1px solid var(--border); border-radius:calc(var(--control-radius) + 4px); }
@@ -104,7 +107,6 @@ form.stack { gap:16px; }
 .factor-step { display:flex; flex-direction:column; gap:16px; }
 .factor-step>p { margin:0; }
 .factor-step .field { margin:0; max-width:420px; }
-.factor-step .toolbar .button,.user-editor .button { min-height:36px; padding:0 16px; font-size:13px; }
 .card-head-row { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; }
 .card-head-row .button { min-height:32px; padding:0 12px; font-size:13px; }
 .form-card-body.is-wide { max-width:none; }
@@ -123,7 +125,10 @@ form.stack { gap:16px; }
   .form-card-head { padding:16px 16px 0; }
   .form-card-body { padding:16px; }
   .form-card-foot { padding:12px 16px; }
+  .button,.action-menu>summary,.card-head-row .button,td .button { min-height:44px; }
+  /* Wide tables scroll inside their focusable region instead of crushing their cells; the triage table stacks instead. */
+  .table-wrap table:not(.triage-table) { min-width:560px; }
   .form-actions { width:100%; margin-left:0; }
-  .form-actions .button { flex:1; min-height:44px; }
+  .form-actions .button { flex:1; }
   .form-disclosure>div { padding-left:0; }
 }

@@ -1,7 +1,7 @@
 /* Action hierarchy: destructive styling, overflow menus, state badges and target-naming confirmations. */
 
 /* Destructive actions: crimson outline in lists and menus, solid crimson inside a confirmation. */
-.button.danger { background:transparent; color:#b3132f; border:1px solid #c8203a; font-weight:500; padding:8px 20px; filter:none; }
+.button.danger { background:transparent; color:#b3132f; border:1px solid #c8203a; font-weight:500; padding:0 15px; filter:none; }
 .button.danger:hover:not(:disabled) { background:#fff0f2; color:#930f27; border-color:#930f27; filter:none; }
 .button.danger:active:not(:disabled) { background:#ffe0e6; }
 .confirm-dialog .button.danger { background:#b3132f; color:#ffffff; border-color:#b3132f; font-weight:600; }
@@ -14,7 +14,7 @@
 /* Overflow menu: expands in flow on its own row, so no ancestor overflow can clip it. */
 .action-menu { min-width:0; }
 .toolbar>.action-menu[open] { flex-basis:100%; }
-.action-menu>summary { display:inline-flex; align-items:center; gap:8px; min-height:42px; padding:8px 18px; border:1px solid color-mix(in srgb,var(--color-smoke) 85%,var(--surface-card-surface)); border-radius:50px; color:var(--color-ink-black); font-weight:500; cursor:pointer; list-style:none; user-select:none; }
+.action-menu>summary { display:inline-flex; align-items:center; gap:8px; min-height:36px; padding:0 16px; border:1px solid color-mix(in srgb,var(--color-smoke) 85%,var(--surface-card-surface)); border-radius:50px; color:var(--color-ink-black); font-weight:500; cursor:pointer; list-style:none; user-select:none; }
 .action-menu>summary::-webkit-details-marker { display:none; }
 .action-menu>summary:hover { background:var(--color-ash-mist); }
 .action-menu>summary .icon { width:16px; height:16px; transition:transform .15s ease-out; }

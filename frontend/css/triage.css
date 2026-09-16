@@ -15,7 +15,8 @@
 /* Errors view toolbar: loaded-page type filters and result count. */
 .triage-filterbar { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px 20px; margin:-4px 0 14px; }
 .triage-filters { display:flex; flex-wrap:wrap; gap:8px; }
-.triage-filters .triage-chip { min-height:34px; padding:6px 14px; font-size:13px; transition:background-color .15s ease-out,color .15s ease-out,border-color .15s ease-out; }
+.triage-filters .triage-chip { min-height:32px; padding:0 12px; font-size:13px; transition:background-color .15s ease-out,color .15s ease-out,border-color .15s ease-out; }
+@media(max-width:700px) { .triage-filters .triage-chip { min-height:44px; } }
 .triage-filters .triage-chip[aria-pressed=true] { background:var(--selection-fill); color:var(--selection-text); border-color:var(--selection-text); }
 .triage-summary { display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 12px; font-size:13px; color:var(--color-smoke); }
 .triage-summary p { margin:0; }
