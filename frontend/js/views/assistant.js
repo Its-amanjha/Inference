@@ -358,8 +358,12 @@ export async function render(container) {
   };
   const paintApprovals = () => {
     approvals.replaceChildren();
-    if (!approvalRows.length) { approvals.append(el('div',{className:'approval-empty'},icon('secrets'),el('h3',{},'No pending actions'),el('p',{},'Proposed changes appear here. Nothing runs without your confirmation.'))); return; }
-    for (const row of approvalRows) {
+    // A resolved row created only to satisfy another proposal's precondition (linked_to) is already
+    // reported inside that proposal, so a second rail card for it is a duplicate. A linked row that is
+    // still pending stays: it can be confirmed on its own, and hiding it would strand it unseen.
+    const rows = approvalRows.filter(row => !row.linked_to || row.status === 'pending');
+    if (!rows.length) { approvals.append(el('div',{className:'approval-empty'},icon('secrets'),el('h3',{},'No pending actions'),el('p',{},'Proposed changes appear here. Nothing runs without your confirmation.'))); return; }
+    for (const row of rows) {
       const expired = Number(row.expires_at) * 1000 <= Date.now();
       const status = acting.has(row.id) ? 'executing' : row.status === 'pending' && expired ? 'expired' : row.status;
       if (isRepairAction(row)) { approvals.append(railItem(row, status)); continue; }
