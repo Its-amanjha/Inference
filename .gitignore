@@ -14,3 +14,14 @@ IMPLEMENTATION.md
 AGENTS.md
 docs/original-brief.md
 docs/superpowers/
+.env.*
+!.env.example
+*.log
+*.sqlite
+*.sqlite3
+.coverage
+htmlcov/
+node_modules/
+.idea/
+.DS_Store
+Thumbs.db
