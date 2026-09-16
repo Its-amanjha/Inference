@@ -10,7 +10,7 @@ and provider requests stay at least 60 seconds apart: one tested provider answer
 with HTTP 429 and the same request 60 seconds later with 200, without sending rate-limit headers.
 
 Works with any OpenAI-compatible endpoint whose model returns tool calls; pass --provider-base-url and
---provider-model. Verified end to end on 2026-09-16 with Inception mercury-2.5.
+--provider-model. Verified end to end on 2026-09-16 with a hosted OpenAI-compatible model.
 
 The provider key never appears in arguments. Supply it in an environment variable (default
 INFERENCE_LIVE_PROVIDER_KEY); the script stores it as a vault secret inside the disposable container and

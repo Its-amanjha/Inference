@@ -86,14 +86,14 @@ async def test_disabled_tool_model_rejects_tool_calls(fleet):
 
 
 async def test_provider_validation_names_field_without_echoing_key(fleet):
-    config = {'kind':'custom','base_url':'https://api.b.ai/v1','model':'hy3',
+    config = {'kind':'custom','base_url':'https://api.provider.example/v1','model':'example-model',
               'api_key_ref':'sk-private-test-value','tools_enabled':False}
     result = await fleet.client.put('/api/assistant/config/provider',headers=fleet.headers,
                                    json={'id':'main-config','config':config})
     assert result.status_code == 422
     assert 'Key reference' in result.json()['detail']
     assert 'sk-private-test-value' not in result.text
-    config['api_key_ref'] = '$B_AI_API_KEY'
+    config['api_key_ref'] = '$PROVIDER_API_KEY'
     result = await fleet.client.put('/api/assistant/config/provider',headers=fleet.headers,
                                    json={'id':'main-config','config':config})
     assert result.status_code == 200

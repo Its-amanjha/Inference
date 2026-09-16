@@ -5,9 +5,9 @@ max_score: 40
 na_heuristics: 
 p0_count: 1
 p1_count: 3
-target_identity: "file:D:\\n8n debugging\\frontend\\index.html"
+target_identity: "file:frontend/index.html"
 target_fingerprint: "sha256:ac9be88161a4fae3238ef522ef2ae823a2d9e95cdcd376f7f33480961d9b88bd"
-target_path: "D:\\n8n debugging\\frontend\\index.html"
+target_path: "frontend/index.html"
 timestamp: 2026-09-15T16-00-09Z
 slug: frontend-index-html
 ---

@@ -10,7 +10,7 @@ export function providerSetup(host,onSaved,signal){
   id.addEventListener('input',()=>{id.dataset.edited='true';});
   const base=el('input',{type:'url',required:true,placeholder:'https://your-provider.example/v1',autocomplete:'off',spellcheck:'false'}),model=el('input',{required:true,maxLength:256,autocomplete:'off',spellcheck:'false'});
   const key=el('input',{type:'password',autocomplete:'new-password',placeholder:'Paste the API key supplied by your provider'});
-  const ref=el('input',{placeholder:'$B_AI_API_KEY.api_key',class:'control-mono',autocomplete:'off',spellcheck:'false'}),keyless=el('input',{type:'checkbox'}),tools=el('input',{type:'checkbox'});
+  const ref=el('input',{placeholder:'$PROVIDER_API_KEY.api_key',class:'control-mono',autocomplete:'off',spellcheck:'false'}),keyless=el('input',{type:'checkbox'}),tools=el('input',{type:'checkbox'});
   // A local endpoint needs explicit egress permission: loopback and private addresses are not global,
   // so backend/net.py rejects them unless a CIDR entry covers them. Without this the prefilled Ollama
   // URL fails with provider_configuration_invalid and the form gives no clue why.

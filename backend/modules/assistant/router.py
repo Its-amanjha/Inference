@@ -201,7 +201,7 @@ async def configure(kind: Literal['provider', 'mcp'], body: Configuration, reque
     except ValidationError as exc:
         # Never echo validation inputs: they may include a pasted API key.
         hints = {
-            'api_key_ref': 'Key reference must be a saved secret reference such as $B_AI_API_KEY, not the API key itself.',
+            'api_key_ref': 'Key reference must be a saved secret reference such as $PROVIDER_API_KEY, not the API key itself.',
             'base_url': 'API base URL must be a plain HTTP(S) URL without spaces, credentials, query or fragment.',
             'url': 'MCP endpoint must be a plain HTTP(S) URL without spaces, credentials, query or fragment.',
             'model': 'Model ID is required and must be at most 256 characters.',
