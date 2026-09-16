@@ -29,7 +29,7 @@ Inference is a self-hosted operations dashboard for one or more n8n instances. I
 
 ### Size
 
-- 44 commits between 2026-07-28 and 2026-09-17, 19 of them on 2026-09-16 and 2026-09-17.
+- 48 commits between 2026-07-28 and 2026-09-17, 23 of them on 2026-09-16 and 2026-09-17.
 - Backend: 65 Python files (about 590 KB). Tests: 49 files (about 470 KB) with 518 test functions; parametrised cases bring the suite to 870 collected tests. Scripts: 15 verification and smoke scripts. Frontend: 29 JavaScript files and 9 stylesheets.
 
 ### Milestones by area
