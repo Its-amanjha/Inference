@@ -103,6 +103,7 @@ async def test_response_bound_and_cancellation(monkeypatch):
 async def test_timeout_and_disabled_tools(monkeypatch):
     import backend.modules.assistant.providers as providers
     monkeypatch.setattr(providers, 'TOTAL_TIMEOUT', 0.01)
+    monkeypatch.setattr(providers, 'LOCAL_TOTAL_TIMEOUT', 0.01)
     cancelled = asyncio.Event()
     async def slow(req):
         try:
@@ -253,3 +254,63 @@ async def test_external_cancellation_propagates():
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         with pytest.raises(asyncio.CancelledError):
             await complete(request(client), ProviderConfig(kind='ollama', base_url='https://provider.example/v1', model='x'), [{'role': 'user', 'content': 'hi'}])
+
+
+def _answer(seen):
+    def handler(req):
+        seen.append(req.extensions['timeout'])
+        return httpx.Response(200, json={'choices': [{'finish_reason': 'stop', 'message': {'content': 'ok'}}]})
+    return handler
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('kind,base_url,local', [
+    ('ollama', 'http://127.0.0.1:11434/v1', True),
+    ('ollama', 'https://provider.example/v1', True),
+    ('custom', 'http://localhost:1234/v1', True),
+    ('custom', 'http://127.0.0.1:8080/v1', True),
+    ('custom', 'http://192.168.1.20:8000/v1', True),
+    ('custom', 'https://provider.example/v1', False),
+    ('custom', 'https://8.8.8.8/v1', False),
+    ('openai', 'https://provider.example/v1', False),
+    ('openrouter', 'https://provider.example/v1', False),
+    ('groq', 'https://provider.example/v1', False),
+    ('anthropic', 'https://provider.example/v1', False),
+])
+async def test_local_providers_get_the_long_budget_and_hosted_keep_45_60(monkeypatch, kind, base_url, local):
+    import backend.modules.assistant.providers as providers
+    waits = []
+    real_wait_for = asyncio.wait_for
+    async def recording_wait_for(awaitable, timeout):
+        waits.append(timeout)
+        return await real_wait_for(awaitable, timeout)
+    monkeypatch.setattr(providers.asyncio, 'wait_for', recording_wait_for)
+    seen = []
+    handler = _answer(seen)
+    if kind == 'anthropic':
+        def handler(req):
+            seen.append(req.extensions['timeout'])
+            return httpx.Response(200, json={'stop_reason': 'end_turn', 'content': [{'type': 'text', 'text': 'ok'}]})
+    settings = request(None).app.state.settings
+    settings.allow_cidrs = ('0.0.0.0/0', '::/0')
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        conn = request(client)
+        conn.app.state.settings = settings
+        assert providers.is_local(ProviderConfig(kind=kind, base_url=base_url, model='x')) is local
+        result = await complete(conn, ProviderConfig(kind=kind, base_url=base_url, model='x', api_key_ref='$KEY'), [{'role': 'user', 'content': 'hi'}])
+    assert result['content'] == 'ok'
+    read, total = (600.0, 630.0) if local else (45.0, 60.0)
+    assert seen == [{'connect': 5.0, 'read': read, 'write': 10.0, 'pool': 5.0}]
+    assert waits == [total]
+
+
+@pytest.mark.parametrize('kind,base_url,local', [
+    ('custom', 'http://[::1]:8000/v1', True),
+    ('custom', 'http://10.0.0.5:8000/v1', True),
+    ('custom', 'http://llm.localhost:8000/v1', True),
+    ('custom', 'https://localhost.example.com/v1', False),
+    ('openai', 'http://127.0.0.1:8000/v1', False),
+])
+def test_is_local_uses_kind_and_literal_hosts_only(kind, base_url, local):
+    from backend.modules.assistant.providers import is_local
+    assert is_local(ProviderConfig(kind=kind, base_url=base_url, model='x')) is local

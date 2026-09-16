@@ -24,7 +24,18 @@ from backend.net import allowed_ip, validate_url
 
 MAX_RESPONSE_BYTES = 1024 * 1024
 MAX_REQUEST_BYTES = 256 * 1024
+# Hosted APIs answer a non-streaming turn in seconds; these budgets fail a hung call fast.
+READ_TIMEOUT = 45.0
 TOTAL_TIMEOUT = 60.0
+# Local models (Ollama, or a custom server on a loopback/private address) run on the operator's
+# own hardware, often CPU-only: a non-streaming reply arrives only after the whole answer is
+# generated. Measured on qwen2.5:3b (CPU, 4-5.5 tokens/s) with an n8n skill guide in context:
+# 124-176s standalone and 228s inside a live chat, for 550-900 token answers. A 4096-token
+# context caps an answer near 2000 tokens, roughly 400-500s at that speed, so 600s covers the
+# worst case rather than the typical one. There is no per-token cost and the endpoint is the
+# operator's own machine, so a longer wait wastes nothing; a hung server is still cut off.
+LOCAL_READ_TIMEOUT = 600.0
+LOCAL_TOTAL_TIMEOUT = 630.0  # read + connect/write/pool + response body read.
 MAX_RETRY_AFTER_SECONDS = 24 * 60 * 60
 # Output cut short by a token limit or a content filter is never treated as an answer.
 INCOMPLETE_OPENAI = frozenset({'length', 'content_filter'})
@@ -291,6 +302,30 @@ def retry_after_seconds(value: str | None) -> int | None:
     return min(int(value.strip()), MAX_RETRY_AFTER_SECONDS)
 
 
+def is_local(config: ProviderConfig) -> bool:
+    """Ollama, or a custom endpoint whose host is localhost or a loopback/private IP literal.
+
+    Hostnames are not resolved here: a public name never earns the local budget by DNS alone.
+    """
+    if config.kind == 'ollama':
+        return True
+    if config.kind != 'custom':
+        return False
+    host = (httpx.URL(config.base_url).host or '').lower()
+    if host == 'localhost' or host.endswith('.localhost'):
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return address.is_loopback or address.is_private
+
+
+def _budget(config: ProviderConfig) -> tuple[float, float]:
+    """(read, total) seconds for one provider call."""
+    return (LOCAL_READ_TIMEOUT, LOCAL_TOTAL_TIMEOUT) if is_local(config) else (READ_TIMEOUT, TOTAL_TIMEOUT)
+
+
 def _declaration(tool: dict[str, Any]) -> dict[str, Any]:
     function = tool['function']
     if tool.get('type', 'function') != 'function' or not isinstance(function['name'], str):
@@ -363,6 +398,8 @@ async def complete(request: HTTPConnection, config: ProviderConfig, messages: li
     except (KeyError, TypeError, ValueError, RecursionError, UnicodeError):
         fail(400, 'provider_input_invalid', 'The provider messages or tool declarations are invalid or too large.')
 
+    read_timeout, total_timeout = _budget(config)
+
     async def perform() -> dict[str, Any]:
         headers = {'Content-Type': 'application/json', 'Accept': 'application/json', 'Accept-Encoding': 'identity'}
         if config.kind == 'anthropic':
@@ -373,7 +410,7 @@ async def complete(request: HTTPConnection, config: ProviderConfig, messages: li
             if key:
                 headers['Authorization'] = f'Bearer {key}'
             suffix = '/chat/completions'
-        outbound = httpx.Request('POST', config.base_url + suffix, headers=headers, content=encoded, extensions={'timeout': {'connect': 5.0, 'read': 45.0, 'write': 10.0, 'pool': 5.0}})
+        outbound = httpx.Request('POST', config.base_url + suffix, headers=headers, content=encoded, extensions={'timeout': {'connect': 5.0, 'read': read_timeout, 'write': 10.0, 'pool': 5.0}})
         response = await request.app.state.http.send(outbound, stream=True, auth=None, follow_redirects=False)
         try:
             if response.status_code == 429:
@@ -401,6 +438,6 @@ async def complete(request: HTTPConnection, config: ProviderConfig, messages: li
             await response.aclose()
 
     try:
-        return await asyncio.wait_for(perform(), timeout=TOTAL_TIMEOUT)
+        return await asyncio.wait_for(perform(), timeout=total_timeout)
     except (httpx.HTTPError, asyncio.TimeoutError, OSError, ValueError):
         fail(502, 'provider_unavailable', 'The provider request failed. No automatic retry was attempted.')
