@@ -139,7 +139,7 @@ async def test_unknown_guide_is_reported_instead_of_ending_the_conversation(flee
     # The model is told what it may ask for, so the next round can correct itself.
     injected = [message for message in rounds[1]['messages'] if message['role'] == 'tool']
     payload = json.loads(injected[0]['content'])
-    assert payload['error'] == 'not_installed' and payload['skill'] == 'not-a-skill'
+    assert payload['error']['code'] == 'skill_not_installed' and payload['skill'] == 'not-a-skill'
     assert 'n8n-code-javascript' in payload['available']
     # A missing guide is never an approval.
     assert result.json()['pending_actions'] == []
@@ -177,7 +177,7 @@ async def test_a_name_the_model_invents_does_not_end_the_turn(fleet):
     assert result.status_code == 200, result.text
     assert len(rounds) == 2 and result.json()['content'] == 'Return items, not item.'
     payload = json.loads([m for m in rounds[1]['messages'] if m['role'] == 'tool'][0]['content'])
-    assert payload['error'] == 'not_installed'
+    assert payload['error']['code'] == 'skill_not_installed'
     assert 'n8n-code-javascript' in payload['available']
 
 

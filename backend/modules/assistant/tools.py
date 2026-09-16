@@ -227,7 +227,10 @@ async def execute(request: Request, name: str, args: dict, *, expected_fingerpri
             async with request.app.state.db.transaction() as tx:
                 await require_current_role(request, 'viewer', tx)
                 rows = await tx.fetchall('SELECT id FROM skills ORDER BY id LIMIT 50')
-            return {'skill': args['skill_name'], 'error': 'not_installed',
+            # Same error shape as any other failed tool call, plus the ids the model can use instead.
+            return {'skill': args['skill_name'],
+                    'error': {'code': 'skill_not_installed',
+                              'detail': 'No installed skill has that name. Call get_skill again with one of the available ids.'},
                     'available': [row['id'] for row in rows]}
         content = row['content']
         truncated = len(content) > MAX_SKILL_RESULT
