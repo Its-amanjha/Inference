@@ -32,7 +32,7 @@
 .status-lines dd { margin:0; color:var(--color-ink-black); overflow-wrap:anywhere; }
 .docker-status details summary,.factor-step details summary { cursor:pointer; color:var(--color-smoke); padding:4px 0; }
 .card.docker-status { gap:16px; }
-.factor-step { display:flex; flex-direction:column; gap:4px; }
+.factor-step { display:flex; flex-direction:column; gap:16px; }
 .factor-step .toolbar { margin-bottom:0; }
 
 /* Confirmation dialog. */

@@ -8,7 +8,7 @@ Anomaly-first dashboard for operators, with Monitor / Orchestrate / Manage navig
 
 Inter 400/500/600/700 is the single UI family, with JetBrains Mono only for code. Compact 14px body, 30px page titles, 16px panel headings, tabular data numerals. Preserve native fields, visible keyboard focus and reduced motion. No marketing-scale headlines, decorative charts, invented metrics or floating mockups.
 
-232px sidebar, persistent scope/account bar, flexible two-column investigation/fleet area, four-metric strip, execution table, and separate retained-telemetry summary. 20px panel radii and pill buttons adapt the supplied shapes. Under 700px the sidebar becomes an in-flow Explore disclosure; instance selection remains visible. Dark theme retains the same hierarchy.
+232px sidebar, a 56px top bar with the instance switcher and account menu, flexible two-column investigation/fleet area, four-metric strip, execution table, and separate retained-telemetry summary. 20px panel radii and pill buttons adapt the supplied shapes. Under 700px the sidebar becomes an in-flow Menu disclosure; instance selection remains visible. Dark theme retains the same hierarchy.
 
 All fourteen views share the components. Investigation previews use the real errors API; empty results do not claim healthy telemetry. Partial coverage remains visible, while counting explanations use progressive disclosure. Refresh is serialized, abortable and paused in hidden tabs. The existing metrics endpoint bounds/rate limits remain authoritative.
 
@@ -30,7 +30,7 @@ Use the available content width for chat with an adjacent action-review rail. Ke
 
 ## Theme and icon refinement — 2026-09-14
 
-Light remains the default; Dark and n8n inspired are selectable in the account bar and Settings, with persisted personal and installation defaults. The optional n8n-inspired theme uses charcoal surfaces, coral accents, compact 12px panels and 8px buttons. This is an original adaptation, not a claim of exact official n8n brand colors. Theme changes preserve operational status meanings and visible focus.
+Light remains the default; Dark and n8n inspired are selectable in the account menu and Settings, with persisted personal and installation defaults. The optional n8n-inspired theme uses charcoal surfaces, coral accents, compact 12px panels and 8px buttons. This is an original adaptation, not a claim of exact official n8n brand colors. Theme changes preserve operational status meanings and visible focus.
 
 Shared page headings and common actions use small inline SVG icons with visible text labels; decorative SVGs are hidden from assistive technology. Wide tables are keyboard-focusable scroll regions. Theme tokens cover selection, primary actions, focus and status surfaces.
 
@@ -52,6 +52,17 @@ From the Impeccable critique (22/40) and research on operational dashboards and 
 - **Decisions** read as sentences built from real response fields (promotion headline with blocking findings first, approval summaries with instance and workflow names, capability checklists). Raw JSON stays one click away in a "Raw payload" disclosure.
 - **Actions** carry their risk: one primary per form; destructive actions use the crimson danger treatment (kept distinct from the n8n coral accent), live in More actions menus when secondary, and confirm in a dialog that names the target and consequence; purge requires typing PURGE. State (Active/Inactive, Enabled/Paused, audit outcomes) is shown as badges, not implied by a button.
 - **Readability floor:** no UI text below 12px, sentence-case labels, touch targets ≥24px on desktop and ≥44px on mobile, numeric table columns right-aligned with tabular numerals, headings with more space above than below, accessible names for trace bars with a visible Failed marker.
+
+## Forms and navigation — 2026-09-16
+
+The user rejected the previous forms and navigation bar as generic. The replacements follow shipping products and design systems: GitHub Primer, IBM Carbon, Vercel Geist, Grafana Saga, Linear's 2026 refresh, Supabase and Stripe. Rules live in `css/forms.css` and `css/shell.css`.
+
+- **Quiet chrome.** The sidebar and top bar sit on the page canvas; content sits on cards. The sidebar head and top bar share one 56px line. No taglines, slogans or badges in the chrome. Nav items are 32px (44px on touch) with 16px icons; the current view gets a neutral fill and semibold text, with the accent only on its icon. Page headings keep their icon without a tinted tile.
+- **Top bar.** The instance switcher leads as a breadcrumb: a native select styled as a quiet button with an up/down chevron, then "/" and the current view. On the right, a live-updates dot with its text (the text is visually hidden below 1180px and stays available to assistive technology), then the account menu.
+- **Account menu.** An initials avatar opens a disclosure with the signed-in name and role, a Theme segmented control (Light, Dark, n8n inspired), Settings and Sign out. It closes on Escape, outside clicks and link clicks. Theme and sign out are never top-level header controls. The page footer was removed.
+- **Fields.** Label above the control (13px, weight 500), help text below it and linked with `aria-describedby`. Controls are 36px (44px and 16px text under 700px), 8px radius (6px in n8n inspired), with a 1px border of about 2.2:1 that darkens on hover. Focus changes the border to the focus colour plus a 1px ring, with no glow or offset. Invalid styling appears only after interaction (`:user-invalid`). Checkboxes sit beside their label and hint. Selects draw their chevron with gradients because the CSP blocks `data:` images.
+- **Secrets.** Password and API-key inputs are masked, monospaced and carry one show/hide toggle (constant accessible name, `aria-pressed` state) that replaces the browser's own reveal button. A saved key is never shown again: edit forms leave the field blank and say that a key is already saved.
+- **Settings cards.** `formCard()` renders a 16px heading with a one-line description, a body capped at 720px, and a tinted footer: an optional note on the left and the actions on the right (Cancel, then the primary action). Inline editors, such as a user being edited, use the same field and action rules without a card.
 
 ## Guided connections and AI workspace
 

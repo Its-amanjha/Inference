@@ -1,0 +1,129 @@
+/* Forms: labelled controls, masked secrets and settings cards whose footer holds the actions.
+   Base control rules use :where() so view-specific rules still override them. */
+
+:root {
+  --control-height:36px;
+  --control-radius:8px;
+  --control-border:#a7b0ba;
+  --control-border-hover:#8590a2;
+  --control-invalid:#c8203a;
+  --form-foot-fill:color-mix(in srgb,var(--color-ash-mist) 55%,var(--surface-card-surface));
+}
+[data-theme=dark] { --control-border:#5e6066; --control-border-hover:#76787e; --control-invalid:#ff7a90; }
+[data-theme=n8n] { --control-radius:6px; --control-border:#55555e; --control-border-hover:#6e6e78; --control-invalid:#ff7a90; }
+
+/* Controls */
+:where(input:not([type=checkbox],[type=radio],[type=range],[type=file],[type=color],[type=hidden]),select,textarea) {
+  box-sizing:border-box; width:100%; max-width:100%; min-height:var(--control-height); margin:0; padding:0 12px;
+  font:inherit; font-size:14px; line-height:20px; color:var(--color-ink-black);
+  background-color:var(--surface-input); border:1px solid var(--control-border); border-radius:var(--control-radius);
+  transition:border-color .15s ease-out,box-shadow .15s ease-out;
+}
+:where(textarea) { padding:8px 12px; min-height:120px; line-height:1.5; resize:vertical; }
+:where(input:not([type=checkbox],[type=radio],[type=range],[type=file],[type=color],[type=hidden]),select,textarea):hover:not(:disabled,:focus) { border-color:var(--control-border-hover); }
+:where(input:not([type=checkbox],[type=radio],[type=range],[type=file],[type=color],[type=hidden]),select,textarea):focus { outline:none; border-color:var(--focus); box-shadow:0 0 0 1px var(--focus); }
+:where(input:not([type=checkbox],[type=radio],[type=range],[type=file],[type=color],[type=hidden]),select,textarea):user-invalid { border-color:var(--control-invalid); }
+:where(input:not([type=checkbox],[type=radio],[type=range],[type=file],[type=color],[type=hidden]),select,textarea):user-invalid:focus { box-shadow:0 0 0 1px var(--control-invalid); }
+:where(input:not([type=checkbox],[type=radio],[type=range],[type=file],[type=color],[type=hidden]),select,textarea):disabled { cursor:not-allowed; color:var(--color-smoke); background-color:var(--color-ash-mist); border-color:var(--border); }
+:where(input:not([type=checkbox],[type=radio],[type=range],[type=file],[type=color],[type=hidden]),textarea):read-only:not(:disabled) { background-color:var(--color-ash-mist); }
+:where(input,textarea)::placeholder { color:var(--color-smoke); opacity:1; }
+
+/* Native select with a drawn chevron (no image URLs: the CSP blocks data: images). */
+:where(select) {
+  appearance:none; -webkit-appearance:none; padding-right:36px; cursor:pointer; text-overflow:ellipsis; white-space:nowrap;
+  background-image:
+    linear-gradient(45deg,transparent calc(50% - .8px),var(--color-smoke) calc(50% - .8px),var(--color-smoke) calc(50% + .8px),transparent calc(50% + .8px)),
+    linear-gradient(-45deg,transparent calc(50% - .8px),var(--color-smoke) calc(50% - .8px),var(--color-smoke) calc(50% + .8px),transparent calc(50% + .8px));
+  background-size:6px 6px; background-repeat:no-repeat;
+  background-position:calc(100% - 20px) calc(50% + 1px),calc(100% - 14px) calc(50% + 1px);
+}
+:where(select[multiple]) { background-image:none; padding:6px 12px; }
+:where(input[type=checkbox],input[type=radio]) { width:16px; height:16px; margin:0; flex:none; accent-color:var(--action-fill); cursor:pointer; }
+.control-mono { font-family:var(--font-mono); font-size:13px; }
+.control-narrow { max-width:160px; }
+
+/* Secret values: masked, monospaced once revealed, one toggle instead of the browser's own. */
+.control-secret { position:relative; display:flex; align-items:center; min-width:0; }
+.control-secret>input { padding-right:44px; font-family:var(--font-mono); font-size:13px; }
+.control-secret>input::placeholder { font-family:var(--font-body); font-size:14px; }
+.control-secret>input::-ms-reveal,.control-secret>input::-ms-clear { display:none; }
+.control-reveal { position:absolute; right:4px; top:50%; transform:translateY(-50%); display:inline-grid; place-items:center; width:28px; height:28px; padding:0; border:0; border-radius:4px; background:transparent; color:var(--color-smoke); cursor:pointer; }
+.control-reveal:hover { color:var(--color-ink-black); background:var(--color-ash-mist); }
+.control-reveal[aria-pressed=true] { color:var(--color-ink-black); }
+.control-reveal .icon { width:16px; height:16px; }
+.control-reveal:focus-visible { outline-offset:0; }
+
+/* Field anatomy: label, control, help text. */
+.field { display:flex; flex-direction:column; gap:6px; min-width:0; margin:0 0 16px; font-size:14px; font-weight:400; }
+.field>label { font-size:13px; font-weight:500; line-height:20px; color:var(--color-ink-black); }
+.field-hint { margin:0; font-size:12px; line-height:18px; color:var(--color-smoke); max-width:72ch; }
+.field-check { flex-direction:row; align-items:flex-start; gap:10px; }
+.field-check>input { margin-top:2px; }
+.field-check-text { display:flex; flex-direction:column; gap:2px; min-width:0; }
+.field-check-text>label { font-size:13px; font-weight:500; line-height:20px; color:var(--color-ink-black); cursor:pointer; }
+
+/* Layout */
+.form { display:flex; flex-direction:column; gap:16px; min-width:0; }
+.form>.field,.form-row>.field,.form-card .field,form.stack>.field { margin:0; }
+form.stack { gap:16px; }
+.form-row { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; align-items:start; }
+.form-actions { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:8px; margin-left:auto; }
+.form-actions .button { min-height:36px; padding:0 16px; font-size:13px; margin:0; }
+.form-messages:empty { display:none; }
+.form-messages>.notice,.form-messages>.error { margin:0 0 8px; }
+.form-subgroup { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; padding:16px; border:1px solid var(--border); border-radius:calc(var(--control-radius) + 4px); }
+.form-subgroup>.field { margin:0; }
+
+/* Settings card: header, body, and a tinted footer with a note on the left and actions on the right. */
+.form-card { display:flex; flex-direction:column; gap:0; padding:0; overflow:hidden; }
+.form-card-head { padding:20px 24px 0; }
+.form-card-head h2,.form-card-head h3 { font-size:16px; line-height:24px; margin:0; letter-spacing:-.01em; }
+.form-card-head>p { margin:4px 0 0; font-size:13px; line-height:20px; color:var(--color-smoke); max-width:72ch; overflow-wrap:anywhere; }
+.form-card-body { display:flex; flex-direction:column; gap:16px; min-width:0; max-width:720px; padding:20px 24px 24px; }
+.form-card-body>div:empty { display:none; }
+.form-card-body>.button { align-self:flex-start; }
+.form-card-body>p { margin:0; }
+.form-card-foot { display:flex; flex-wrap:wrap; align-items:center; gap:12px 16px; padding:12px 24px; border-top:1px solid var(--border); background:var(--form-foot-fill); }
+.form-card-note { display:flex; align-items:center; gap:8px; margin:0; font-size:12px; line-height:18px; color:var(--color-smoke); max-width:64ch; }
+.form-card-note>.icon { width:14px; height:14px; flex:none; }
+.form-card.is-flat { border:0; border-radius:0; background:transparent; overflow:visible; }
+.form-card.is-flat .form-card-head { padding:0; }
+.form-card.is-flat .form-card-body { padding:16px 0 20px; max-width:800px; }
+.form-card.is-flat .form-card-foot { padding:12px 0 0; background:transparent; }
+
+/* Disclosure inside a form. */
+.form-disclosure>summary { display:inline-flex; align-items:center; gap:6px; width:fit-content; min-height:24px; font-size:13px; font-weight:500; color:var(--color-ink-black); list-style:none; }
+.form-disclosure>summary::-webkit-details-marker { display:none; }
+.form-disclosure>summary .icon { width:16px; height:16px; color:var(--color-smoke); transform:rotate(-90deg); transition:transform .15s ease-out; }
+.form-disclosure[open]>summary .icon { transform:none; }
+.form-disclosure>div { display:flex; flex-direction:column; gap:16px; padding:16px 0 0 22px; }
+.form-disclosure>div>.field { margin:0; }
+.form-disclosure pre { margin:0; }
+
+/* Page-specific form arrangements. */
+.factor-step { display:flex; flex-direction:column; gap:16px; }
+.factor-step>p { margin:0; }
+.factor-step .field { margin:0; max-width:420px; }
+.factor-step .toolbar .button,.user-editor .button { min-height:36px; padding:0 16px; font-size:13px; }
+.card-head-row { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; }
+.card-head-row .button { min-height:32px; padding:0 12px; font-size:13px; }
+.form-card-body.is-wide { max-width:none; }
+.user-editor { max-width:720px; margin-bottom:16px; padding:16px; border:1px solid var(--border); border-radius:12px; background:var(--form-foot-fill); }
+.auth-card .form { gap:16px; }
+.auth-card .form>.button { width:100%; min-height:40px; margin-top:4px; }
+.auth-card .form-disclosure>div { padding-left:0; }
+.auth-card .form-disclosure { margin:0; }
+
+@media(max-width:700px) {
+  :root { --control-height:44px; }
+  :where(input:not([type=checkbox],[type=radio],[type=range],[type=file],[type=color],[type=hidden]),select,textarea) { font-size:16px; }
+  .control-secret>input { font-size:15px; }
+  .control-reveal { width:36px; height:36px; }
+  .form-row,.form-subgroup { grid-template-columns:1fr; }
+  .form-card-head { padding:16px 16px 0; }
+  .form-card-body { padding:16px; }
+  .form-card-foot { padding:12px 16px; }
+  .form-actions { width:100%; margin-left:0; }
+  .form-actions .button { flex:1; min-height:44px; }
+  .form-disclosure>div { padding-left:0; }
+}

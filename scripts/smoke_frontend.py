@@ -3,6 +3,7 @@ from pathlib import Path
 import os
 import re
 import secrets
+import shutil
 import socket
 import subprocess
 import sys
@@ -13,6 +14,7 @@ import httpx
 from playwright.sync_api import sync_playwright, expect
 from frontend_fleet_fixture import fleet_fixture, exercise_fleet
 from frontend_admin_checks import exercise_admin
+from frontend_theme_checks import choose_theme
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -24,7 +26,7 @@ def main() -> None:
     base = f'http://127.0.0.1:{port}'
     artifacts = ROOT / 'test-results'
     artifacts.mkdir(exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix='inference-ui-') as folder:
+    with tempfile.TemporaryDirectory(prefix='inference-ui-', ignore_cleanup_errors=True) as folder:
         env = {**os.environ, 'INFERENCE_DATA_DIR': folder, 'INFERENCE_SECURE_COOKIES': 'false', 'INFERENCE_EGRESS_ALLOW_CIDRS': '127.0.0.1/32',
                'INFERENCE_BOOTSTRAP_TOKEN': '', 'INFERENCE_ALLOWED_ORIGINS': ''}
         with (artifacts / 'frontend-server.log').open('w') as log:
@@ -98,7 +100,7 @@ def main() -> None:
                     overlaps = page.evaluate('''() => {
                         const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
                         const boxes = [...document.querySelectorAll('#toasts .toast')].map(node => node.getBoundingClientRect());
-                        const controls = [...document.querySelectorAll('.workspace-bar a, .workspace-bar button, .workspace-bar select, #main .page-heading-row a, #main .page-heading-row button, #main .live-updates button')];
+                        const controls = [...document.querySelectorAll('.topbar a, .topbar button, .topbar select,#main .page-heading-row a, #main .page-heading-row button, #main .live-updates button')];
                         return controls.filter(node => boxes.some(box => hit(box, node.getBoundingClientRect()))).map(node => node.textContent.trim() || node.getAttribute('aria-label'));
                     }''')
                     assert overlaps == [], overlaps
@@ -110,12 +112,12 @@ def main() -> None:
                     notes_toast.get_by_role('button', name='Dismiss notification', exact=True).click()
                     expect(notes_toast).to_have_count(0)
                     page.evaluate("document.querySelector('#toasts').replaceChildren()")
-                    page.get_by_label('Color theme', exact=True).select_option('dark')
+                    choose_theme(page, 'Dark')
                     expect(page.locator('html')).to_have_attribute('data-theme', 'dark')
                     assert page.evaluate('getComputedStyle(document.body).backgroundColor') == 'rgb(24, 25, 27)'
                     page.reload(wait_until='domcontentloaded')
                     expect(page.locator('html')).to_have_attribute('data-theme', 'dark')
-                    page.get_by_label('Color theme', exact=True).select_option('light')
+                    choose_theme(page, 'Light')
                     expect(page.locator('html')).to_have_attribute('data-theme', 'light')
                     page.unroute('**/api/n8n_proxy/dashboard*')
                     routes = ['workflows','promote', 'errors', 'observe', 'fleet-health', 'codelab',
@@ -184,18 +186,19 @@ def main() -> None:
                     assert box and box['x'] >= 15 and box['x'] + box['width'] <= 390 - 15 and box['y'] + box['height'] <= 844, box
                     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'), 'Toast overflow'
                     page.evaluate("document.querySelector('#toasts').replaceChildren()")
-                    page.get_by_text('Explore', exact=True).click()
+                    page.get_by_text('Menu', exact=True).click()
                     assert page.get_by_role('navigation', name='All views').is_visible()
                     page.screenshot(path=str(artifacts / 'frontend-mobile-nav.png'), full_page=True)
                     page.get_by_role('navigation', name='All views').get_by_role('link', name='Settings', exact=True).click()
                     expect(page.get_by_role('navigation', name='All views')).not_to_be_visible()
                     page.locator('#main h1').wait_for()
+                    page.get_by_role('button', name='Account menu', exact=True).click()
                     page.get_by_role('button', name='Sign out', exact=True).click()
                     page.get_by_role('button', name='Sign in', exact=True).wait_for()
                     page.get_by_label('Username', exact=True).fill('uiowner')
                     page.get_by_label('Password', exact=True).fill(password)
                     page.get_by_role('button', name='Sign in', exact=True).click()
-                    page.get_by_role('button', name='Sign out', exact=True).wait_for()
+                    page.get_by_role('button', name='Account menu', exact=True).wait_for()
                     page.set_viewport_size({'width': 1440, 'height': 1000})
                     with fleet_fixture() as (fixture_url, fixture_state):
                         exercise_fleet(page, fixture_url, fixture_state)
@@ -238,6 +241,15 @@ def main() -> None:
                 else:
                     process.terminate()
                 process.wait(timeout=10)
+    # On Windows the venv launcher can exit before its interpreter child releases dashboard.db,
+    # so the data directory may outlive the context manager; remove it once the handle closes.
+    for _ in range(40):
+        if not os.path.exists(folder):
+            break
+        shutil.rmtree(folder, ignore_errors=True)
+        time.sleep(.25)
+    else:
+        print(f'NOTE: temporary data directory could not be removed: {folder}', flush=True)
 
 
 if __name__ == '__main__':

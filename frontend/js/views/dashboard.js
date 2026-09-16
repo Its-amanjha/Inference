@@ -82,7 +82,7 @@ export async function render(container) {
         if(rows.length)findings.append(el('p',{class:'muted'},'Latest open findings. Review all errors for earlier records.'));
       }else notice(findings,results[3].reason);
       if(results[1].status==='rejected')notice(feed,results[1].reason);
-      else if(!results[1].value)feed.append(state.instances.length?empty('Choose an instance','Select an instance in the workspace bar to see its recent executions.'):empty('No instances connected',can('admin')?'Connect an n8n instance in Instances, then select it in the workspace bar to see its recent executions.':'An administrator needs to connect an n8n instance before recent executions can appear.'));
+      else if(!results[1].value)feed.append(state.instances.length?empty('Choose an instance','Pick an instance in the switcher at the top of the page to see its recent executions.'):empty('No instances connected',can('admin')?'Connect an n8n instance in Instances, then pick it in the switcher at the top of the page to see its recent executions.':'An administrator needs to connect an n8n instance before recent executions can appear.'));
       else {
         const rows=results[1].value.data;
         const badge=status=>el('span',{class:`badge ${['success','completed'].includes(status)?'success':['error','crashed'].includes(status)?'error':['running','waiting'].includes(status)?'info':''}`},status||'Unknown');

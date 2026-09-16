@@ -64,9 +64,9 @@ function closeSocket() { clearTimeout(reconnect); if(socket){socket.onclose=null
 function connectSocket() {
   closeSocket(); if(!state.user)return;
   socket=new WebSocket(`${location.protocol==='https:'?'wss:':'ws:'}//${location.host}/ws`);
-  const connection=message=>{const node=document.querySelector('#connection-status');if(node)node.textContent=message;};
-  connection('Connecting to updates');
-  socket.onopen=()=>{reconnectDelay=1000;connection('Live updates connected');};
+  const connection=(phase,message)=>{const node=document.querySelector('#connection-status');if(!node)return;node.dataset.state=phase;node.title=message;const label=node.querySelector('.live-label');if(label)label.textContent=message;};
+  connection('connecting','Connecting to updates');
+  socket.onopen=()=>{reconnectDelay=1000;connection('live','Live updates connected');};
   socket.onmessage=event=>{
     let packet; try{packet=JSON.parse(event.data);}catch{return;}
     if(!packet.event || ['connected','heartbeat'].includes(packet.event))return;
@@ -79,7 +79,7 @@ function connectSocket() {
     if(['dashboard','errors','observe'].includes(route) && notify)showPendingUpdates();
   };
   socket.onclose=event=>{
-    connection('Reconnecting to updates');
+    connection('reconnecting','Reconnecting to updates');
     if([4401,4403].includes(event.code)){window.dispatchEvent(new Event('session-expired'));return;}
     if(state.user){reconnect=setTimeout(connectSocket,reconnectDelay);reconnectDelay=Math.min(30000,reconnectDelay*2);}
   };
@@ -89,6 +89,31 @@ async function loadInstances() {
   if(state.instanceId&&!state.instances.some(item=>item.id===state.instanceId)) state.instanceId='';
   if(selector){selector.replaceChildren(el('option',{value:''},'All instances'),...state.instances.map(item=>el('option',{value:item.id},item.name)));selector.value=state.instanceId;}
 }
+const THEMES=[['light','Light'],['dark','Dark'],['n8n','n8n inspired']];
+const ROLE_LABELS={admin:'Administrator',operator:'Operator',viewer:'Viewer'};
+function initials(name){const parts=String(name||'').split(/[\s._-]+/).filter(Boolean);return ((parts[0]?.[0]||'?')+(parts[1]?.[0]||'')).toUpperCase();}
+function syncThemeChoice(theme){root.querySelectorAll('input[name=color-theme]').forEach(input=>{input.checked=input.value===theme;});}
+// Account disclosure: who is signed in, the theme choice and sign out. Closes on Escape, outside clicks and links.
+function accountMenu(){
+  const trigger=el('button',{type:'button',class:'account-trigger','aria-label':'Account menu','aria-expanded':'false','aria-controls':'account-panel'},el('span',{class:'avatar','aria-hidden':'true'},initials(state.user.username)));
+  const themes=el('fieldset',{class:'theme-choice'},el('legend',{},'Theme'),el('div',{class:'theme-options'},THEMES.map(([value,label])=>el('label',{class:'theme-option'},el('input',{type:'radio',name:'color-theme',value,checked:state.preferences.theme===value}),el('span',{},label)))));
+  const signOut=el('button',{type:'button',class:'account-item'},icon('logout'),'Sign out');
+  const panel=el('div',{class:'account-panel',id:'account-panel',hidden:true},
+    el('div',{class:'account-who'},el('span',{class:'avatar','aria-hidden':'true'},initials(state.user.username)),el('div',{},el('strong',{},state.user.username),el('span',{},ROLE_LABELS[state.user.role]||state.user.role))),
+    themes,el('div',{class:'account-actions'},el('a',{class:'account-item',href:'#settings'},icon('settings'),'Settings'),signOut));
+  const menu=el('div',{class:'account-menu'},trigger,panel);
+  const outside=event=>{if(!menu.contains(event.target))setOpen(false);};
+  function setOpen(open){panel.hidden=!open;trigger.setAttribute('aria-expanded',String(open));document[open?'addEventListener':'removeEventListener']('pointerdown',outside,true);}
+  trigger.addEventListener('click',()=>setOpen(panel.hidden));
+  menu.addEventListener('keydown',event=>{if(event.key==='Escape'&&!panel.hidden){event.stopPropagation();setOpen(false);trigger.focus();}});
+  panel.addEventListener('click',event=>{if(event.target.closest('a'))setOpen(false);});
+  themes.addEventListener('change',async event=>{
+    try{const preferences=await api('/api/admin/preferences');preferences.theme=event.target.value;const saved=await api('/api/admin/preferences',{method:'PUT',json:preferences});applyPreferences(saved);await setTheme(saved.theme);}
+    catch(error){syncThemeChoice(state.preferences.theme);toast(error.message);}
+  });
+  signOut.addEventListener('click',async()=>{setOpen(false);try{await api('/api/auth/logout',{method:'POST'});}catch(error){toast(error.message);return;}await authenticate();});
+  return menu;
+}
 function renderShell() {
   selector=el('select',{'aria-label':'Selected instance',onchange:()=>{state.instanceId=selector.value;navigate();}});
   const link=id=>el('a',{href:`#${id}`,'data-route':id},icon(id),el('span',{},routes[id]));
@@ -97,20 +122,15 @@ function renderShell() {
     const labelId=`nav-group-${title.toLowerCase()}`;
     return el('div',{class:'nav-group',role:'group','aria-labelledby':labelId},el('p',{class:'nav-group-title',id:labelId},title),ids.filter(id=>!adminOnly.has(id)||can('admin')).map(link));
   }));
-  const more=el('details',{class:'nav-more',open:!mobileNavigation.matches},el('summary',{},icon('menu'),'Explore'),navigation);
-  const brand=el('a',{class:'brand',href:'#dashboard'},el('span',{class:'brand-mark','aria-hidden':'true'}),el('span',{},'Inference',el('small',{},'Execution Anomaly System')));
-  const sidebar=el('aside',{class:'sidebar'},brand,more,el('div',{class:'sidebar-foot'},el('span',{class:'badge'},'Self-hosted'),el('p',{},'Your infrastructure. Your control.')));
-  const theme=el('select',{'aria-label':'Color theme',class:'theme-picker'},el('option',{value:'light'},'Light'),el('option',{value:'dark'},'Dark'),el('option',{value:'n8n'},'n8n inspired'));
-  theme.value=state.preferences.theme;
-  theme.addEventListener('change',async()=>{
-    theme.disabled=true;
-    try{const preferences=await api('/api/admin/preferences');preferences.theme=theme.value;const saved=await api('/api/admin/preferences',{method:'PUT',json:preferences});applyPreferences(saved);await setTheme(saved.theme);}
-    catch(error){theme.value=state.preferences.theme;toast(error.message);}
-    finally{theme.disabled=false;}
-  });
-  const nav=el('header',{class:'workspace-bar'},el('div',{class:'workspace-context'},el('span',{},'Workspace'),el('strong',{id:'current-view'},'Overview')),el('div',{class:'nav-selector'},selector),el('div',{class:'account'},el('span',{class:'account-name'},state.user.username),theme,button('Sign out',async()=>{await api('/api/auth/logout',{method:'POST'});await authenticate();},'ghost')));
+  const more=el('details',{class:'nav-more',open:!mobileNavigation.matches},el('summary',{},icon('menu'),'Menu'),navigation);
+  const brand=el('a',{class:'brand',href:'#dashboard',title:'Inference · Execution Anomaly System'},el('span',{class:'brand-mark','aria-hidden':'true'}),el('span',{class:'brand-name'},'Inference'));
+  const sidebar=el('aside',{class:'sidebar'},el('div',{class:'sidebar-head'},brand),more);
+  // Scope first, then the current view: the same breadcrumb shape as project switchers in hosted consoles.
+  const scope=el('div',{class:'scope-switcher'},icon('instances'),selector,icon('chevron-updown'));
+  const status=el('span',{id:'connection-status',class:'live-status',role:'status','data-state':'connecting',title:'Connecting to updates'},el('span',{class:'live-dot','aria-hidden':'true'}),el('span',{class:'live-label'},'Connecting to updates'));
+  const topbar=el('header',{class:'topbar'},el('div',{class:'topbar-context'},scope,el('span',{class:'crumb-separator','aria-hidden':'true'},'/'),el('span',{class:'crumb-current',id:'current-view'},'Overview')),el('div',{class:'topbar-actions'},status,accountMenu()));
   shell=el('main',{id:'main',class:'page',tabIndex:-1});
-  root.replaceChildren(el('div',{class:'app-layout'},sidebar,el('div',{class:'workspace'},nav,shell,el('footer',{class:'footer'},el('span',{},'Inference / Execution Anomaly System'),el('span',{id:'connection-status',role:'status'},'Connecting to updates')))));
+  root.replaceChildren(el('div',{class:'app-layout'},sidebar,el('div',{class:'workspace'},topbar,shell)));
 }
 async function navigate() {
   if(!state.user||!shell)return;
@@ -134,7 +154,7 @@ async function navigate() {
 }
 async function signedIn(user) {
   cleanup();state.user=user; renderShell();
-  try { const prefs=await api('/api/admin/preferences');applyPreferences(prefs);setTheme(prefs.theme);root.querySelector('.theme-picker').value=state.preferences.theme;await loadInstances(); } catch(error){toast(error.message);}
+  try { const prefs=await api('/api/admin/preferences');applyPreferences(prefs);setTheme(prefs.theme);syncThemeChoice(state.preferences.theme);await loadInstances(); } catch(error){toast(error.message);}
   connectSocket(); await navigate();
 }
 async function authenticate() {
@@ -146,8 +166,8 @@ async function authenticate() {
 window.addEventListener('hashchange',navigate);
 window.addEventListener('session-expired',()=>{if(state.user)toast('Your session ended. Sign in again.');authenticate();});
 window.addEventListener('instances-changed',async()=>{try{await loadInstances();}catch(error){toast(error.message);}});
-window.addEventListener('preferences-changed',event=>{applyPreferences(event.detail);setTheme(state.preferences.theme);const picker=root.querySelector('.theme-picker');if(picker)picker.value=state.preferences.theme;});
+window.addEventListener('preferences-changed',event=>{applyPreferences(event.detail);setTheme(state.preferences.theme);syncThemeChoice(state.preferences.theme);});
 window.addEventListener('pagehide',()=>{cleanup();closeSocket();});
-// Keep the header picker on the theme actually applied, including fallbacks and direct setTheme calls.
-new MutationObserver(()=>{const picker=root.querySelector('.theme-picker'),applied=document.documentElement.dataset.theme;if(picker&&['light','dark','n8n'].includes(applied))picker.value=applied;}).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+// Keep the account menu's theme choice on the theme actually applied, including fallbacks and direct setTheme calls.
+new MutationObserver(()=>{const applied=document.documentElement.dataset.theme;if(['light','dark','n8n'].includes(applied))syncThemeChoice(applied);}).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
 authenticate();

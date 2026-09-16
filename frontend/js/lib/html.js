@@ -25,9 +25,33 @@ export function button(label, callback, className = 'button') {
   return node;
 }
 let sequence = 0;
-export function field(label, input) {
+// A labelled control. options.hint adds help text under the control, linked with aria-describedby.
+// Checkboxes and radios sit beside their label; password inputs get a show/hide toggle.
+export function field(label, input, options = {}) {
   if (!input.id) input.id = `field-${++sequence}`;
-  return el('div',{class:'field'}, el('label',{for:input.id},label), input);
+  const hint = options.hint ? el('p',{class:'field-hint',id:`${input.id}-hint`},options.hint) : null;
+  if (hint) input.setAttribute('aria-describedby',[input.getAttribute('aria-describedby'),hint.id].filter(Boolean).join(' '));
+  if (input.type === 'checkbox' || input.type === 'radio') return el('div',{class:'field field-check'}, input, el('div',{class:'field-check-text'},el('label',{for:input.id},label),hint));
+  return el('div',{class:'field'}, el('label',{for:input.id},label), input.type === 'password' ? secretControl(input,label) : input, hint);
+}
+// Masked by default. The toggle keeps one accessible name and reports its state with aria-pressed.
+function secretControl(input, label) {
+  input.setAttribute('autocapitalize','off'); input.setAttribute('spellcheck','false');
+  const noun = /^[A-Z][a-z]/.test(label) ? label[0].toLowerCase() + label.slice(1) : label;
+  const toggle = el('button',{type:'button',class:'control-reveal','aria-controls':input.id,'aria-pressed':'false','aria-label':`Show ${noun}`,title:'Show'},icon('eye'));
+  toggle.addEventListener('click',()=>{
+    const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    toggle.setAttribute('aria-pressed',String(show)); toggle.title = show ? 'Hide' : 'Show';
+    toggle.replaceChildren(icon(show ? 'eye-off' : 'eye'));
+  });
+  return el('div',{class:'control-secret'}, input, toggle);
+}
+// Settings card: heading and description, fields, then a footer with an optional note and the actions (primary last).
+export function formCard({title, description, body = [], note, actions = [], className = '', heading = 'h2', flat = false} = {}) {
+  const head = title || description ? el('div',{class:'form-card-head'}, typeof title === 'string' ? el(heading,{},title) : title, description ? el('p',{},description) : null) : null;
+  const foot = note || actions.length ? el('div',{class:'form-card-foot'}, note ? el('p',{class:'form-card-note'},note) : null, el('div',{class:'form-actions'},actions)) : null;
+  return el('form',{class:['card form-card',flat?'is-flat':'',className].filter(Boolean).join(' ')}, head, el('div',{class:'form-card-body'},body), foot);
 }
 export function notice(container, error) {
   if (error?.name === 'AbortError' || !container.isConnected) return;

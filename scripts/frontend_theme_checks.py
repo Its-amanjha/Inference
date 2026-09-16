@@ -20,6 +20,14 @@ def danger_hue(value: str) -> bool:
     return saturation >= .25 and (hue * 360 >= 330 or hue * 360 <= 30)
 
 
+def choose_theme(page: Page, label: str) -> None:
+    """Pick a theme in the account menu, then close the menu."""
+    page.get_by_role('button', name='Account menu', exact=True).click()
+    page.get_by_role('radio', name=label, exact=True).check()
+    page.keyboard.press('Escape')
+    expect(page.get_by_role('radio', name=label, exact=True)).to_be_hidden()
+
+
 def exercise_themes(page: Page, artifacts: Path) -> None:
     for path in ['/', '/js/app.js', '/js/lib/html.js', '/css/components.css', '/themes/dark.json']:
         response = page.request.get(page.url.split("#")[0].rstrip("/") + path)
@@ -30,7 +38,9 @@ def exercise_themes(page: Page, artifacts: Path) -> None:
     page.get_by_label('Theme', exact=True).first.select_option('n8n')
     page.get_by_role('button', name='Save preferences', exact=True).click()
     expect(page.locator('html')).to_have_attribute('data-theme', 'n8n')
-    expect(page.get_by_label('Color theme', exact=True)).to_have_value('n8n')
+    page.get_by_role('button', name='Account menu', exact=True).click()
+    expect(page.get_by_role('radio', name='n8n inspired', exact=True)).to_be_checked()
+    page.keyboard.press('Escape')
     expect(page.get_by_role('button', name='Save preferences', exact=True).locator('svg')).to_have_count(1)
     page.get_by_role('button', name='Save preferences', exact=True).click()
     expect(page.get_by_text('Preferences saved.', exact=True)).to_have_count(1)
@@ -96,6 +106,6 @@ def exercise_themes(page: Page, artifacts: Path) -> None:
         assert page.evaluate('getComputedStyle(document.body).backgroundColor') == 'rgb(245, 247, 249)'
     finally:
         page.unroute('**/themes/n8n.json')
-    page.get_by_label('Color theme', exact=True).select_option('light')
+    choose_theme(page, 'Light')
     expect(page.locator('html')).to_have_attribute('data-theme', 'light')
     print('PASS: n8n theme persisted via Settings/reload, header selector, 3-theme contrast, neutral info notices, failed-span pattern, semantic icons, mobile layout and invalid-theme fallback.', flush=True)

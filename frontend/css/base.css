@@ -33,9 +33,9 @@ body { background: var(--color-ash-mist); color: var(--color-graphite); font-fam
 h1,h2,.editorial-title { font-family: var(--font-display); font-weight: 600; color: var(--color-ink-black); line-height: 1.2; margin: 0 0 12px; }
 h1 { font-size: var(--text-display); } h2 { font-size: var(--text-heading); } h3 { font-size: var(--text-heading-sm); font-weight:600; color:var(--color-ink-black); margin:0 0 12px; }
 p { margin: 0 0 16px; } a { color: var(--selection-text); text-underline-offset: 3px; } button,input,select,textarea { font: inherit; } button,a,input,select,textarea,summary { -webkit-tap-highlight-color: transparent; }
-:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; } [hidden] { display: none !important; }
-button:disabled { opacity:.5; cursor: not-allowed; } input,select,textarea { color:var(--color-ink-black); background:var(--surface-input); border:1px solid var(--border); border-radius:12px; padding:11px 13px; min-height:44px; max-width:100%; }
-input:not([type=checkbox]),select,textarea { width:100%; } textarea { min-height:120px; resize:vertical; } input[type=checkbox] { width:20px; height:20px; accent-color:var(--color-signal-blue); }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; } [hidden] { display: none !important; }
+button:disabled { opacity:.5; cursor: not-allowed; }
+/* Form control appearance lives in forms.css. */
 code,pre,.mono { font-family:var(--font-mono); font-size:13px; } pre { white-space:pre-wrap; overflow-wrap:anywhere; max-height:460px; overflow:auto; margin:12px 0; padding:18px; border-radius:12px; background:var(--color-ash-mist); }
 hr { border:0; border-top:1px solid var(--border); margin:24px 0; } .muted { color:var(--color-smoke); font-size:14px; } .sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
 .skip-link { position:fixed; left:16px; top:-100px; z-index:1000; padding:12px; background:var(--color-paper-white); } .skip-link:focus { top:16px; }

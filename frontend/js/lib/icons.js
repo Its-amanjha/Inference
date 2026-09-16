@@ -29,6 +29,12 @@ const paths = {
   download:'M12 3v12 M7 10l5 5 5-5 M4 17v4h16v-4',
   search:'M16 10a6 6 0 1 1-12 0 6 6 0 0 1 12 0z M15 15l6 6',
   logout:'M9 3H3v18h6 M9 12h12 M16 7l5 5-5 5',
+  chevron:'m6 9 6 6 6-6',
+  'chevron-updown':'m7 15 5 5 5-5 M7 9l5-5 5 5',
+  eye:'M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
+  'eye-off':'M3 3l18 18 M10.6 5.1A10.6 10.6 0 0 1 12 5c6.4 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.3 M6.6 6.6C3.9 8.4 2 12 2 12s3.6 7 10 7c1.9 0 3.6-.6 5.1-1.5 M9.9 9.9a3 3 0 0 0 4.2 4.2',
+  lock:'M7 11V8a5 5 0 0 1 10 0v3 M5 11h14v10H5z',
+  user:'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M4 21a8 8 0 0 1 16 0',
 };
 // Views may add their own glyphs without editing the shared map.
 export function registerIcons(map) {

@@ -1,5 +1,6 @@
 import {api} from './api.js';
 import {el,field,notice} from './lib/html.js';
+import {icon} from './lib/icons.js';
 
 export function renderAuth(root, setup, onSuccess) {
   const controller = new AbortController();
@@ -10,9 +11,9 @@ export function renderAuth(root, setup, onSuccess) {
   const confirmation = el('input',{name:'confirmation',type:'password',autocomplete:'new-password',required:true,minLength:14});
   const submit = el('button',{type:'submit',class:'button'},setup?'Create admin account':'Sign in');
   const errorArea = el('div',{'aria-live':'polite'});
-  const form = el('form',{},field('Username',username),field('Password',password),
-    setup ? el('div',{},el('p',{class:'muted'},'Use at least 14 characters.'),field('Confirm password',confirmation),
-      el('details',{},el('summary',{},'Have a setup token?'),field('Setup token',token))) : field('Verification or recovery code (if enabled)',code),
+  const form = el('form',{class:'form'},field('Username',username),field('Password',password,setup?{hint:'Use at least 14 characters.'}:{}),
+    setup ? [field('Confirm password',confirmation),
+      el('details',{class:'form-disclosure'},el('summary',{},icon('chevron'),'Have a setup token?'),el('div',{},field('Setup token',token)))] : field('Verification or recovery code (if enabled)',code),
     errorArea,submit);
   form.addEventListener('submit', async event=>{
     event.preventDefault(); if (submit.disabled) return; errorArea.replaceChildren();
