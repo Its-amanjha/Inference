@@ -1,6 +1,6 @@
 # Project status
 
-Last updated 2026-09-17. Branch `feat/inference`, 48 commits (first 2026-07-28, latest code commit `b7fdca3`). There is no git remote; every commit exists only on the development machine.
+Last updated 2026-09-17. Branch `feat/inference`, 109 commits (first 2026-08-05, latest code commit `8806866`). There is no git remote; every commit exists only on the development machine.
 
 This report covers what Inference does today, the work done so far and how it was verified, and what remains before release. Detailed dated entries are kept in the local, untracked `IMPLEMENTATION.md`.
 
@@ -29,37 +29,37 @@ Inference is a self-hosted operations dashboard for one or more n8n instances. I
 
 ### Size
 
-- 48 commits between 2026-07-28 and 2026-09-17, 23 of them on 2026-09-16 and 2026-09-17.
+- 109 commits between 2026-08-05 and 2026-09-17, 25 of them on 2026-09-16 and 2026-09-17.
 - Backend: 65 Python files (about 590 KB). Tests: 49 files (about 470 KB) with 518 test functions; parametrised cases bring the suite to 870 collected tests. Scripts: 15 verification and smoke scripts. Frontend: 29 JavaScript files and 9 stylesheets.
 
 ### Milestones by area
 
 **Core platform**
-- `78c9ecc` database engine with numbered migrations; `e253f8a` egress transport with SSRF protection and DNS pinning; `da1a63b` authentication, sessions, TOTP and RBAC.
-- `42eb609`, `c9afd7c`, `2fac0dc`, `6e9c00b` test suites for core, modules, observability and infrastructure.
-- `a08cf6c` production Dockerfile, Compose and locked Linux dependencies.
+- `f7b535f` database engine with numbered migrations; `276ed30` egress transport with SSRF protection and DNS pinning; `7e4acaa` authentication, sessions, TOTP and RBAC.
+- `3aaa911`, `2430ba8`, `277d2ed`, `dc82ed0` test suites for core, modules, observability and infrastructure.
+- `5959cde` production Dockerfile, Compose and locked Linux dependencies.
 
 **Fleet, promotion and observability**
-- `a727fe3` multi-instance n8n proxy and health probes; `1729d86` credential inspection and mapping; `b09d06c` promotion pipeline with structural diffs.
-- `4f74f6f` OTLP ingestion; `d2dcc5d` price book and pricing; `31a671a` execution classifier and error triage.
-- `990b70a` secret parameter values masked in the workflow proxy.
+- `032fa7a` multi-instance n8n proxy and health probes; `69cf746` credential inspection and mapping; `01c3fa9` promotion pipeline with structural diffs.
+- `10fc626` OTLP ingestion; `176d11e` price book and pricing; `2ea4904` execution classifier and error triage.
+- `48b1fe2` secret parameter values masked in the workflow proxy.
 
 **Assistant and AI repair**
-- `482b9f3` multi-provider connector and 15-minute approval gate.
-- Repair contract v1 (server-computed previews, approval gate, inactive-only writes, readback verification, undo through restore) was built and verified locally on 2026-09-16. The branch history groups commits by topic, so the repair backend files first appear in `482b9f3` and the frontend proposal cards in `198b9a2`.
-- `641fa09` self-call guard after a live incident (see below) and the webhook directory administrator switch.
-- `783cccb`, `ffdac68`, `a5028b2` live repair check made runnable end to end and provider-neutral.
-- `f7082d3` assistant identifies itself as the Inference assistant; `7b6e8f8` tool rejections name the tool and failing fields; `d27bb83` provider setup asks a known service only for key and model.
-- `d97ff97` skill library and `get_skill` tool; `dab84ec` local endpoint egress hint and `qwen2.5:3b` placeholder; `37f5f36` `get_skill` in repair conversations and near-miss names; `6623767` a failing read tool in a standard chat goes back to the model instead of ending the chat.
-- Done and verified 2026-09-17: longer timeouts for local providers (`ae4ddee`), the egress hint for private addresses (`f2f8873`), and the `skill_not_installed` result shape for unknown skill names (`b7fdca3`). Backend suite 880 passed, 11 skipped; browser smoke suite 18 of 18; egress hint 16 of 16 in a real browser.
+- `309f8ab` multi-provider connector and 15-minute approval gate.
+- Repair contract v1 (server-computed previews, approval gate, inactive-only writes, readback verification, undo through restore) was built and verified locally on 2026-09-16. The branch history groups commits by topic, so the repair backend files first appear in `309f8ab` and the frontend proposal cards in `227c2ac`.
+- `51e2b5e` self-call guard after a live incident (see below) and the webhook directory administrator switch.
+- `05cd1f4`, `57ba106`, `9d22652` live repair check made runnable end to end and provider-neutral.
+- `b24e047` assistant identifies itself as the Inference assistant; `19717ea` tool rejections name the tool and failing fields; `fe24331` provider setup asks a known service only for key and model.
+- `6e423fe` skill library and `get_skill` tool; `22324f9` local endpoint egress hint and `qwen2.5:3b` placeholder; `c5a3760` `get_skill` in repair conversations and near-miss names; `087191f` a failing read tool in a standard chat goes back to the model instead of ending the chat.
+- Done and verified 2026-09-17: longer timeouts for local providers (`8ad3fac`), the egress hint for private addresses (`a859277`), and the `skill_not_installed` result shape for unknown skill names (`8806866`). Backend suite 880 passed, 11 skipped; browser smoke suite 18 of 18; egress hint 16 of 16 in a real browser.
 
 **Frontend and design**
-- `198b9a2` zero-build SPA shell; `0c54c15`, `2bce57c` operational and specialised views; `5d332f7` design system and themes.
-- `7a33c90` forms and navigation rebuilt; `745a5a3` one control scale; `172ba25` last form conversions, native browser dialogs replaced.
-- Phone fixes: `f665ff4` error type filters scroll on one line; `c3c0866` toasts reserve space so the last controls stay reachable; `05f60c8` proposal code diffs wrap (previously 30 of 82 characters visible); `84074e8` no duplicate rail card for a completed linked deactivation.
+- `227c2ac` zero-build SPA shell; `8b6f442`, `2b978d4` operational and specialised views; `8b7fdfc` design system and themes.
+- `7ff5643` forms and navigation rebuilt; `8e17e72` one control scale; `848e29b` last form conversions, native browser dialogs replaced.
+- Phone fixes: `f08eb7e` error type filters scroll on one line; `99f64b9` toasts reserve space so the last controls stay reachable; `e1d923a` proposal code diffs wrap (previously 30 of 82 characters visible); `0d49db1` no duplicate rail card for a completed linked deactivation.
 
 **Test infrastructure**
-- `6477f5c` Playwright browser smoke suites and frontend fixtures; `8a4c33c` managed n8n runner integration, MCP SDK server and local verification suites.
+- `a87b01e` Playwright browser smoke suites and frontend fixtures; `e6e284f` managed n8n runner integration, MCP SDK server and local verification suites.
 
 ### Notable incidents and fixes
 
@@ -67,7 +67,7 @@ Inference is a self-hosted operations dashboard for one or more n8n instances. I
 - **Skills rejected in repair (2026-09-17).** `get_skill` was declared in repair scope, but every call failed `target_mismatch` because it names no instance. Fixed with `INSTANCE_FREE_TOOLS`.
 - **Near-miss skill names ended the chat (2026-09-17).** A real `qwen2.5:3b` asked for `Code`. The strict ID pattern rejected it before the tool ran, and the error ended the conversation. The name is now normalised, and unknown names return a `skill_not_installed` error with the installed IDs.
 - **Silent local endpoint failure (2026-09-17).** The prefilled Ollama URL failed with `provider_configuration_invalid` because loopback needs an allowlist entry. The provider form now says so, and says whether the deployment already permits it. The first version always named the loopback value and counted only entries starting with `127.`, `::1/128` or `0.0.0.0/0`. It now names the exact loopback or private IPv4 address as a `/32` and checks real CIDR containment against the allowlist (implemented, verified).
-- **Read tool failures ended standard chats (2026-09-17).** Any failing read, such as an n8n 404 or invalid arguments, ended the whole request. Since `6623767`, the failure goes back to the model as `{"error": {"code", "detail"}}` and the turn continues. Session and permission errors still end the request.
+- **Read tool failures ended standard chats (2026-09-17).** Any failing read, such as an n8n 404 or invalid arguments, ended the whole request. Since `087191f`, the failure goes back to the model as `{"error": {"code", "detail"}}` and the turn continues. Session and permission errors still end the request.
 - **Local model calls cut off at 45 seconds (2026-09-17).** On `qwen2.5:3b` on CPU (about 4 to 5.5 tokens per second), a follow-up turn with the full 17 KB guide took 175.6 s, and 123.4 s with the prompt prefix cached; an 8 KB excerpt took 164.3 s and a 4 KB excerpt 32.1 s. A skill-guided live chat failed at 47 s with 502 `provider_unavailable`. Local providers (kind `ollama`, or kind `custom` on `localhost` or a loopback or private IP literal) now get a 600-second read and 630-second total timeout; hosted providers keep 45 and 60 seconds. With the change the same chat returned 200 in 243 s (first turn 14.0 s, guide follow-up 228 s), and the model called `get_skill` on its own. Implemented, verified.
 - **Ollama truncated the guide-carrying prompt (2026-09-17).** With the full guide injected, Ollama logged `truncating input prompt limit=2050 prompt=5989/6144 keep=4`. It kept only the first few tokens and the end, so the system prompt and the question were dropped, and the model summarised the guide instead of answering the Code node question. Not fixed in Inference: the context has to be raised on the Ollama side (see Open items).
 
