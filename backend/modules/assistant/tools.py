@@ -5,7 +5,7 @@ Provider tool calls must go through the approval service, never directly to
 """
 from typing import Annotated, Any, Literal
 
-from fastapi import Request
+from fastapi import HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from backend.auth_gate import ROLES, fail, require_current_role
@@ -39,9 +39,15 @@ class ExecutionArguments(InstanceArguments):
 
 
 class SkillArguments(BaseModel):
-    """Names one installed skill. No instance: skills are local application content."""
+    """Names one installed skill. No instance: skills are local application content.
+
+    Deliberately looser than a skill id. Models write what they mean rather than the exact id -
+    a real one asked for "Code" - and a schema rejection raises before the tool can answer, which
+    standard_chat does not catch, so a near-miss would end the conversation. The name is only ever
+    a parameter in a lookup, never a path, and the leading character still bars traversal.
+    """
     model_config = ConfigDict(extra='forbid', strict=True)
-    skill_name: Annotated[str, Field(pattern=r'^[a-z0-9][a-z0-9-]{0,63}$')]
+    skill_name: Annotated[str, Field(pattern=r'^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$')]
 
 
 class NodeArguments(WorkflowArguments):
@@ -67,8 +73,10 @@ _CATALOG = {
     'list_workflows': (ListArguments, 'List workflow identifiers, names and activation state for one instance.'),
     'get_execution': (ExecutionArguments, 'Read execution status metadata, without execution inputs or outputs.'),
     'list_errors': (ListArguments, 'List structural error metadata without messages or execution payloads.'),
-    'get_skill': (SkillArguments, 'Read one installed n8n skill guide by name, for writing or debugging n8n '
-                                  'JavaScript, Python, expressions, error handling or node configuration.'),
+    'get_skill': (SkillArguments, 'Read one installed n8n skill guide, for writing or debugging n8n JavaScript, '
+                                  'Python, expressions, error handling or node configuration. Use the exact id, '
+                                  'such as "n8n-code-javascript". An unrecognised name returns the installed ids '
+                                  'instead of the guide, so call it again with one of those.'),
     'activate_workflow': (WorkflowArguments, 'Propose activating a workflow. Requires human confirmation.'),
     'deactivate_workflow': (WorkflowArguments, 'Propose deactivating a workflow. Requires human confirmation.'),
     'delete_execution': (ExecutionArguments, 'Propose deleting an execution. Requires human confirmation.'),
@@ -207,7 +215,20 @@ async def execute(request: Request, name: str, args: dict, *, expected_fingerpri
     if name == 'get_skill':
         # Handled before instance_id is read: skills are local content and name no instance.
         from backend.modules.skills.router import read_skill
-        row = await read_skill(request, args['skill_name'])
+        try:
+            # Models write the name in their own case and spacing; match the id they meant.
+            row = await read_skill(request, args['skill_name'].strip().casefold().replace(' ', '-').replace('_', '-'))
+        except HTTPException as exc:
+            if exc.status_code != 404:
+                raise
+            # The model invents this name with nothing to source it from, and standard_chat does not
+            # catch tool errors, so raising here would end the conversation over a guess. Report the
+            # miss and name what may be asked for instead, so the next round can correct itself.
+            async with request.app.state.db.transaction() as tx:
+                await require_current_role(request, 'viewer', tx)
+                rows = await tx.fetchall('SELECT id FROM skills ORDER BY id LIMIT 50')
+            return {'skill': args['skill_name'], 'error': 'not_installed',
+                    'available': [row['id'] for row in rows]}
         content = row['content']
         truncated = len(content) > MAX_SKILL_RESULT
         return {'skill': row['id'], 'name': row['name'], 'description': row['description'],

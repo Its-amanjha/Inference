@@ -106,6 +106,45 @@ async def test_one_request_injects_exact_context_and_proposes(workspace):
     assert 'action_ids' not in json.dumps(workspace.provider[1]) and action.id not in json.dumps(workspace.provider[1])
 
 
+async def test_a_skill_guides_a_code_correction_without_writing_anything(workspace):
+    """Reading a guide pauses for Continue like any repair read, then the patch is proposed."""
+    workspace.script = [answer('', [tool_call('get_skill', {'skill_name': 'n8n-code-javascript'})])]
+    first = (await chat(workspace, message='Fix the Code node', context=target(workspace))).json()
+    assert first['status'] == 'awaiting_continue' and first['pending_actions'] == []
+    assert len(workspace.provider) == 1
+    # Guidance has to be reachable where corrections happen, not only in ordinary conversations.
+    assert 'get_skill' in {tool['function']['name'] for tool in workspace.provider[0]['tools']}
+    assert first['steps'][-1]['tool'] == 'get_skill' and first['steps'][-1]['bytes'] > 0
+    assert not remote_writes(workspace), 'reading a guide must not touch n8n'
+
+    workspace.script = [answer('', [tool_call('propose_workflow_patch', patch(workspace), 'call2')])]
+    second = (await chat(workspace, chat_id=first['id'], continue_turn=True)).json()
+    assert second['status'] == 'completed' and len(workspace.provider) == 2
+    # The guide itself reached the model before it proposed the correction.
+    guides = [json.loads(message['content']) for message in workspace.provider[1]['messages'] if message['role'] == 'tool']
+    consulted = [item for item in guides if item.get('skill') == 'n8n-code-javascript']
+    assert len(consulted) == 1 and len(consulted[0]['content']) > 1000
+    # Reading a guide is not a mutation: the patch is still the only thing awaiting confirmation.
+    assert len(second['pending_actions']) == 1
+    assert contract.PendingRepairAction.model_validate(second['pending_actions'][0]).name == 'propose_workflow_patch'
+    assert not remote_writes(workspace)
+
+
+async def test_instance_scoped_tools_still_cannot_leave_the_pinned_target(workspace):
+    """Exempting skills from the instance check must not exempt anything that reaches an instance."""
+    workspace.script = [answer('', [tool_call('get_workflow_context', {'instance_id': 'other-instance', 'workflow_id': 'wf'})])]
+    first = (await chat(workspace, message='Read another instance', context=target(workspace))).json()
+    assert first['status'] == 'interrupted'
+    assert first['steps'][-1]['code'] == 'target_mismatch'
+    assert first['pending_actions'] == [] and not remote_writes(workspace)
+
+    # A different workflow on the pinned instance is refused too.
+    workspace.script = [answer('', [tool_call('propose_workflow_patch', patch(workspace, workflow_id='other-wf'))])]
+    second = (await chat(workspace, message='Patch another workflow', context=target(workspace))).json()
+    assert second['status'] == 'interrupted' and second['steps'][-1]['code'] == 'target_mismatch'
+    assert second['pending_actions'] == [] and not remote_writes(workspace)
+
+
 async def test_read_call_waits_for_continue_and_sends_no_second_request(workspace):
     workspace.script = [answer('', [tool_call('get_workflow_context', {'instance_id': workspace.instance, 'workflow_id': 'wf', 'focus_nodes': ['Code']})])]
     first = (await chat(workspace, message='Look closer', context=target(workspace))).json()
