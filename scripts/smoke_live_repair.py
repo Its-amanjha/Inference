@@ -306,7 +306,17 @@ def run(args, report):
 
             configure_provider(app, args, report)
             pacer.before_request()
-            check = checked(app.post(f'/api/assistant/providers/{args.provider_id}/tool-test'))
+            # A provider failure is the provider's answer, not a harness crash: report it and stop cleanly,
+            # carrying whatever detail the server surfaced so the cause is visible after cleanup.
+            attempt = app.post(f'/api/assistant/providers/{args.provider_id}/tool-test')
+            if not attempt.is_success:
+                body = attempt.json() if attempt.headers.get('content-type', '').startswith('application/json') else {}
+                code = body.get('code', 'non_json')
+                if code in ('provider_rate_limited', 'assistant_rate_limit'):
+                    raise ProviderRateLimited(f'tool-test: HTTP {attempt.status_code} ({code})')
+                report.unverified('check_tool_calling', f'HTTP {attempt.status_code} ({code}): {str(body.get("detail"))[:200]}')
+                return
+            check = attempt.json()
             status = (check.get('tool_calling') or {}).get('status')
             if status != 'supported':
                 report.unverified('check_tool_calling', f'status {status}: {check.get("detail")}')
