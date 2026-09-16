@@ -17,23 +17,45 @@ export function providerSetup(host,onSaved,signal){
   const EGRESS_VAR='INFERENCE_EGRESS_ALLOW_CIDRS';
   const egress=el('p',{class:'field-hint','aria-live':'polite',hidden:true});
   let allowList=null;  // null until the deployment answers; non-admins never learn it.
-  const localHost=value=>{
+  const ipv4=text=>{
+    const parts=String(text).split('.');
+    if(parts.length!==4)return null;
+    let value=0;
+    for(const part of parts){if(!/^\d{1,3}$/.test(part)||Number(part)>255)return null;value=value*256+Number(part);}
+    return value;
+  };
+  // The address the server must be allowed to reach, and the CIDR that permits exactly it. Only literal
+  // loopback/private addresses and localhost get a hint: other hostnames resolve at connection time.
+  const egressTarget=value=>{
     try{
       const host=new URL(value).hostname.replace(/^\[|\]$/g,'');
-      return host==='localhost'||/^127\./.test(host)||host==='::1'
-        ||/^10\./.test(host)||/^192\.168\./.test(host)||/^172\.(1[6-9]|2\d|3[01])\./.test(host);
-    }catch{return false;}
+      if(host==='localhost')return {kind:'loopback',address:'127.0.0.1',cidr:'127.0.0.1/32'};
+      if(host==='::1')return {kind:'loopback',address:'::1',cidr:'::1/128'};
+      if(ipv4(host)===null)return null;
+      if(/^127\./.test(host))return {kind:'loopback',address:host,cidr:`${host}/32`};
+      if(/^10\./.test(host)||/^192\.168\./.test(host)||/^172\.(1[6-9]|2\d|3[01])\./.test(host))
+        return {kind:'private',address:host,cidr:`${host}/32`};
+      return null;
+    }catch{return null;}
   };
-  const covered=()=>Array.isArray(allowList)&&allowList.some(entry=>entry==='0.0.0.0/0'||entry.startsWith('127.')||entry==='::1/128');
+  // Mirrors backend/net.py: an allowlist entry permits the address when the address lies inside its network.
+  const permits=(entry,target)=>{
+    if(target.address==='::1')return entry==='::1/128'||entry==='::/0';
+    const [network,bits]=String(entry).split('/'),start=ipv4(network),size=Number(bits);
+    if(start===null||!Number.isInteger(size)||size<0||size>32)return false;
+    const block=2**(32-size);
+    return Math.floor(ipv4(target.address)/block)===Math.floor(start/block);
+  };
   function paintEgress(){
-    const local=localHost(base.value.trim());
-    egress.hidden=!local;
-    if(!local)return;
+    const target=egressTarget(base.value.trim());
+    egress.hidden=!target;
+    if(!target)return;
+    const where=target.kind==='loopback'?'loopback':`the private address ${target.address}`;
     egress.textContent=allowList===null
-      ? `A local address needs egress permission: start the server with ${EGRESS_VAR}=127.0.0.1/32.`
-      : covered()
-        ? 'This deployment already permits loopback egress, so a local model server is reachable.'
-        : `This deployment does not permit loopback egress yet. Restart the server with ${EGRESS_VAR}=127.0.0.1/32, otherwise saving succeeds but the connection fails.`;
+      ? `A ${target.kind} address needs egress permission: start the server with ${EGRESS_VAR}=${target.cidr}.`
+      : allowList.some(entry=>permits(entry,target))
+        ? `This deployment already permits egress to ${where}, so a model server there is reachable.`
+        : `This deployment does not permit egress to ${where} yet. Restart the server with ${EGRESS_VAR}=${target.cidr}, otherwise saving succeeds but the connection fails.`;
   }
   // Admin-only and best effort: a denied or failed lookup leaves the static instruction in place.
   api('/api/admin/settings',{signal}).then(result=>{
