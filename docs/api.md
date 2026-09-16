@@ -6,6 +6,7 @@
 - [Credentials, promotion and recovery](api-promotions.md)
 - [Telemetry, error triage and pricing](api-observability.md)
 - [Assistant, local models and approvals](api-assistant.md)
+- [Bundled n8n skill library](skills.md)
 - [Owned Docker n8n and runner bundles](api-docker.md)
 - [Markdown notes vault](api-notes.md)
 - [Encrypted backup export and offline restore](api-backups.md)
