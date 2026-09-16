@@ -24,6 +24,40 @@ export function actionMenu(items,label='More actions'){
   return menu;
 }
 
+// Asks for one value in the app's dialog instead of a browser prompt. Resolves the trimmed text, or null when cancelled.
+export function askText({title,label,description,value='',confirmLabel='Continue',placeholder}={}){
+  if(active)return Promise.resolve(null);
+  const invoker=document.activeElement instanceof HTMLElement?document.activeElement:null;
+  const id=`ask-${++sequence}`;
+  return new Promise(resolve=>{
+    let result=null;
+    const input=el('input',{type:'text',value,placeholder,autocomplete:'off',spellcheck:'false'});
+    const cancel=button('Cancel',()=>finish(null),'ghost');
+    const confirm=button(confirmLabel,()=>finish(input.value.trim()),'button');
+    const form=el('form',{class:'confirm-form',novalidate:true},
+      el('h2',{id:`${id}-title`},title),
+      description?el('p',{class:'confirm-consequence',id:`${id}-description`},description):null,
+      field(label,input),
+      el('div',{class:'confirm-actions'},cancel,confirm));
+    const dialog=el('dialog',{class:'confirm-dialog','aria-labelledby':`${id}-title`,'aria-describedby':description?`${id}-description`:undefined},form);
+    form.addEventListener('submit',event=>{event.preventDefault();finish(input.value.trim());});
+    const onRoute=()=>finish(null);
+    function finish(text){result=text;if(dialog.open)dialog.close();}
+    dialog.addEventListener('cancel',()=>{result=null;});
+    dialog.addEventListener('close',()=>{
+      window.removeEventListener('hashchange',onRoute);
+      dialog.remove();active=null;
+      if(invoker?.isConnected)invoker.focus();
+      resolve(result);
+    },{once:true});
+    active=dialog;
+    window.addEventListener('hashchange',onRoute);
+    document.body.append(dialog);
+    dialog.showModal();
+    input.focus();
+  });
+}
+
 // Resolves true only when the person explicitly confirms. One dialog is open at a time.
 export function confirmAction({title,target,consequence,confirmLabel='Confirm',danger=false,requireText}={}){
   if(active)return Promise.resolve(false);

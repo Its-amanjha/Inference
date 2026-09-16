@@ -1,7 +1,7 @@
 import {providerSetup} from '../lib/provider-setup.js';
 import {api} from '../api.js';
 import {can, state} from '../state.js';
-import {el, field, heading, jsonView, notice} from '../lib/html.js';
+import {el, field, formCard, heading, jsonView, notice} from '../lib/html.js';
 import {icon,actionIcon} from '../lib/icons.js';
 import {rawDisclosure, instanceName, toneBadge, formatTime} from '../lib/payload.js';
 import {confirmAction} from '../lib/confirm.js';
@@ -579,7 +579,12 @@ export async function render(container) {
     const url = el('input', {type: 'url', required: true});
     const mcpKey = el('input', {placeholder: '$MCP_KEY', autocomplete: 'off'});
     const mcpSave = el('button', {type: 'submit', className: 'button button-primary'}, 'Save MCP server');
-    const mcpForm = el('form', {className: 'form-grid'}, field('Server ID', serverId), field('Streamable HTTP endpoint', url), field('Key reference (optional)', mcpKey), mcpSave);
+    const mcpForm = formCard({title: 'Remote MCP tools', heading: 'h3', flat: true,
+      description: 'Discover a server’s tools here, then ask the assistant to propose an invocation. Every MCP call requires your confirmation.',
+      body: [el('div', {className: 'form-row'}, field('Server ID', serverId, {hint: 'Letters, numbers, dashes and underscores.'}),
+        field('Streamable HTTP endpoint', url, {hint: 'The server’s streamable HTTP address.'})),
+        field('Key reference (optional)', mcpKey, {hint: 'A saved secret such as $MCP_KEY. Leave blank when the server needs no key.'})],
+      actions: [mcpSave]});
     const catalogs = el('div', {className: 'stack'});
     const loadServers = async () => {
       const result = await request('/config/mcp');
@@ -598,7 +603,7 @@ export async function render(container) {
       catch (error) { if (!signal.aborted) notice(messages, error); }
       finally { mcpSave.disabled = false; }
     });
-    settings.append(el('h3', {}, 'Remote MCP tools'), el('p', {className: 'muted'}, 'Discover a server’s tools here, then ask the assistant to propose an invocation. Every MCP call requires your confirmation.'), mcpForm, catalogs);
+    settings.append(mcpForm, catalogs);
     // Repair conversations: installation-wide switches for what repair turns may send to providers.
     // Built when settings first open, after the provider form, so the controls only exist where they can be seen.
     const renderRepairSettings = () => {

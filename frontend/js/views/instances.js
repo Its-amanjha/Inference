@@ -1,6 +1,7 @@
 import {api as request} from '../api.js';
 import {el,button,field,formCard,notice,empty,heading} from '../lib/html.js';
 import {icon} from '../lib/icons.js';
+import {confirmAction} from '../lib/confirm.js';
 import {can} from '../state.js';
 import {rawDisclosure,probeSummary,reachabilityBadge,checkedLine} from '../lib/payload.js';
 
@@ -46,7 +47,7 @@ export async function render(container) {
     const result=await api('/api/n8n_proxy/instances',{signal});list.replaceChildren();
     if(!result.data.length)list.append(empty('No connections yet','Add your first n8n instance to explore workflows and executions.'));
     for(const item of result.data){const detail=el('div'), actions=el('div',{class:'toolbar'});
-      if(can('admin'))actions.append(button('Test connection',()=>act(async()=>detail.replaceChildren(probeResult(await api('/api/n8n_proxy/instances/'+encodeURIComponent(item.id)+'/probe',{method:'POST'})))),'ghost'),button('Edit',()=>edit(item),'ghost'),button('Remove',()=>act(async()=>{if(!confirm('Remove '+item.name+' from Inference? Its n8n data will remain.'))return;await api('/api/n8n_proxy/instances/'+encodeURIComponent(item.id),{method:'DELETE'});await load();window.dispatchEvent(new Event('instances-changed'));}),'ghost'));
+      if(can('admin'))actions.append(button('Test connection',()=>act(async()=>detail.replaceChildren(probeResult(await api('/api/n8n_proxy/instances/'+encodeURIComponent(item.id)+'/probe',{method:'POST'})))),'ghost'),button('Edit',()=>edit(item),'ghost'),button('Remove',()=>act(async()=>{if(!await confirmAction({title:'Remove connection',target:item.name,consequence:'Inference stops reading this instance and deletes its saved API key. Workflows and executions in n8n are untouched.',confirmLabel:'Remove connection',danger:true}))return;await api('/api/n8n_proxy/instances/'+encodeURIComponent(item.id),{method:'DELETE'});await load();window.dispatchEvent(new Event('instances-changed'));}),'danger'));
       list.append(el('section',{class:'card stack'},el('h2',{},item.name),el('p',{class:'muted'},item.url),actions,detail));
     }
   }

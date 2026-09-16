@@ -449,12 +449,15 @@ def exercise_fleet(page, fixture_url, state):
         editor.fill('return [];')
         save = page.get_by_role('button', name='Deploy to n8n Code Node', exact=True)
         save.click()
+        # Deployment confirms in an in-app dialog that names the Code node.
+        page.get_by_role('dialog', name='Deploy code to n8n').get_by_role('button', name='Deploy code', exact=True).click()
         page.get_by_text('Code saved and verified.', exact=True).wait_for()
         assert state['source']['nodes'][0]['parameters']['jsCode'] == 'return [];'
         state['source']['name'] = 'Changed remotely'
         count = len(state['writes'])
         editor.fill('return [{json:{unsafe:true}}];')
         save.click()
+        page.get_by_role('dialog', name='Deploy code to n8n').get_by_role('button', name='Deploy code', exact=True).click()
         page.get_by_text('Reload the node before another deployment. Copy your edits first.', exact=True).wait_for()
         expect(save).to_be_disabled()
         assert len(state['writes']) == count, 'Stale code must not reach n8n'
@@ -468,6 +471,8 @@ def exercise_fleet(page, fixture_url, state):
         state['source']['name'] = 'Changed after preflight'
         with page.expect_response(lambda response: response.url.endswith('/api/n8n_promote/deploy')) as rejected:
             page.get_by_role('button', name='Deploy inactive workflow', exact=True).click()
+            # Deployment confirms in an in-app dialog naming both instances.
+            page.get_by_role('dialog', name='Deploy inactive workflow').get_by_role('button', name='Deploy inactive', exact=True).click()
         assert rejected.value.status == 200
         assert rejected.value.json()['status'] == 'rejected'
         assert rejected.value.json()['error_code'] == 'stale_preview'
@@ -479,6 +484,7 @@ def exercise_fleet(page, fixture_url, state):
         page.evaluate('crypto.randomUUID = window.fixtureUUID; delete window.fixtureUUID')
         with page.expect_response(lambda response: response.url.endswith('/api/n8n_promote/deploy')) as deployed:
             page.get_by_role('button', name='Deploy inactive workflow', exact=True).click()
+            page.get_by_role('dialog', name='Deploy inactive workflow').get_by_role('button', name='Deploy inactive', exact=True).click()
         page.get_by_role('heading', name='Deployment result', exact=True).wait_for()
         assert deployed.value.status == 200
         assert deployed.value.json()['status'] == 'deployed'

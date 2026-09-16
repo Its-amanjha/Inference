@@ -1,6 +1,7 @@
 import {api} from '../api.js';
 import {state,can} from '../state.js';
-import {el,button,field,heading,notice,empty} from '../lib/html.js';
+import {el,button,field,formCard,heading,notice,empty} from '../lib/html.js';
+import {confirmAction,askText} from '../lib/confirm.js';
 import {icon} from '../lib/icons.js';
 import {rawDisclosure,instanceName,plural,toneBadge,describeCode,section} from '../lib/payload.js';
 
@@ -88,12 +89,15 @@ export async function render(container){
   const runContext=new Map();
   for(const item of state.instances){source.append(el('option',{value:item.id},item.name));target.append(el('option',{value:item.id},item.name));}
   source.value=route.get('source_instance_id')||state.instanceId||source.value;target.value=state.instances.find(item=>item.id!==source.value)?.id||'';
-  const credential=el('textarea',{rows:3,value:'{}',spellcheck:false}),secrets=el('textarea',{rows:3,value:'{}',spellcheck:false}),subflows=el('textarea',{rows:3,value:'{}',spellcheck:false});credential.disabled=secrets.disabled=!can('admin');
+  const jsonBox=()=>el('textarea',{rows:3,value:'{}',spellcheck:'false',class:'control-mono'});
+  const credential=jsonBox(),secrets=jsonBox(),subflows=jsonBox();credential.disabled=secrets.disabled=!can('admin');
   const deploy=button('Deploy inactive workflow',async()=>{
     if(!preview)return;
     const context=previewContext,operation=preview.diff?.operation;
     const consequence=operation==='create'?`A new workflow will be created on ${context.targetName} and left inactive.`:operation==='update'?`The existing workflow on ${context.targetName} will be updated and stay inactive.`:`The workflow will be written to ${context.targetName} inactive.`;
-    if(!window.confirm(`Deploy ${context.workflowLabel} from ${context.sourceName} to ${context.targetName}?\n\n${consequence} Activation is a separate step. Source and target are checked again before anything is written.`))return;
+    if(!await confirmAction({title:'Deploy inactive workflow',target:`${context.workflowLabel} from ${context.sourceName} to ${context.targetName}`,
+      consequence:`${consequence} Activation is a separate step, and source and target are checked again before anything is written.`,
+      confirmLabel:'Deploy inactive'}))return;
     deploy.disabled=true;
     try{const result=await api('/api/n8n_promote/deploy',{method:'POST',json:{preview_id:preview.preview_id,idempotency_key:key}});runContext.set(result.id,context);previewBox.append(el('h3',{},'Deployment result'),runCard(result));preview=null;await runs();}
     catch(error){notice(messages,error);previewBox.append(el('p',{className:'muted'},'Check run history before creating another preview. A remote write may have completed.'));await runs();}
@@ -128,7 +132,17 @@ export async function render(container){
     const result=await api('/api/n8n_promote/preflight',{method:'POST',json:{source_instance_id:source.value,target_instance_id:target.value,workflow_id:workflowId.value.trim()||workflow.value,credential_map:mapping(credential),secret_map:mapping(secrets),subworkflow_map:mapping(subflows)}});
     if(current!==version)return;preview=result;previewContext=context;key=crypto.randomUUID();renderPreview(result,context);deploy.disabled=!result.can_deploy;
   }catch(error){notice(messages,error);}finally{preflight.disabled=false;}});
-  container.append(el('section',{className:'card stack'},el('h2',{},'1. Choose source and target'),el('div',{className:'grid'},field('Source instance',source),field('Target instance',target),field('Source workflow',workflow),field('Workflow ID override',workflowId)),el('details',{},el('summary',{},'Credential and subworkflow mappings'),el('p',{className:'muted'},'Saved mappings are applied automatically. Use vault references such as $SERVICE, never plaintext secrets. New credential mappings require admin.'),field('Credential IDs: source → target (JSON)',credential),field('Secrets: source credential → vault reference (JSON)',secrets),field('Subworkflow IDs: source → target (JSON)',subflows)),preflight),messages,previewBox,history);
+  const chooser=formCard({title:'1. Choose source and target',description:'Preflight compares a fresh snapshot of both instances.',
+    body:[el('div',{className:'form-row'},field('Source instance',source),field('Target instance',target)),
+      el('div',{className:'form-row'},field('Source workflow',workflow),field('Workflow ID override',workflowId,{hint:'Use this when the workflow is not in the list.'})),
+      el('details',{className:'form-disclosure'},el('summary',{},icon('chevron'),'Credential and subworkflow mappings'),
+        el('div',{},el('p',{className:'muted'},'Saved mappings are applied automatically. Use vault references such as $SERVICE, never plaintext secrets. New credential mappings require admin.'),
+          field('Credential IDs: source → target (JSON)',credential),
+          field('Secrets: source credential → vault reference (JSON)',secrets),
+          field('Subworkflow IDs: source → target (JSON)',subflows)))],
+    actions:[preflight]});
+  chooser.addEventListener('submit',event=>{event.preventDefault();});
+  container.append(chooser,messages,previewBox,history);
   function runCard(run){
     const context=runContext.get(run.id),targetName=instanceName(run.target_instance_id);
     const [label,tone,sentence]=runStatus(run,targetName);
@@ -145,8 +159,17 @@ export async function render(container){
     if(recovery.includes('new_preview_with_explicit_mappings'))card.append(el('p',{className:'muted'},'Next step: reconcile, then create a new preview with explicit mappings for any retained credentials.'));
     const controls=el('div',{className:'actions'});
     for(const action of recovery){if(!['activate','restore','reconcile'].includes(action))continue;const control=button(action==='activate'?'Activate with binding checks':action==='restore'?'Restore previous workflow':'Reconcile actual state',async()=>{
-      if(action!=='reconcile'&&!window.confirm(action==='activate'?`Activate ${context?context.workflowLabel:'the deployed workflow'} on ${targetName}? The target snapshot and credential bindings are checked first.`:`Restore the previous inactive workflow on ${targetName}? Newly created workflows and credentials are not deleted.`))return;
-      let body;if(action==='reconcile'){const value=window.prompt('Known created workflow ID (leave empty if the run already has a target)',run.target_workflow_id||'');if(value===null)return;body=value.trim()?{target_workflow_id:value.trim()}:{};}
+      if(action==='activate'&&!await confirmAction({title:'Activate workflow',target:`${context?context.workflowLabel:'The deployed workflow'} on ${targetName}`,
+        consequence:'The target snapshot and credential bindings are checked first. Once activated, the workflow runs on its own triggers.',confirmLabel:'Activate workflow'}))return;
+      if(action==='restore'&&!await confirmAction({title:'Restore previous workflow',target:targetName,
+        consequence:'The previous inactive workflow is written back. Newly created workflows and credentials are not deleted.',confirmLabel:'Restore workflow'}))return;
+      let body;
+      if(action==='reconcile'){
+        const value=await askText({title:'Reconcile actual state',label:'Known created workflow ID',
+          description:'Leave this empty if the run already recorded a target workflow.',value:run.target_workflow_id||'',confirmLabel:'Reconcile'});
+        if(value===null)return;
+        body=value?{target_workflow_id:value}:{};
+      }
       control.disabled=true;try{const result=await api(`/api/n8n_promote/runs/${encodeURIComponent(run.id)}/${action}`,{method:'POST',...(body?{json:body}:{})});card.replaceWith(runCard(result));}catch(error){notice(card,error);}finally{control.disabled=false;}
     },'button ghost');controls.append(control);}
     if(controls.childElementCount)card.append(controls);

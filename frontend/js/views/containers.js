@@ -1,5 +1,5 @@
 import {api as request} from '../api.js';
-import {el,button,field,notice,empty,heading,jsonView} from '../lib/html.js';
+import {el,button,field,formCard,notice,empty,heading,jsonView} from '../lib/html.js';
 import {can} from '../state.js';
 import {confirmAction,actionMenu,stateBadge,humanize} from '../lib/confirm.js';
 
@@ -67,8 +67,20 @@ export async function render(container){
     const actions=el('div',{class:'toolbar'},primary,inspect,actionMenu([...more,remove,purge]));
     list.append(el('section',{class:'card stack'},el('div',{class:'title-row'},el('h2',{},name),bundleBadge(item.status)),item.version?el('p',{class:'muted'},'n8n '+item.version):null,actions,detail));}
     if(!result.data.length)list.append(empty('No owned bundles','Provision a matching n8n and task runner pair. Existing host containers remain outside this inventory.'));}
-  function provision(){const inputs={};const fields=[['name','Bundle name','text',''],['version','Exact n8n / runner version','text',''],['port','Published host port','number','5678'],['bind_host','Host bind IP','text','127.0.0.1'],['instance_url','n8n URL reachable from Inference','url',''],['exporter_base_url','Inference telemetry base URL reachable from n8n','url','']];const form=el('form',{class:'card stack'},el('h2',{},'Provision n8n + runners'));
-    for(const [key,label,type,value] of fields){inputs[key]=el('input',{type,value,required:true});form.append(field(label,inputs[key]));}const result=el('div');const submit=el('button',{type:'submit',class:'button'},'Provision bundle');form.append(el('p',{class:'muted'},'Downloads matching images and creates a persistent data volume. Complete n8n owner setup and add its API key in Instances afterwards.'),submit,button('Cancel',()=>editor.replaceChildren(),'ghost'),result);
+  function provision(){
+    const specs=[['name','Bundle name','text','','Used for the container and volume names.'],
+      ['version','Exact n8n / runner version','text','','Both images use this tag, for example 2.19.0.'],
+      ['port','Published host port','number','5678','The host port n8n is published on.'],
+      ['bind_host','Host bind IP','text','127.0.0.1','127.0.0.1 keeps the bundle reachable only from this machine.'],
+      ['instance_url','n8n URL reachable from Inference','url','','How this server reaches n8n, for example http://127.0.0.1:5678.'],
+      ['exporter_base_url','Inference telemetry base URL reachable from n8n','url','','How n8n reaches Inference to send telemetry.']];
+    const inputs={},fields={};
+    for(const [key,label,type,value,hint] of specs){inputs[key]=el('input',{type,value,required:true,autocomplete:'off'});fields[key]=field(label,inputs[key],{hint});}
+    const result=el('div');const submit=el('button',{type:'submit',class:'button'},'Provision bundle');
+    const form=formCard({title:'Provision n8n + runners',description:'Creates a matching n8n and task runner pair owned by this installation.',
+      body:[el('div',{class:'form-row'},fields.name,fields.version),el('div',{class:'form-row'},fields.port,fields.bind_host),fields.instance_url,fields.exporter_base_url,result],
+      note:'Downloads matching images and creates a persistent data volume. Complete n8n owner setup and add its API key in Instances afterwards.',
+      actions:[button('Cancel',()=>editor.replaceChildren(),'ghost'),submit]});
     let request=null;form.addEventListener('input',()=>{request=null;});form.addEventListener('submit',e=>{e.preventDefault();act(async()=>{if(!request){if(!await confirmAction({title:'Create n8n bundle',target:inputs.name.value,consequence:`Downloads the n8n and task runner ${inputs.version.value} images, then creates the containers, a network and a persistent data volume published on ${inputs.bind_host.value}:${inputs.port.value}.`,confirmLabel:'Create bundle'}))return;request={spec:{name:inputs.name.value,version:inputs.version.value,port:Number(inputs.port.value),bind_host:inputs.bind_host.value,exporter_base_url:inputs.exporter_base_url.value},instance_url:inputs.instance_url.value,idempotency_key:crypto.randomUUID(),readiness_timeout:90};}submit.disabled=true;try{result.replaceChildren(jsonView(await api('/api/docker_mgr/bundles',{method:'POST',json:request})));await load();window.dispatchEvent(new Event('instances-changed'));}finally{submit.disabled=false;}});});editor.replaceChildren(form);}
   container.append(heading('Containers','Provision and manage bundles owned by this Inference installation.'),messages,service,el('div',{class:'toolbar'},button('Provision bundle',provision),button('Refresh',()=>act(load),'ghost')),editor,list);
   await Promise.allSettled([act(async()=>{service.replaceChildren(dockerStatus(await api('/api/docker_mgr/status',{signal})));}),act(load)]);return()=>controller.abort();
