@@ -166,3 +166,59 @@ async def test_connection_test_never_sends_tools_or_saves_chat(fleet):
     response = await fleet.client.post('/api/assistant/providers/local/test',headers=fleet.headers)
     assert response.status_code == 502
     assert not await fleet.app.state.db.fetchone('SELECT id FROM approval_actions')
+
+
+def _tool_errors(round_body):
+    return [json.loads(message['content'])['error'] for message in round_body['messages'] if message['role'] == 'tool']
+
+
+async def _chat_with_failing_read(fleet, arguments, final='I could not read that execution.'):
+    rounds = []
+    async def provider(request):
+        rounds.append(json.loads(request.content))
+        if len(rounds) == 1:
+            return answer('', [call('get_execution', arguments)])
+        return answer(final)
+    fleet.replies[('local-model.example', 'POST', '/v1/chat/completions')] = provider
+    result = await fleet.client.post('/api/assistant/chat', headers=fleet.headers, json={'provider_id': 'local', 'message': 'status?'})
+    return result, rounds
+
+
+async def test_failed_read_tool_returns_error_to_model_instead_of_ending_turn(fleet):
+    instance = await add(fleet)
+    await configure(fleet)
+    fleet.replies[('alpha.example', 'GET', '/api/v1/executions/missing')] = httpx.Response(404, json={'message': 'Not Found'})
+    result, rounds = await _chat_with_failing_read(fleet, {'instance_id': instance, 'execution_id': 'missing'})
+    assert result.status_code == 200, result.text
+    assert len(rounds) == 2
+    errors = _tool_errors(rounds[1])
+    assert len(errors) == 1 and errors[0]['code']
+    assert result.json()['content'] == 'I could not read that execution.'
+    assert result.json()['pending_actions'] == []
+    assert await fleet.app.state.db.fetchall('SELECT * FROM approval_actions') == []
+
+
+async def test_invalid_read_tool_arguments_return_error_to_model(fleet):
+    instance = await add(fleet)
+    await configure(fleet)
+    result, rounds = await _chat_with_failing_read(fleet, {'instance_id': instance}, final='I need an execution id.')
+    assert result.status_code == 200, result.text
+    assert len(rounds) == 2
+    errors = _tool_errors(rounds[1])
+    assert [error['code'] for error in errors] == ['invalid_tool_arguments']
+    assert 'execution_id' in errors[0]['detail']
+    assert result.json()['content'] == 'I need an execution id.'
+    assert await fleet.app.state.db.fetchall('SELECT * FROM approval_actions') == []
+
+
+async def test_read_tool_error_never_echoes_argument_values(fleet):
+    instance = await add(fleet)
+    await configure(fleet)
+    marker = 'sk-live-MARKER-4f9a'
+    # The spaces break the identifier pattern, so validation fails on a value that looks like a pasted key.
+    result, rounds = await _chat_with_failing_read(fleet, {'instance_id': instance, 'execution_id': f'{marker} pasted key'})
+    assert result.status_code == 200, result.text
+    tool_messages = [message['content'] for message in rounds[1]['messages'] if message['role'] == 'tool']
+    assert len(tool_messages) == 1 and json.loads(tool_messages[0])['error']['code'] == 'invalid_tool_arguments'
+    # The model's own call is replayed in the assistant message; the tool result must not repeat the value.
+    assert marker not in tool_messages[0]

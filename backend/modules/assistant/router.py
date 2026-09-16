@@ -340,7 +340,16 @@ async def standard_chat(request: Request, body: Chat, actor: dict[str, Any], con
                 records += prepared
                 outcomes.append(prepared)
             else:
-                outcomes.append(await run_tool(request, call['name'], call['arguments']))
+                # The model authors these calls, so one bad read (a missing execution, an unreachable
+                # instance, invalid arguments) goes back to it as a tool error instead of ending the turn.
+                # Session and permission failures still end it. Only the error's own detail is sent,
+                # never the call's argument values.
+                try:
+                    outcomes.append(await run_tool(request, call['name'], call['arguments']))
+                except HTTPException as exc:
+                    if _code(exc) in AUTH_CODES:
+                        raise
+                    outcomes.append({'error': {'code': _code(exc) or 'request_failed', 'detail': _detail(exc)}})
         stored = {action['id']: action for action in await approvals.store(request, records)}
         results = []
         for outcome in outcomes:
