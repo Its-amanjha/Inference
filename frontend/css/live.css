@@ -20,6 +20,9 @@
 @keyframes live-toast-in { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
 
 @media(max-width:700px) {
+  /* A full stack is ~190px of a 844px screen and sits over the last controls, which cannot be scrolled
+     clear because the page already ends there. Reserve exactly the stack's height while toasts exist. */
+  body:has(#toasts .toast) .page { padding-bottom:var(--toast-reserve, 0px); }
   #toasts.toasts { left:16px; right:16px; width:auto; bottom:calc(16px + env(safe-area-inset-bottom, 0px)); }
   #toasts .toast-dismiss { width:40px; height:40px; }
   #toasts .toast-message { padding:10px 0; }

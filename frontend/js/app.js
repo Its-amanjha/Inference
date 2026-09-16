@@ -16,11 +16,19 @@ let reconnectDelay=1000, pendingBar=null, pendingCount=0;
 
 // Toasts: one per distinct message (repeats raise a count), dismissible, paused while hovered or focused.
 const TOAST_MS=8000, TOAST_LIMIT=3, toasts=new Map();
+// Phone screens reserve the stack's height so the last controls stay reachable underneath it (see live.css).
+function measureToasts() {
+  const area=document.querySelector('#toasts');
+  if(!area)return;
+  const height=area.querySelector('.toast')?Math.ceil(area.getBoundingClientRect().height)+24:0;
+  document.documentElement.style.setProperty('--toast-reserve',`${height}px`);
+}
 function removeToast(record) {
   clearTimeout(record.timer);
   if(toasts.get(record.message)===record)toasts.delete(record.message);
   if(record.node.contains(document.activeElement)){const main=document.querySelector('#main');if(main){main.tabIndex=-1;main.focus({preventScroll:true});}}
   record.node.remove();
+  measureToasts();
 }
 function scheduleToast(record, delay=TOAST_MS) {
   clearTimeout(record.timer); record.remaining=delay; record.started=Date.now();
@@ -44,7 +52,7 @@ function toast(message) {
   dismiss.addEventListener('click',()=>removeToast(record));
   for(const [,other] of toasts)if(!other.node.isConnected)toasts.delete(other.message);
   while(area.children.length>=TOAST_LIMIT){const oldest=area.firstElementChild,match=[...toasts.values()].find(item=>item.node===oldest);if(match)removeToast(match);else oldest.remove();}
-  toasts.set(text,record); area.append(node); scheduleToast(record);
+  toasts.set(text,record); area.append(node); scheduleToast(record); measureToasts();
 }
 window.addEventListener('app-error',event=>toast(event.detail?.message || 'The operation could not be completed.'));
 
