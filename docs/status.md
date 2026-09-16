@@ -2,7 +2,7 @@
 
 Last updated 2026-09-17. Branch `feat/inference`, 109 commits (first 2026-08-05, latest code commit `8806866`). There is no git remote; every commit exists only on the development machine.
 
-This report covers what Inference does today, the work done so far and how it was verified, and what remains before release. Detailed dated entries are kept in the local, untracked `IMPLEMENTATION.md`.
+This report covers what Inference does today, the work done so far and how it was verified, and what remains before release. Detailed dated entries are kept in [IMPLEMENTATION.md](../IMPLEMENTATION.md).
 
 ## What Inference does today
 

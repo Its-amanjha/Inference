@@ -10,10 +10,6 @@ data/
 test-results/
 build/
 dist/
-IMPLEMENTATION.md
-AGENTS.md
-docs/original-brief.md
-docs/superpowers/
 .env.*
 !.env.example
 *.log

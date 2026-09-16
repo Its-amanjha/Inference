@@ -320,6 +320,11 @@ requirements-linux-amd64.lock   hash-pinned runtime wheels for the image
 | [docs/conformance-review.md](docs/conformance-review.md) | Requirement gaps still open |
 | [DESIGN.md](DESIGN.md) | Frontend visual direction and design decisions |
 | [PRODUCT.md](PRODUCT.md) | Product purpose, users and constraints |
+| [AGENTS.md](AGENTS.md) | Product specification, protected requirements and instructions for coding agents |
+| [IMPLEMENTATION.md](IMPLEMENTATION.md) | Dated implementation checkpoints and verification results |
+| [docs/original-brief.md](docs/original-brief.md) | The original build brief |
+| [docs/superpowers/specs/2026-09-07-inference-design.md](docs/superpowers/specs/2026-09-07-inference-design.md) | Approved implementation specification |
+| [docs/superpowers/plans/2026-09-07-inference.md](docs/superpowers/plans/2026-09-07-inference.md) | Implementation plan and session checkpoints |
 
 ## Security notes
 

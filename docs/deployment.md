@@ -55,7 +55,7 @@ Socket access grants control of the host Docker daemon despite the non-root appl
 
 ## Verification limits
 
-Read IMPLEMENTATION.md for actual build/runtime results. Compose validation does not prove an image builds or runs. The Docker base is pinned by manifest digest. requirements-linux-amd64.lock pins 43 runtime wheels by version and SHA-256; installation requires matching hashes and binary wheels. Compose explicitly targets Linux amd64 / CPython 3.13. Other architectures and Python versions need separately generated and verified locks. This pins dependency inputs; it does not claim byte-identical image layers or an offline build. The image includes frontend assets explicitly; installing the Python wheel alone does not package the frontend as a standalone distribution.
+Read [IMPLEMENTATION.md](../IMPLEMENTATION.md) for actual build/runtime results. Compose validation does not prove an image builds or runs. The Docker base is pinned by manifest digest. requirements-linux-amd64.lock pins 43 runtime wheels by version and SHA-256; installation requires matching hashes and binary wheels. Compose explicitly targets Linux amd64 / CPython 3.13. Other architectures and Python versions need separately generated and verified locks. This pins dependency inputs; it does not claim byte-identical image layers or an offline build. The image includes frontend assets explicitly; installing the Python wheel alone does not package the frontend as a standalone distribution.
 
 ## Updating the release lock
 
@@ -81,4 +81,4 @@ docker build --platform linux/amd64 -f tests/docker/Dockerfile -t inference:test
 docker run --rm --read-only --tmpfs /tmp:rw,nosuid,size=512m --cap-drop ALL --security-opt no-new-privileges:true inference:tests
 ```
 
-The suite runs as UID 10001. Tests write only to temporary storage, use local/simulated external services, and do not receive a Docker socket or host data volume. This backend suite does not run the browser or live managed n8n/model/S3 compatibility checks. See IMPLEMENTATION.md for the actual result; a successful test-image build alone does not prove the tests pass.
+The suite runs as UID 10001. Tests write only to temporary storage, use local/simulated external services, and do not receive a Docker socket or host data volume. This backend suite does not run the browser or live managed n8n/model/S3 compatibility checks. See [IMPLEMENTATION.md](../IMPLEMENTATION.md) for the actual result; a successful test-image build alone does not prove the tests pass.
