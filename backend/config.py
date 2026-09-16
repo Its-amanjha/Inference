@@ -92,7 +92,7 @@ class Settings:
             data_dir=data_dir if data_dir is not None else Path(env_value("DATA_DIR", "data")),
             frontend_dir=Path(env_value("FRONTEND_DIR", str(cls.frontend_dir))),
             secure_cookies=secure in {"true", "1", "yes", "on"},
-            allow_cidrs=_comma_values(env_value("EGRESS_ALLOW_CIDRS", os.environ.get("AGD_EGRESS_ALLOW_CIDRS", ""))),
+            allow_cidrs=_comma_values(env_value("EGRESS_ALLOW_CIDRS", "")),
             allowed_origins=_comma_values(env_value("ALLOWED_ORIGINS", "")),
             session_hours=int(env_value("SESSION_HOURS", "12")),
             max_request_bytes=int(env_value("MAX_REQUEST_BYTES", str(2 * 1024 * 1024))),
@@ -101,19 +101,16 @@ class Settings:
         )
 
 
-ENV_PREFIXES = ("INFERENCE_", "VECTIS_")  # VECTIS_* is the pre-rename fallback.
+ENV_PREFIX = "INFERENCE_"
 
 
 def env_value(suffix: str, default: str | None = None) -> str | None:
-    """Return INFERENCE_<suffix>, even when empty, else legacy VECTIS_<suffix>."""
-    for prefix in ENV_PREFIXES:
-        if prefix + suffix in os.environ:
-            return os.environ[prefix + suffix]
-    return default
+    """Return INFERENCE_<suffix>, even when set but empty, else the default."""
+    return os.environ.get(ENV_PREFIX + suffix, default)
 
 
 def env_is_set(suffix: str) -> bool:
-    return any(prefix + suffix in os.environ for prefix in ENV_PREFIXES)
+    return ENV_PREFIX + suffix in os.environ
 
 
 class VaultError(RuntimeError):

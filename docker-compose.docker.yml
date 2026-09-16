@@ -2,6 +2,6 @@
 services:
   inference:
     group_add:
-      - "${INFERENCE_DOCKER_GID:-${VECTIS_DOCKER_GID:?Set the host Docker socket numeric group ID}}"
+      - "${INFERENCE_DOCKER_GID:?Set the host Docker socket numeric group ID}"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock

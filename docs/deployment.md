@@ -26,7 +26,7 @@ Configure `INFERENCE_EGRESS_ALLOW_CIDRS` for the exact private networks hosting 
 
 ## Local model servers
 
-Outbound connections to loopback and private addresses are refused unless a CIDR entry in `INFERENCE_EGRESS_ALLOW_CIDRS` covers them. Metadata, link-local, multicast, unspecified and reserved addresses stay blocked whatever the allowlist says. The variable is comma-separated. `VECTIS_EGRESS_ALLOW_CIDRS` and `AGD_EGRESS_ALLOW_CIDRS` are still read as fallbacks, and `INFERENCE_EGRESS_ALLOW_CIDRS` wins when set.
+Outbound connections to loopback and private addresses are refused unless a CIDR entry in `INFERENCE_EGRESS_ALLOW_CIDRS` covers them. Metadata, link-local, multicast, unspecified and reserved addresses stay blocked whatever the allowlist says. The variable is comma-separated.
 
 - **Inference from source, Ollama on the same host:** set `INFERENCE_EGRESS_ALLOW_CIDRS=127.0.0.1/32` and use the base URL `http://127.0.0.1:11434/v1`.
 - **Inference in this container, Ollama on the host or another machine:** loopback inside the container is the container. Point the base URL at an address of the Ollama host that the container can reach, permit exactly that address (for example `/32`), and make Ollama listen on that interface.
@@ -82,22 +82,3 @@ docker run --rm --read-only --tmpfs /tmp:rw,nosuid,size=512m --cap-drop ALL --se
 ```
 
 The suite runs as UID 10001. Tests write only to temporary storage, use local/simulated external services, and do not receive a Docker socket or host data volume. This backend suite does not run the browser or live managed n8n/model/S3 compatibility checks. See IMPLEMENTATION.md for the actual result; a successful test-image build alone does not prove the tests pass.
-
-## Upgrading from VectisOps
-
-Inference was previously named VectisOps. Existing deployments keep working, with these compatibility rules:
-
-- **Environment variables.** Old `VECTIS_*` variables still work. If both a `VECTIS_*` and an `INFERENCE_*` variable are set, the `INFERENCE_*` value wins. Compose also falls back to `VECTIS_BOOTSTRAP_TOKEN` and the other old keys from an existing `.env`.
-- **Sessions.** Existing `vectis_session` cookies stay valid until they expire. New logins issue `inference_session`.
-- **Bootstrap header.** `X-Vectis-Bootstrap` is still accepted alongside `X-Inference-Bootstrap`.
-- **Docker bundles.** Bundles created with `com.vectisops.*` labels are still recognised and managed. New bundles get `com.inference.*` labels and `inference-{bundle_id}-*` resource names.
-- **Backups.** Old `.vbackup` archives (`VECTISOPS-BACKUP` marker) still restore. Existing local scheduled archives stay downloadable. New archives use `.ibackup`.
-- **Two-factor authentication.** Existing authenticator app entries keep the "VectisOps" label; their codes still work.
-
-**Compose service and volume.** The Compose service is now `inference`. Replace the old `vectis-ops` container, otherwise port 3000 conflicts:
-
-```text
-docker compose up -d --remove-orphans
-```
-
-The data volume is declared as `inference-data` with `name: ${INFERENCE_VOLUME:-inference-data}`. Before upgrading, find your existing volume's real name with `docker volume ls` (it usually looks like `<project>_vectis-data`) and set `INFERENCE_VOLUME` to it, for example in `.env`. Otherwise Compose creates a new empty volume and your data will appear missing. Take an encrypted application backup first.

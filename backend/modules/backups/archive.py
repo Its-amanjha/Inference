@@ -16,8 +16,6 @@ from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 from backend.modules.notes.storage import MAX_NOTE_BYTES, NoteError, validate_path
 
 MAGIC = b'INFERENCE-BACKUP\x00\x01'
-# Archives exported before the rename; accepted for restore, never written.
-LEGACY_MAGIC = b'VECTISOPS-BACKUP\x00\x01'
 SALT_BYTES = 16
 MAX_TOTAL_BYTES = 128 * 1024 * 1024
 MAX_FILES = 1100
@@ -120,10 +118,9 @@ def decrypt_archive(data: bytes, passphrase: str) -> dict[str, bytes]:
     """Authenticate before parsing; reject unsafe entries without extracting them."""
     if not isinstance(data, bytes) or len(data) > MAX_ARCHIVE_BYTES:
         raise ArchiveError('Backup exceeds the size limit or is invalid.')
-    magic = next((value for value in (MAGIC, LEGACY_MAGIC) if data.startswith(value)), None)
-    if magic is None or len(data) <= len(magic) + SALT_BYTES:
+    if not data.startswith(MAGIC) or len(data) <= len(MAGIC) + SALT_BYTES:
         raise ArchiveError('Unsupported or invalid backup format.')
-    offset = len(magic)
+    offset = len(MAGIC)
     cipher = _cipher(passphrase, data[offset:offset + SALT_BYTES])
     try:
         plaintext = cipher.decrypt(data[offset + SALT_BYTES:])

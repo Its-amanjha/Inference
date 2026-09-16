@@ -284,20 +284,6 @@ async def test_missing_password_records_failed_run_without_file(fleet):
     assert not list(fleet.app.state.settings.data_dir.glob('backups/*.ibackup'))
 
 
-async def test_pre_rename_local_archive_downloads_and_deletes(fleet):
-    from backend.modules.backups.archive import decrypt_archive
-    schedule = (await configure(fleet)).json()['id']
-    run = (await fleet.client.post(f'/api/backups/schedules/{schedule}/run', headers=fleet.headers)).json()
-    root = fleet.app.state.settings.data_dir / 'backups'
-    legacy = root / (run['id'] + '.vbackup')
-    (root / (run['id'] + '.ibackup')).rename(legacy)
-    downloaded = await fleet.client.get(f"/api/backups/runs/{run['id']}/download")
-    assert downloaded.status_code == 200
-    assert 'dashboard.db' in decrypt_archive(downloaded.content, 'separate export password for schedules')
-    assert (await fleet.client.delete(f"/api/backups/runs/{run['id']}/file", headers=fleet.headers)).status_code == 200
-    assert not legacy.exists()
-
-
 async def test_manual_run_audits_requesting_admin(fleet):
     schedule = (await configure(fleet)).json()['id']
     password = 'a separate password for second admin'

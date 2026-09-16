@@ -10,7 +10,7 @@ Inference is a self-hosted operations dashboard for one or more n8n instances. I
 
 | Module | What works |
 |---|---|
-| Foundation (`backend/`) | Environment settings with `INFERENCE_*` names and `VECTIS_*` fallbacks; encrypted Fernet vault; numbered SQLite migrations with schema validation on every open; egress transport with DNS pinning, SSRF protection and CIDR allowlists; security headers; health endpoint. |
+| Foundation (`backend/`) | Environment settings with `INFERENCE_*` names; encrypted Fernet vault; numbered SQLite migrations with schema validation on every open; egress transport with DNS pinning, SSRF protection and CIDR allowlists; security headers; health endpoint. |
 | Authentication and admin (`auth`, `admin`) | First-admin bootstrap, scrypt passwords, session cookies, signed CSRF, origin checks, viewer/operator/admin roles rechecked inside transactions, TOTP with recovery codes, users, secrets, audit feed, editable session and default-preference settings, credential templates. |
 | Fleet (`n8n_proxy`) | Instance CRUD with encrypted API keys, read-capability probes, fleet health, workflow and execution lists and details, activation, execution deletion, fleet-wide workflow search, dashboard aggregates. Secret parameter values are masked before workflow documents reach a browser. |
 | Credentials and promotion (`n8n_credentials`, `n8n_promote`) | Credential schema inspection and explicit mappings; promotion preflight with structural diffs and fingerprints; inactive create or update; separate activation; reconciliation; previous-version restore. Uncertain writes are never retried. |
@@ -84,7 +84,7 @@ Inference is a self-hosted operations dashboard for one or more n8n instances. I
 | Managed n8n 2.19.0 and runners, JavaScript and Python execution, OTLP arrival | Passed 2026-09-14 |
 | Official MCP SDK 1.30.0 interoperability | Passed 2026-09-14 |
 | Container smoke (`scripts/smoke_container.py`: UID 10001, read-only root, restart persistence) | Passed 2026-09-16 |
-| Locked Linux backend suite in container | 671 passed, 2026-09-11 (before the rename; rerun pending) |
+| Locked Linux backend suite in container | 671 passed, 2026-09-11 (on an earlier revision; rerun pending) |
 
 Skips cover POSIX permission, directory fsync and symlink tests that cannot run on Windows.
 
@@ -97,7 +97,7 @@ Skips cover POSIX permission, directory fsync and symlink tests that cannot run 
 | Create a git remote and push | All 44 commits exist only on this machine. Highest risk item. |
 | Load and performance tests | Not started. |
 | Python 3.10 compatibility check | `pyproject.toml` allows 3.10+; only 3.13 has been exercised. |
-| Linux rerun of the suites | Locked Linux backend suite last ran before the rename (671 passed); browser suite has only run on Windows. |
+| Linux rerun of the suites | Locked Linux backend suite last ran on 2026-09-11 (671 passed); browser suite has only run on Windows. |
 | Final review | Complete-platform conformance and release review. |
 
 ### Open items

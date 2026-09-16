@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 import pyotp
 
 from backend import audit
-from backend.auth_gate import CSRF_COOKIE, LEGACY_SESSION_COOKIE, SESSION_COOKIE, constant_equal, fail, public_user, require_role, require_current_role, session_cookies, token_hash, valid_csrf
+from backend.auth_gate import CSRF_COOKIE, SESSION_COOKIE, constant_equal, fail, public_user, require_role, require_current_role, token_hash, valid_csrf
 from .service import consume_factor, new_session, password_hash, password_matches, set_csrf_cookie, throttle
 
 router = APIRouter()
@@ -51,8 +51,7 @@ async def status(request: Request, response: Response) -> dict:
 def check_bootstrap(request: Request) -> None:
     expected=request.app.state.settings.bootstrap_token
     if expected:
-        # X-Vectis-Bootstrap is the pre-rename header name.
-        supplied=request.headers.get('X-Inference-Bootstrap') or request.headers.get('X-Vectis-Bootstrap','')
+        supplied=request.headers.get('X-Inference-Bootstrap','')
         if not constant_equal(supplied,expected):
             fail(403,'bootstrap_required','Supply the configured bootstrap token.')
         return
@@ -108,11 +107,7 @@ async def login(body: Credentials, request: Request, response: Response) -> dict
 async def logout(request: Request, response: Response) -> dict:
     user=require_role(request,'viewer')
     await request.app.state.db.execute('DELETE FROM auth_sessions WHERE id_hash=?',(user['session_id'],))
-    # A browser can hold both cookies after upgrading; sign out must end both sessions.
-    for raw in session_cookies(request):
-        await request.app.state.db.execute('DELETE FROM auth_sessions WHERE id_hash=?',(token_hash(raw),))
-    for name in (SESSION_COOKIE,LEGACY_SESSION_COOKIE):
-        response.delete_cookie(name,path='/',secure=request.app.state.settings.secure_cookies,httponly=True,samesite='strict')
+    response.delete_cookie(SESSION_COOKIE,path='/',secure=request.app.state.settings.secure_cookies,httponly=True,samesite='strict')
     response.delete_cookie(CSRF_COOKIE,path='/',secure=request.app.state.settings.secure_cookies,samesite='strict')
     await audit.record(request,'auth.logout',user['username'])
     return {'ok':True}

@@ -11,8 +11,6 @@ from fastapi import HTTPException, Request
 from backend.auth_gate import fail, require_current_role
 
 LABEL_PREFIX = 'com.inference.'
-# Bundles created before the rename carry these labels and remain owned.
-LEGACY_LABEL_PREFIX = 'com.vectisops.'
 MANAGED_LABEL = LABEL_PREFIX + 'managed'
 OWNER_LABEL = LABEL_PREFIX + 'owner'
 BUNDLE_LABEL = LABEL_PREFIX + 'bundle'
@@ -20,8 +18,8 @@ ROLE_LABEL = LABEL_PREFIX + 'role'
 CALL_TIMEOUT = 30
 
 
-def owned_labels(owner: str, bundle: str, role: str, prefix: str = LABEL_PREFIX) -> dict[str, str]:
-    return {prefix + 'managed': 'true', prefix + 'owner': owner, prefix + 'bundle': bundle, prefix + 'role': role}
+def owned_labels(owner: str, bundle: str, role: str) -> dict[str, str]:
+    return {MANAGED_LABEL: 'true', OWNER_LABEL: owner, BUNDLE_LABEL: bundle, ROLE_LABEL: role}
 
 
 async def open_docker(socket_path: str) -> Any | None:
@@ -76,10 +74,8 @@ class DockerGateway:
     def _owned(self, labels: Any, bundle: str, role: str) -> None:
         if not self.owner or not bundle or role not in {'n8n', 'runners', 'network', 'volume'}:
             fail(409, 'docker_ownership', 'The Docker resource does not belong to this bundle.')
-        # One complete label set must match; current and legacy labels are never mixed.
-        if not isinstance(labels, dict) or not any(
-                all(labels.get(k) == v for k, v in owned_labels(self.owner, bundle, role, prefix).items())
-                for prefix in (LABEL_PREFIX, LEGACY_LABEL_PREFIX)):
+        if not isinstance(labels, dict) or not all(
+                labels.get(k) == v for k, v in owned_labels(self.owner, bundle, role).items()):
             fail(409, 'docker_ownership', 'The Docker resource does not belong to this bundle.')
 
     @staticmethod
@@ -92,23 +88,19 @@ class DockerGateway:
         return {'available': True, 'transport': 'unix'}
 
     async def inventory(self) -> list[dict[str, Any]]:
-        result, seen = [], set()
-        for prefix in (LABEL_PREFIX, LEGACY_LABEL_PREFIX):
-            filters = json.dumps({'label': [f'{prefix}managed=true', f'{prefix}owner={self.owner}']})
-            containers = await self._call(lambda: self.client.containers.list(all=True, filters=filters))
-            for container in containers:
-                data = await self._call(container.show)
-                if data.get('Id') in seen:
-                    continue
-                labels = data.get('Config', {}).get('Labels') or {}
-                bundle, role = labels.get(prefix + 'bundle', ''), labels.get(prefix + 'role', '')
-                try:
-                    self._owned(labels, bundle, role)
-                except HTTPException:
-                    continue
-                if role in {'n8n', 'runners'}:
-                    seen.add(data.get('Id'))
-                    result.append(self._container_metadata(data, bundle, role))
+        result = []
+        filters = json.dumps({'label': [f'{MANAGED_LABEL}=true', f'{OWNER_LABEL}={self.owner}']})
+        containers = await self._call(lambda: self.client.containers.list(all=True, filters=filters))
+        for container in containers:
+            data = await self._call(container.show)
+            labels = data.get('Config', {}).get('Labels') or {}
+            bundle, role = labels.get(BUNDLE_LABEL, ''), labels.get(ROLE_LABEL, '')
+            try:
+                self._owned(labels, bundle, role)
+            except HTTPException:
+                continue
+            if role in {'n8n', 'runners'}:
+                result.append(self._container_metadata(data, bundle, role))
         return result
 
     @staticmethod

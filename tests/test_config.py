@@ -13,7 +13,7 @@ def test_settings_defaults_do_not_create_runtime_files(tmp_path, monkeypatch):
 
     monkeypatch.chdir(tmp_path)
     for name in tuple(os.environ):
-        if name.startswith(("INFERENCE_", "VECTIS_")) or name == "AGD_EGRESS_ALLOW_CIDRS":
+        if name.startswith("INFERENCE_"):
             monkeypatch.delenv(name)
     settings = Settings.from_env()
     assert settings.data_dir == tmp_path / "data"
@@ -34,7 +34,6 @@ def test_settings_environment_and_explicit_data_dir(tmp_path, monkeypatch):
     monkeypatch.setenv("INFERENCE_FRONTEND_DIR", str(tmp_path / "assets"))
     monkeypatch.setenv("INFERENCE_SECURE_COOKIES", "false")
     monkeypatch.setenv("INFERENCE_EGRESS_ALLOW_CIDRS", "10.0.0.0/8, ::1/128")
-    monkeypatch.setenv("AGD_EGRESS_ALLOW_CIDRS", "127.0.0.1/32")
     monkeypatch.setenv("INFERENCE_ALLOWED_ORIGINS", "https://control.example, https://fleet.example:8443")
     monkeypatch.setenv("INFERENCE_SESSION_HOURS", "3")
     monkeypatch.setenv("INFERENCE_MAX_REQUEST_BYTES", "1024")
@@ -52,33 +51,16 @@ def test_settings_environment_and_explicit_data_dir(tmp_path, monkeypatch):
     assert "private-bootstrap-value" not in repr(settings)
 
 
-def test_empty_primary_egress_setting_overrides_legacy_alias(monkeypatch):
-    from backend.config import Settings
-
-    monkeypatch.delenv("INFERENCE_EGRESS_ALLOW_CIDRS", raising=False)
-    monkeypatch.delenv("VECTIS_EGRESS_ALLOW_CIDRS", raising=False)
-    monkeypatch.setenv("AGD_EGRESS_ALLOW_CIDRS", "127.0.0.1/32")
-    assert Settings.from_env().allow_cidrs == ("127.0.0.1/32",)
-    monkeypatch.setenv("INFERENCE_EGRESS_ALLOW_CIDRS", "")
-    assert Settings.from_env().allow_cidrs == ()
-
-
-def test_pre_rename_environment_names_are_fallbacks(monkeypatch):
+def test_explicitly_empty_environment_values_are_used(monkeypatch):
     from backend.config import Settings
 
     for name in tuple(os.environ):
-        if name.startswith(("INFERENCE_", "VECTIS_")):
+        if name.startswith("INFERENCE_"):
             monkeypatch.delenv(name)
-    monkeypatch.setenv("VECTIS_SESSION_HOURS", "4")
-    monkeypatch.setenv("VECTIS_BOOTSTRAP_TOKEN", "legacy-token")
-    monkeypatch.setenv("VECTIS_EGRESS_ALLOW_CIDRS", "10.0.0.0/8")
-    settings = Settings.from_env()
-    assert (settings.session_hours, settings.bootstrap_token, settings.allow_cidrs) == (4, "legacy-token", ("10.0.0.0/8",))
-    # Current names win, including an explicitly empty value.
-    monkeypatch.setenv("INFERENCE_SESSION_HOURS", "6")
+    monkeypatch.setenv("INFERENCE_EGRESS_ALLOW_CIDRS", "")
     monkeypatch.setenv("INFERENCE_BOOTSTRAP_TOKEN", "")
     settings = Settings.from_env()
-    assert (settings.session_hours, settings.bootstrap_token) == (6, None)
+    assert (settings.allow_cidrs, settings.bootstrap_token) == ((), None)
 
 
 @pytest.mark.parametrize(
@@ -94,7 +76,6 @@ def test_pre_rename_environment_names_are_fallbacks(monkeypatch):
         ("INFERENCE_SESSION_HOURS", "0"),
         ("INFERENCE_SESSION_HOURS", "1.5"),
         ("INFERENCE_MAX_REQUEST_BYTES", "-1"),
-        ("VECTIS_SESSION_HOURS", "0"),
     ],
 )
 def test_settings_reject_invalid_environment(name, value, monkeypatch):

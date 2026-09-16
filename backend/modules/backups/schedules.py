@@ -32,19 +32,12 @@ class StorageFull(ArchiveError):
 
 
 ARCHIVE_SUFFIX = '.ibackup'
-LEGACY_ARCHIVE_SUFFIX = '.vbackup'
 
 
-def archive_path(app, run_id: str, *, existing: bool = False) -> Path:
+def archive_path(app, run_id: str) -> Path:
     if not re.fullmatch(r'[0-9a-f]{32}', run_id):
         raise ArchiveError('Invalid backup identifier.')
-    root = storage_root(app)
-    path = root / (run_id + ARCHIVE_SUFFIX)
-    legacy = root / (run_id + LEGACY_ARCHIVE_SUFFIX)
-    # Archives written before the rename keep their original file name.
-    if existing and not os.path.lexists(path) and os.path.lexists(legacy):
-        return legacy
-    return path
+    return storage_root(app) / (run_id + ARCHIVE_SUFFIX)
 
 
 def sync_directory(root: Path) -> None:
@@ -117,7 +110,7 @@ def install(app, run_id: str, data: bytes) -> None:
 
 def read_archive(app, row: dict) -> bytes:
     from .router import read_regular
-    data = read_regular(archive_path(app, row['id'], existing=True), MAX_ARCHIVE_BYTES)
+    data = read_regular(archive_path(app, row['id']), MAX_ARCHIVE_BYTES)
     if len(data) != row['size_bytes'] or hashlib.sha256(data).hexdigest() != row['sha256']:
         raise ArchiveError('Local backup does not match its recorded hash.')
     return data
@@ -389,7 +382,7 @@ async def delete_archive(run_id: str, request: Request) -> dict:
                 await require_current_role(request, 'admin', tx)
                 await tx.execute("UPDATE backup_runs SET status='deleting' WHERE id=?", (run_id,))
             def unlink() -> None:
-                path = archive_path(request.app, run_id, existing=True)
+                path = archive_path(request.app, run_id)
                 path.unlink()
                 sync_directory(path.parent)
             try:

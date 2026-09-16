@@ -10,15 +10,13 @@ from fastapi import HTTPException, Request
 from starlette.requests import HTTPConnection
 
 SESSION_COOKIE = 'inference_session'
-# Sessions issued before the rename stay valid until they expire or sign out.
-LEGACY_SESSION_COOKIE = 'vectis_session'
 CSRF_COOKIE = 'agd_csrf'
 ROLES = {'viewer': 0, 'operator': 1, 'admin': 2}
 
 
-def session_cookies(connection: HTTPConnection) -> list[str]:
-    """Raw session tokens the client holds, current cookie first."""
-    return [raw for raw in (connection.cookies.get(SESSION_COOKIE), connection.cookies.get(LEGACY_SESSION_COOKIE)) if raw]
+def session_cookie(connection: HTTPConnection) -> str:
+    """The raw session token the client holds, or an empty string."""
+    return connection.cookies.get(SESSION_COOKIE) or ''
 
 
 def fail(status: int, code: str, message: str) -> None:
@@ -34,7 +32,7 @@ def constant_equal(left: str, right: str) -> bool:
 
 
 async def authenticate(connection: HTTPConnection) -> dict[str, Any] | None:
-    raw = next(iter(session_cookies(connection)), '')
+    raw = session_cookie(connection)
     if not raw or len(raw) > 128:
         return None
     db = connection.app.state.db

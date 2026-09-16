@@ -35,7 +35,7 @@ def gateway():
 
 
 def container(gateway, *, labels=None, identifier='abc123'):
-    data = {'Id': identifier, 'Name': '/vectis',
+    data = {'Id': identifier, 'Name': '/inference',
             'Config': {'Image': 'n8nio/n8n:2.0.0', 'Env': ['TOKEN=SUPERSECRET'],
                        'Labels': owned_labels('owner', 'bundle', 'n8n') if labels is None else labels},
             'State': {'Running': True, 'Status': 'running', 'ExitCode': 0,
@@ -64,10 +64,10 @@ async def test_safe_inspection_and_sdk_mutation_arguments(gateway):
     owned_labels('another-owner', 'bundle', 'n8n'),
     owned_labels('owner', 'another-bundle', 'n8n'),
     owned_labels('owner', 'bundle', 'runners'),
-    owned_labels('another-owner', 'bundle', 'n8n', module.LEGACY_LABEL_PREFIX),
-    # A mixed set must not combine a legacy owner with a current bundle and role.
-    {**owned_labels('owner', 'bundle', 'n8n', module.LEGACY_LABEL_PREFIX), 'com.vectisops.bundle': 'other',
-     'com.inference.bundle': 'bundle', 'com.inference.role': 'n8n'},
+    # Ownership labels under any other namespace are not recognized.
+    {key.replace('com.inference.', 'com.example.'): value for key, value in owned_labels('owner', 'bundle', 'n8n').items()},
+    {'com.inference.managed': 'true', 'com.inference.owner': 'owner', 'com.inference.bundle': 'bundle',
+     'com.example.role': 'n8n'},
 ])
 async def test_unowned_containers_never_mutated(gateway, labels):
     obj, _ = container(gateway, labels=labels)
@@ -75,12 +75,6 @@ async def test_unowned_containers_never_mutated(gateway, labels):
         await gateway.delete_container('abc123', 'bundle', 'n8n')
     assert error.value.detail['code'] == 'docker_ownership'
     obj.delete.assert_not_awaited()
-
-
-async def test_pre_rename_bundle_labels_remain_owned(gateway):
-    obj, _ = container(gateway, labels=owned_labels('owner', 'bundle', 'n8n', module.LEGACY_LABEL_PREFIX))
-    await gateway.stop_container('abc123', 'bundle', 'n8n')
-    obj.stop.assert_awaited_once_with(t=10)
 
 
 async def test_replaced_container_identity_is_rejected(gateway):
@@ -92,10 +86,10 @@ async def test_replaced_container_identity_is_rejected(gateway):
 
 async def test_reconciliation_reads_expected_name_but_mutations_require_id(gateway):
     obj, _ = container(gateway)
-    result = await gateway.inspect_container('vectis', 'bundle', 'n8n')
+    result = await gateway.inspect_container('inference', 'bundle', 'n8n')
     assert result['id'] == 'abc123'
     with pytest.raises(HTTPException):
-        await gateway.start_container('vectis', 'bundle', 'n8n')
+        await gateway.start_container('inference', 'bundle', 'n8n')
     obj.start.assert_not_awaited()
     await gateway.start_container(result['id'], 'bundle', 'n8n')
     obj.start.assert_awaited_once()
@@ -203,14 +197,13 @@ async def test_network_and_volume_ownership_checks(gateway, role):
 async def test_inventory_filters_owned_resources_and_redacts(gateway):
     good, _ = container(gateway)
     bad, _ = container(gateway, labels={'com.docker.compose.project': 'inference'})
-    legacy, _ = container(gateway, identifier='legacy1',
-                          labels=owned_labels('owner', 'old-bundle', 'runners', module.LEGACY_LABEL_PREFIX))
-    gateway.client.containers.list.side_effect = [[good, bad], [good, legacy]]
+    runners, _ = container(gateway, identifier='runners1', labels=owned_labels('owner', 'other-bundle', 'runners'))
+    gateway.client.containers.list.return_value = [good, bad, runners]
     data = await gateway.inventory()
-    assert [(item['id'], item['bundle_id']) for item in data] == [('abc123', 'bundle'), ('legacy1', 'old-bundle')]
+    assert [(item['id'], item['bundle_id']) for item in data] == [('abc123', 'bundle'), ('runners1', 'other-bundle')]
     assert 'SUPERSECRET' not in str(data)
     filters = [call.kwargs['filters'] for call in gateway.client.containers.list.call_args_list]
-    assert 'com.inference.owner=owner' in filters[0] and 'com.vectisops.owner=owner' in filters[1]
+    assert len(filters) == 1 and 'com.inference.managed=true' in filters[0] and 'com.inference.owner=owner' in filters[0]
     assert await gateway.status() == {'available': True, 'transport': 'unix'}
 
 

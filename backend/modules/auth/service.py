@@ -10,7 +10,7 @@ from typing import Any
 from fastapi import Request, Response
 import pyotp
 
-from backend.auth_gate import CSRF_COOKIE, LEGACY_SESSION_COOKIE, SESSION_COOKIE, constant_equal, csrf_token, fail, session_cookies, token_hash
+from backend.auth_gate import CSRF_COOKIE, SESSION_COOKIE, constant_equal, csrf_token, fail, session_cookie, token_hash
 
 
 def hash_password(password: str) -> str:
@@ -69,7 +69,8 @@ async def new_session(request: Request, response: Response, user: dict[str, Any]
     raw = secrets.token_urlsafe(32)
     session = {'username':user['username'],'role':user['role'],'session_id':token_hash(raw),
                'csrf_secret':secrets.token_urlsafe(32),'expires_at':expires.isoformat()}
-    for previous in session_cookies(request):
+    previous = session_cookie(request)
+    if previous:
         await tx.execute('DELETE FROM auth_sessions WHERE id_hash=?',(token_hash(previous),))
     await tx.execute('DELETE FROM auth_sessions WHERE expires_at<=?',(now.isoformat(),))
     await tx.execute('INSERT INTO auth_sessions(id_hash,username,created_at,expires_at,last_seen,user_agent,ip,csrf_secret) VALUES(?,?,?,?,?,?,?,?)',
@@ -77,8 +78,6 @@ async def new_session(request: Request, response: Response, user: dict[str, Any]
                       request.headers.get('user-agent','')[:256],request.client.host if request.client else '',session['csrf_secret']))
     max_age=int((expires-now).total_seconds())
     response.set_cookie(SESSION_COOKIE, raw, max_age=max_age, httponly=True, secure=request.app.state.settings.secure_cookies, samesite='strict', path='/')
-    if request.cookies.get(LEGACY_SESSION_COOKIE):
-        response.delete_cookie(LEGACY_SESSION_COOKIE, path='/', secure=request.app.state.settings.secure_cookies, httponly=True, samesite='strict')
     set_csrf_cookie(request,response,session,max_age=max_age)
     request.state.user=session
     return session

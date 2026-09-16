@@ -6,16 +6,15 @@ services:
     restart: unless-stopped
     init: true
     ports:
-      - "127.0.0.1:${INFERENCE_PORT:-${VECTIS_PORT:-3000}}:3000"
-    # INFERENCE_* host variables win; VECTIS_* values from a pre-rename .env still apply.
+      - "127.0.0.1:${INFERENCE_PORT:-3000}:3000"
     environment:
       INFERENCE_DATA_DIR: /data
       INFERENCE_FRONTEND_DIR: /app/frontend
       # Loopback HTTP default; set true when accessed through HTTPS.
-      INFERENCE_SECURE_COOKIES: ${INFERENCE_SECURE_COOKIES:-${VECTIS_SECURE_COOKIES:-false}}
-      INFERENCE_BOOTSTRAP_TOKEN: ${INFERENCE_BOOTSTRAP_TOKEN:-${VECTIS_BOOTSTRAP_TOKEN:?Set a random INFERENCE_BOOTSTRAP_TOKEN before starting}}
-      INFERENCE_ALLOWED_ORIGINS: ${INFERENCE_ALLOWED_ORIGINS:-${VECTIS_ALLOWED_ORIGINS:-}}
-      INFERENCE_EGRESS_ALLOW_CIDRS: ${INFERENCE_EGRESS_ALLOW_CIDRS:-${VECTIS_EGRESS_ALLOW_CIDRS:-}}
+      INFERENCE_SECURE_COOKIES: ${INFERENCE_SECURE_COOKIES:-false}
+      INFERENCE_BOOTSTRAP_TOKEN: ${INFERENCE_BOOTSTRAP_TOKEN:?Set a random INFERENCE_BOOTSTRAP_TOKEN before starting}
+      INFERENCE_ALLOWED_ORIGINS: ${INFERENCE_ALLOWED_ORIGINS:-}
+      INFERENCE_EGRESS_ALLOW_CIDRS: ${INFERENCE_EGRESS_ALLOW_CIDRS:-}
     volumes:
       - inference-data:/data
     read_only: true
@@ -33,6 +32,4 @@ services:
 
 volumes:
   inference-data:
-    # Upgrading from VectisOps: set INFERENCE_VOLUME to the existing data volume
-    # (docker volume ls; usually <project>_vectis-data) to keep your data.
     name: ${INFERENCE_VOLUME:-inference-data}

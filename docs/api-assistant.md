@@ -6,7 +6,7 @@ All routes are under `/api/assistant`, require a session, and use the usual CSRF
 
 Use an existing **Ollama** server through its OpenAI-compatible `/v1` API. Custom OpenAI-compatible servers also work. Inference does not download models or bundle a model server. Set the exact installed model identifier; select `tools_enabled: false` for a model that cannot emit tool calls. There is no automatic fallback to a hosted provider.
 
-For Ollama running on the same host as the Inference Python process, permit loopback egress with `INFERENCE_EGRESS_ALLOW_CIDRS=127.0.0.1/32` (the `AGD_EGRESS_ALLOW_CIDRS` alias is still read). Without it the saved connection fails with `provider_configuration_invalid`, because loopback is not a global address and needs an explicit allowlist entry. Inside a container, loopback points at that container; use the reachable model server address and explicitly permit its private IP/CIDR instead. Existing metadata/link-local address blocks still apply.
+For Ollama running on the same host as the Inference Python process, permit loopback egress with `INFERENCE_EGRESS_ALLOW_CIDRS=127.0.0.1/32`. Without it the saved connection fails with `provider_configuration_invalid`, because loopback is not a global address and needs an explicit allowlist entry. Inside a container, loopback points at that container; use the reachable model server address and explicitly permit its private IP/CIDR instead. Existing metadata/link-local address blocks still apply.
 
 An admin configures a local provider with `PUT /config/provider`:
 

@@ -69,12 +69,11 @@ async def test_settings_survive_new_application_lifespan(fleet):
         assert app.state.system_overlay.default_preferences.theme == 'light'
 
 
-@pytest.mark.parametrize('variable', ['INFERENCE_SESSION_HOURS', 'VECTIS_SESSION_HOURS'])
-async def test_environment_session_policy_overrides_saved_setting(fleet, monkeypatch, variable):
+async def test_environment_session_policy_overrides_saved_setting(fleet, monkeypatch):
     from backend.modules.admin.settings import initialize
     from dataclasses import replace
     assert (await update(fleet)).status_code == 200
-    monkeypatch.setenv(variable, '5')
+    monkeypatch.setenv('INFERENCE_SESSION_HOURS', '5')
     fleet.app.state.settings = replace(fleet.app.state.settings, session_hours=5)
     await initialize(fleet.app)
     result = (await fleet.client.get('/api/admin/settings')).json()

@@ -50,11 +50,10 @@ def test_roundtrip_randomized_and_confidential(files):
     assert decrypt_archive(first, 'a separate export passphrase') == files
 
 
-def test_pre_rename_archive_marker_still_restores(files):
+def test_archive_requires_the_inference_marker(files):
     current = encrypt_archive(files, 'passphrase')
     assert current.startswith(b'INFERENCE-BACKUP')
-    legacy = module.LEGACY_MAGIC + current[len(module.MAGIC):]
-    assert decrypt_archive(legacy, 'passphrase') == files
+    assert decrypt_archive(current, 'passphrase') == files
     with pytest.raises(ArchiveError, match='Unsupported'):
         decrypt_archive(b'UNKNOWN--BACKUP\x00\x01' + current[len(module.MAGIC):], 'passphrase')
 

@@ -19,9 +19,9 @@ All fourteen views share the components. Investigation previews use the real err
 
 The supplied token table explicitly reserves Signal Blue from primary CTAs, despite a conflicting blue hero example. Use the reference's Carbon/Ink action treatment for operational primary buttons. Inter is explicitly supplied and takes precedence over the design detector's generic overused-font warning.
 
-## Compatibility
+## Identifiers
 
-The product is Inference, formerly VectisOps. Deployment identifiers now use Inference names (INFERENCE_* environment keys, `inference_session` cookie, `X-Inference-Bootstrap` header, `com.inference.*` Docker labels, `inference` package and `.ibackup` backup format). Legacy VectisOps identifiers remain accepted as fallbacks; see [Upgrading from VectisOps](docs/deployment.md#upgrading-from-vectisops). The `agd_csrf` cookie and `X-AGD-CSRF` header are unchanged. Original protected feature requirements are not rewritten.
+Deployment identifiers use the Inference name: INFERENCE_* environment keys, the `inference_session` cookie, the `X-Inference-Bootstrap` header, `com.inference.*` Docker labels, the `inference` package and the `.ibackup` backup format. CSRF protection uses the `agd_csrf` cookie and the `X-AGD-CSRF` header. Original protected feature requirements are not rewritten.
 
 
 ## Assistant workspace

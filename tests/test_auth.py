@@ -58,41 +58,27 @@ def test_revocation_and_last_admin_protection(client):
     assert client.get('/api/auth/status').json()['user'] is None
 
 
-def test_pre_rename_session_cookie_and_bootstrap_header_still_work(tmp_path, monkeypatch):
+def test_bootstrap_token_is_read_only_from_the_inference_header(tmp_path, monkeypatch):
     from backend.main import create_app
     monkeypatch.setenv('INFERENCE_BOOTSTRAP_TOKEN', 'bootstrap-value')
     with TestClient(create_app(data_dir=tmp_path), base_url='https://localhost', client=('127.0.0.1', 50000)) as c:
         credentials = {'username': 'owner', 'password': 'a long unique password 2026'}
-        assert c.post('/api/auth/setup', headers={'X-Vectis-Bootstrap': 'wrong'}, json=credentials).status_code == 403
-        assert c.post('/api/auth/setup', headers={'X-Vectis-Bootstrap': 'bootstrap-value'}, json=credentials).status_code == 200
-        raw = c.cookies.get('inference_session')
-        c.cookies.delete('inference_session')
-        c.cookies.set('vectis_session', raw, domain='localhost.local', path='/')
-        assert c.get('/api/auth/status').json()['user']['username'] == 'owner'
-        # Logging in again replaces the legacy cookie and its session.
-        assert c.post('/api/auth/login', json=credentials).status_code == 200
-        assert c.cookies.get('inference_session') and not c.cookies.get('vectis_session')
-        c.cookies.set('vectis_session', raw, domain='localhost.local', path='/')
-        c.cookies.delete('inference_session')
-        assert c.get('/api/auth/status').json()['user'] is None
+        for header in ('X-Bootstrap', 'X-Bootstrap-Token', 'X-Setup-Bootstrap'):
+            assert c.post('/api/auth/setup', headers={header: 'bootstrap-value'}, json=credentials).status_code == 403
+        assert c.post('/api/auth/setup', headers={'X-Inference-Bootstrap': 'wrong'}, json=credentials).status_code == 403
+        assert c.post('/api/auth/setup', headers={'X-Inference-Bootstrap': 'bootstrap-value'}, json=credentials).status_code == 200
 
 
-def test_sign_out_ends_current_and_legacy_sessions(client):
+def test_session_is_read_only_from_the_inference_cookie(client):
     setup(client)
-    legacy = client.cookies.get('inference_session')
-    client.cookies.clear()
-    client.cookies.set('vectis_session', legacy, domain='localhost.local', path='/')
-    assert client.get('/api/auth/status').json()['user']['username'] == 'owner'
-    client.cookies.clear()
-    assert client.post('/api/auth/login', json={'username': 'owner', 'password': 'a long unique password 2026'}).status_code == 200
-    current = client.cookies.get('inference_session')
-    # An upgraded browser can hold both valid sessions at once.
-    client.cookies.set('vectis_session', legacy, domain='localhost.local', path='/')
-    assert client.post('/api/auth/logout', headers={'X-AGD-CSRF': client.cookies['agd_csrf']}).status_code == 200
-    for raw in (legacy, current):
+    raw = client.cookies.get('inference_session')
+    for name in ('session', 'n8n_session', 'dashboard_session'):
         client.cookies.clear()
-        client.cookies.set('inference_session', raw, domain='localhost.local', path='/')
+        client.cookies.set(name, raw, domain='localhost.local', path='/')
         assert client.get('/api/auth/status').json()['user'] is None
+    client.cookies.clear()
+    client.cookies.set('inference_session', raw, domain='localhost.local', path='/')
+    assert client.get('/api/auth/status').json()['user']['username'] == 'owner'
 
 
 def test_totp_enrollment_login_replay_and_recovery(client):
