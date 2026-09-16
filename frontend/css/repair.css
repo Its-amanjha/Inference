@@ -147,6 +147,11 @@
   .repair-rail-link,.finding-meta .finding-actions a,.repair-check { min-height:44px; }
   .proposal-card { padding:14px; }
   .proposal-actions .button { flex:1 1 auto; }
+  /* 232px of readable code is 30 characters, so an 82-character line showed 37% of itself behind
+     396px of sideways scroll — inside a transcript that already scrolls vertically. Wrap instead:
+     the marker keeps its own flex column, so continuations hang under the code, not under the +/-. */
+  .proposal-diff { width:auto; min-width:0; }
+  .diff-line code { white-space:pre-wrap; overflow-wrap:anywhere; min-width:0; }
 }
 
 [data-theme=n8n] .proposal-card,[data-theme=n8n] .repair-target-search,[data-theme=n8n] .repair-context-panel,[data-theme=n8n] .repair-turn-retry,[data-theme=n8n] .proposal-uncertain { border-radius:12px; }
