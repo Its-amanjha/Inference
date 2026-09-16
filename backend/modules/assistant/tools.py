@@ -65,6 +65,23 @@ _CATALOG = {
 }
 
 
+def _failing_fields(error: ValidationError, limit: int = 5, budget: int = 300) -> str:
+    """Field paths and reasons, never the values: arguments may carry a pasted key or workflow content."""
+    seen: set[str] = set()
+    parts: list[str] = []
+    for item in error.errors(include_url=False, include_input=False):
+        location = '.'.join(str(part) for part in item['loc']) or 'arguments'
+        if location in seen:
+            continue
+        seen.add(location)
+        entry = f'{location}: {item["msg"]}'
+        if sum(len(part) + 2 for part in parts) + len(entry) > budget or len(parts) == limit:
+            parts.append('…')
+            break
+        parts.append(entry)
+    return '; '.join(parts)
+
+
 def validate(name: str, arguments: dict) -> dict:
     if not isinstance(name, str) or name not in _CATALOG:
         fail(422, 'unknown_tool', 'The requested tool is not supported.')
@@ -72,8 +89,12 @@ def validate(name: str, arguments: dict) -> dict:
         parsed = _CATALOG[name][0].model_validate(arguments)
         # Repair arguments keep only what was supplied; re-validation restores defaults.
         return parsed.model_dump(exclude_unset=True) if name in REPAIR_TOOLS else parsed.model_dump()
-    except (ValidationError, UnicodeError):
-        fail(422, 'invalid_tool_arguments', 'Tool arguments do not match the permitted schema.')
+    except ValidationError as error:
+        # Name the tool and the fields: "does not match the schema" alone leaves nobody able to act on it.
+        fail(422, 'invalid_tool_arguments',
+             f'Tool arguments for {name} do not match the permitted schema. ' + (_failing_fields(error) or 'No field detail available.'))
+    except UnicodeError:
+        fail(422, 'invalid_tool_arguments', f'Tool arguments for {name} contain text that could not be decoded.')
 
 
 def parse(name: str, arguments: dict) -> BaseModel:
