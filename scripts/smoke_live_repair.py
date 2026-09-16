@@ -5,9 +5,12 @@ Manual only. It is not part of any suite and refuses to start without --confirm-
 (scripts/frontend_repair_checks.py) covers the same flow against a simulator; this check exists to confirm the
 n8n public API and a real model behave the same way.
 
-Every step prints PASS or NOT VERIFIED with a reason, and the run ends with a summary. Nothing is retried: a
-provider 429 stops the run, because hy3 (api.b.ai) answered a back-to-back request with HTTP 429 and the same
-request 60 seconds later with 200, without rate-limit headers.
+Every step prints PASS or NOT VERIFIED with a reason, and the run ends with a summary. Nothing is retried,
+and provider requests stay at least 60 seconds apart: one tested provider answered a back-to-back request
+with HTTP 429 and the same request 60 seconds later with 200, without sending rate-limit headers.
+
+Works with any OpenAI-compatible endpoint whose model returns tool calls; pass --provider-base-url and
+--provider-model. Verified end to end on 2026-09-16 with Inception mercury-2.5.
 
 The provider key never appears in arguments. Supply it in an environment variable (default
 INFERENCE_LIVE_PROVIDER_KEY); the script stores it as a vault secret inside the disposable container and
@@ -409,10 +412,10 @@ def parse_args(argv):
     parser.add_argument('--confirm-live', action='store_true',
                         help='Required. Creates disposable containers and sends real provider requests.')
     parser.add_argument('--plan', action='store_true', help='Print the planned steps and exit.')
-    parser.add_argument('--provider-id', default='hy3', help='Saved connection to create and verify (default: hy3).')
+    parser.add_argument('--provider-id', default='live-check', help='Connection to create in the disposable container.')
     parser.add_argument('--provider-kind', default='custom', help='Provider adapter (default: custom).')
-    parser.add_argument('--provider-base-url', default='https://api.b.ai/v1', help='Completion base URL ending in /v1.')
-    parser.add_argument('--provider-model', default='hy3', help='Model ID the provider expects.')
+    parser.add_argument('--provider-base-url', help='Completion base URL ending in /v1 (required with --confirm-live).')
+    parser.add_argument('--provider-model', help='Model ID the provider expects (required with --confirm-live).')
     parser.add_argument('--provider-key-env', default='INFERENCE_LIVE_PROVIDER_KEY',
                         help='Environment variable holding the provider key (never passed as an argument).')
     parser.add_argument('--provider-key-ref', help='Existing vault reference to use instead of the environment variable.')
@@ -432,6 +435,9 @@ def main(argv=None):
     if not args.confirm_live:
         print('NOT RUN: live repair verification needs --confirm-live (disposable containers, real provider requests).', flush=True)
         return 0
+    if not args.provider_base_url or not args.provider_model:
+        print('NOT RUN: pass --provider-base-url and --provider-model for the connection to verify.', flush=True)
+        return 2
     report = Report()
     try:
         run(args, report)
