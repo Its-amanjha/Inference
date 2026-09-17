@@ -1,6 +1,6 @@
 # Project status
 
-Last updated 2026-09-17. Branch `feat/inference`, 113 commits (first 2026-08-05, latest code commit `8806866`). There is no git remote; every commit exists only on the development machine.
+Last updated 2026-09-17. Branch `feat/inference`, 114 commits (first 2026-08-05, latest code commit `8806866`). Pushed to a private GitHub repository.
 
 This report covers what Inference does today, the work done so far and how it was verified, and what remains before release. Detailed dated entries are kept in [IMPLEMENTATION.md](../IMPLEMENTATION.md).
 
@@ -29,7 +29,7 @@ Inference is a self-hosted operations dashboard for one or more n8n instances. I
 
 ### Size
 
-- 113 commits between 2026-08-05 and 2026-09-17, 29 of them on 2026-09-16 and 2026-09-17.
+- 114 commits between 2026-08-05 and 2026-09-17, 30 of them on 2026-09-16 and 2026-09-17.
 - Backend: 65 Python files (about 590 KB). Tests: 49 files (about 470 KB) with 518 test functions; parametrised cases bring the suite to 870 collected tests. Scripts: 15 verification and smoke scripts. Frontend: 29 JavaScript files and 9 stylesheets.
 
 ### Milestones by area
@@ -94,7 +94,6 @@ Skips cover POSIX permission, directory fsync and symlink tests that cannot run 
 
 | Item | Notes |
 |---|---|
-| Create a git remote and push | All 113 commits exist only on this machine. Highest risk item. |
 | Load and performance tests | Not started. |
 | Python 3.10 compatibility check | `pyproject.toml` allows 3.10+; only 3.13 has been exercised. |
 | Linux rerun of the suites | Locked Linux backend suite last ran on 2026-09-11 (671 passed); browser suite has only run on Windows. |
