@@ -70,3 +70,37 @@ export const explainHref=row=>'#assistant?'+new URLSearchParams({error_id:row.id
 // Repair links pin a target for a person to review; error rows pass their id, workflow rows pass only instance_id and workflow_id.
 export const repairHref=row=>'#assistant?'+new URLSearchParams([['mode','repair'],['instance_id',row?.instance_id],['workflow_id',row?.workflow_id],['error_id',row?.id]]
   .filter(([,value])=>value!==null&&value!==undefined&&value!=='').map(([key,value])=>[key,String(value)]));
+
+// Per-user browser localStorage saved views for triage and operational filters
+export function getSavedViews(scope = 'errors', user = state.user?.username || 'anonymous') {
+  try {
+    const raw = localStorage.getItem(`inf_saved_views_${user}_${scope}`);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveView(scope = 'errors', user = state.user?.username || 'anonymous', name, filters) {
+  if (!name || typeof name !== 'string' || !name.trim()) return false;
+  const trimmed = name.trim();
+  const existing = getSavedViews(scope, user).filter(v => v.name !== trimmed);
+  existing.push({ name: trimmed, filters, savedAt: Date.now() });
+  try {
+    localStorage.setItem(`inf_saved_views_${user}_${scope}`, JSON.stringify(existing));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function deleteSavedView(scope = 'errors', user = state.user?.username || 'anonymous', name) {
+  const existing = getSavedViews(scope, user).filter(v => v.name !== name);
+  try {
+    localStorage.setItem(`inf_saved_views_${user}_${scope}`, JSON.stringify(existing));
+    return true;
+  } catch {
+    return false;
+  }
+}
+

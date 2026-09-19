@@ -1,7 +1,8 @@
 import {api} from '../api.js';
 import {state,can,pageSize} from '../state.js';
 import {el,button,field,heading,table,notice,empty} from '../lib/html.js';
-import {severityOf,severityPill,relativeTime,instanceName,explainHref,repairHref,TRIAGE_FILTERS} from '../lib/triage.js';
+import {severityOf,severityPill,relativeTime,instanceName,explainHref,repairHref,TRIAGE_FILTERS,getSavedViews,saveView,deleteSavedView} from '../lib/triage.js';
+import {askText,confirmAction} from '../lib/confirm.js';
 
 const COLUMNS=[['Severity'],['When'],['Workflow / node'],['Instance'],['Count','triage-num'],['Execution'],['Actions','triage-actions-head']];
 const LONG_MESSAGE=100;
@@ -17,24 +18,156 @@ function message(text) {
 
 export async function render(container){
   const controller=new AbortController(),signal=controller.signal,instance=state.instanceId;
+  const hashQuery = location.hash.slice(1).split('?')[1] || '';
+  const initialParams = new URLSearchParams(hashQuery);
+  const initialStatus = initialParams.get('status') === 'resolved' ? 'resolved' : 'open';
+  const initialFilter = TRIAGE_FILTERS.some(([k]) => k === initialParams.get('type')) ? initialParams.get('type') : 'all';
+  let activeViewName = initialParams.get('view') || '';
+  let currentSort = { column: 1, direction: 'desc' };
+  if (initialParams.has('sort')) {
+    const col = Number(initialParams.get('sort'));
+    const dir = initialParams.get('dir') === 'asc' ? 'asc' : 'desc';
+    if (!Number.isNaN(col)) currentSort = { column: col, direction: dir };
+  }
+
   const status=el('select',{},el('option',{value:'open'},'Open'),el('option',{value:'resolved'},'Resolved'));
-  let rows=[],cursor=null,busy=false,queued=false,filter='all',loadedStatus=status.value;
+  status.value = initialStatus;
+  let rows=[],cursor=null,busy=false,queued=false,filter=initialFilter,loadedStatus=status.value;
   const feedback=el('div',{class:'triage-feedback'}),content=el('div',{class:'triage-results',tabindex:-1});
   const count=el('p',{class:'triage-count','aria-live':'polite'}),announcer=el('p',{class:'triage-announce',role:'status'});
   const chips=TRIAGE_FILTERS.map(([key,label])=>el('button',{type:'button',class:'button ghost triage-chip','aria-pressed':String(key===filter),onclick:()=>setFilter(key)},label));
   const next=button('Older errors',()=>load(cursor),'button ghost');next.disabled=true;
-  status.addEventListener('change',()=>load(),{signal});
+  const savedViewsContainer = el('div', { class: 'triage-saved-bar', role: 'region', 'aria-label': 'Saved filter views' });
+
+  function syncHash() {
+    const params = new URLSearchParams();
+    if (status.value !== 'open') params.set('status', status.value);
+    if (filter !== 'all') params.set('type', filter);
+    if (currentSort.column !== 1 || currentSort.direction !== 'desc') {
+      params.set('sort', String(currentSort.column));
+      params.set('dir', currentSort.direction);
+    }
+    if (activeViewName) params.set('view', activeViewName);
+    const qs = params.toString();
+    history.replaceState(null, '', qs ? `#errors?${qs}` : '#errors');
+  }
+
+  function renderSavedViews() {
+    const views = getSavedViews('errors', state.user?.username);
+    const select = el('select', { 'aria-label': 'Select saved filter view' });
+    select.append(el('option', { value: '' }, views.length ? 'Saved views…' : 'No saved views'));
+    for (const v of views) {
+      select.append(el('option', { value: v.name, selected: v.name === activeViewName }, v.name));
+    }
+
+    select.addEventListener('change', () => {
+      const selectedName = select.value;
+      if (!selectedName) return;
+      const match = views.find(v => v.name === selectedName);
+      if (!match) return;
+      activeViewName = match.name;
+      if (match.filters.status && match.filters.status !== status.value) {
+        status.value = match.filters.status;
+        load();
+      }
+      if (match.filters.type) {
+        setFilter(match.filters.type, false);
+      }
+      if (match.filters.sort !== undefined) {
+        currentSort = { column: match.filters.sort, direction: match.filters.dir || 'desc' };
+        draw();
+      }
+      syncHash();
+      renderSavedViews();
+      announcer.textContent = `Applied saved view "${match.name}".`;
+    });
+
+    const saveBtn = button('Save view', async () => {
+      const name = await askText({
+        title: 'Save current filter view',
+        label: 'View name',
+        description: 'Store this combination of status, type filter, and sorting in your browser.',
+        confirmLabel: 'Save view',
+        placeholder: 'e.g. Open silent failures'
+      });
+      if (!name) return;
+      const currentFilters = {
+        status: status.value,
+        type: filter,
+        sort: currentSort.column,
+        dir: currentSort.direction
+      };
+      saveView('errors', state.user?.username, name, currentFilters);
+      activeViewName = name;
+      syncHash();
+      renderSavedViews();
+      announcer.textContent = `View "${name}" saved.`;
+    }, 'ghost');
+
+    const deleteBtn = button('Delete view', async () => {
+      if (!activeViewName) return;
+      const ok = await confirmAction({
+        title: 'Delete saved view',
+        target: activeViewName,
+        consequence: 'This view will be permanently removed from your browser storage.',
+        confirmLabel: 'Delete view',
+        danger: true
+      });
+      if (!ok) return;
+      deleteSavedView('errors', state.user?.username, activeViewName);
+      const deletedName = activeViewName;
+      activeViewName = '';
+      syncHash();
+      renderSavedViews();
+      announcer.textContent = `View "${deletedName}" deleted.`;
+    }, 'ghost');
+    deleteBtn.disabled = !activeViewName;
+
+    const activeBadge = activeViewName
+      ? el('div', { class: 'active-view-indicator' },
+          el('span', { class: 'badge info' }, `Active view: ${activeViewName}`),
+          button('Clear view', () => {
+            activeViewName = '';
+            syncHash();
+            renderSavedViews();
+          }, 'ghost')
+        )
+      : null;
+
+    savedViewsContainer.replaceChildren(
+      el('div', { class: 'saved-views-controls' }, select, saveBtn, deleteBtn),
+      activeBadge
+    );
+  }
+
+  status.addEventListener('change', () => {
+    if (activeViewName) {
+      activeViewName = '';
+      renderSavedViews();
+    }
+    syncHash();
+    load();
+  }, {signal});
+
   container.append(heading('Error triage','Confirmed errors and evidence-based findings, newest first.'),
     el('div',{class:'toolbar'},field('Status',status),button('Refresh',()=>load(),'button ghost')),
+    savedViewsContainer,
     el('div',{class:'triage-filterbar'},el('div',{class:'triage-filters',role:'group','aria-label':'Filter loaded errors by type'},chips),
       el('div',{class:'triage-summary'},count,el('p',{},'Filters apply to loaded errors only.'))),
     announcer,feedback,content,next);
 
+  renderSavedViews();
+
   const visibleRows=()=>filter==='all'?rows:rows.filter(row=>severityOf(row.error_type).kind===filter);
   function updateCount(){count.textContent=rows.length?`Showing ${visibleRows().length} of ${rows.length} loaded`:'No errors loaded';}
-  function setFilter(key){
+  function setFilter(key, clearActive = true){
     filter=key;
+    if (clearActive && activeViewName) {
+      activeViewName = '';
+      renderSavedViews();
+    }
     chips.forEach((chip,index)=>chip.setAttribute('aria-pressed',String(TRIAGE_FILTERS[index][0]===key)));
+    syncHash();
     draw();
   }
   function draw(){
@@ -51,7 +184,15 @@ export async function render(container){
         ariaLabel:'Errors table',
         numeric:[4],
         sortable:{0:'text',1:'date',2:'text',3:'text',4:'number',5:'text'},
-        initialSort:{column:1,direction:'desc'}
+        initialSort:currentSort,
+        onSort:({column,direction})=>{
+          currentSort={column,direction};
+          if(activeViewName){
+            activeViewName='';
+            renderSavedViews();
+          }
+          syncHash();
+        }
       }
     ));
   }
