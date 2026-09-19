@@ -176,6 +176,6 @@ export async function render(container){
     card.append(rawDisclosure(run,'Raw run record'));
     return card;
   }
-  async function runs(){try{const result=await api('/api/n8n_promote/runs',{signal:controller.signal});history.replaceChildren(el('h2',{},'3. Deployment history'),button('Refresh runs',runs,'button ghost'),...result.data.map(runCard));if(!result.data.length)history.append(empty('No promotions yet','Your deployment results and recovery actions will appear here.'));}catch(error){if(!controller.signal.aborted)notice(history,error);}}
+  async function runs(){try{const result=await api('/api/n8n_promote/runs',{signal:controller.signal});history.replaceChildren(el('h2',{},'3. Deployment history'),button('Refresh runs',runs,'button ghost'),...result.data.map(runCard));if(!result.data.length)history.append(empty('No promotions yet','Your deployment results and recovery actions will appear here.',[button('Start a promotion',()=>{source.scrollIntoView();source.focus({preventScroll:true});},'ghost')]));}catch(error){if(!controller.signal.aborted)notice(history,error);}}
   invalidate();await Promise.all([source.value?workflows():Promise.resolve(),runs()]);return()=>controller.abort();
 }
