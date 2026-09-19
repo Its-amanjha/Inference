@@ -1,6 +1,6 @@
 # System settings and secret templates
 
-These endpoints require an administrator session. Mutations require a permitted Origin and session CSRF token. The settings and secrets screens are still pending frontend work.
+These endpoints require an administrator session. Mutations require a permitted Origin and session CSRF token. The settings and secrets screens are implemented in frontend/js/views/settings.js and frontend/js/views/secrets.js.
 
 ## Application settings
 

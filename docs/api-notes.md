@@ -48,7 +48,7 @@ The preview endpoint preserves the text and escapes HTML; it does not execute ta
 
 `app.state.notes` is the lifespan-owned `NotesStore`; synchronous filesystem work runs in a worker thread. `app.state.notes_lock` serializes API operations. Future backups that coordinate notes and the database must acquire the notes lock before taking the database snapshot, matching the mutation lock order.
 
-Tests cover CRUD, replay/stale/concurrent saves, create-only races, search, ambiguous backlinks, HTML escaping, role/CSRF checks, revocation during reads, cancellation, audit failure, path traversal, device names, hard links, reparse points, invalid UTF-8 and I/O failure cleanup. Actual symlink creation and POSIX directory-fsync checks are skipped on this Windows environment. Linux filesystem verification and the notes frontend remain outstanding.
+Tests cover CRUD, replay/stale/concurrent saves, create-only races, search, ambiguous backlinks, HTML escaping, role/CSRF checks, revocation during reads, cancellation, audit failure, path traversal, device names, hard links, reparse points, invalid UTF-8 and I/O failure cleanup. Actual symlink creation and POSIX directory-fsync checks are skipped on this Windows environment, but verified in the locked Linux test image (886 passed, 0 skipped). The notes frontend is implemented and verified in frontend/js/views/notes.js.
 
 ### Browser Markdown preview
 

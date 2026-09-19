@@ -1,6 +1,6 @@
 # Project status
 
-Last updated 2026-09-17. Branch `feat/inference`, 114 commits (first 2026-08-05, latest code commit `eeab7c1`). Pushed to a private GitHub repository.
+Last updated 2026-09-19. Branch `main`, 131 commits (first 2026-08-05, latest code commit `2e6aead`). Pushed to a private GitHub repository.
 
 This report covers what Inference does today, the work done so far and how it was verified, and what remains before release. Detailed dated entries are kept in [IMPLEMENTATION.md](../IMPLEMENTATION.md).
 
@@ -29,8 +29,8 @@ Inference is a self-hosted operations dashboard for one or more n8n instances. I
 
 ### Size
 
-- 114 commits between 2026-08-05 and 2026-09-17, 30 of them on 2026-09-16 and 2026-09-17.
-- Backend: 65 Python files (about 590 KB). Tests: 49 files (about 470 KB) with 518 test functions; parametrised cases bring the suite to 870 collected tests. Scripts: 15 verification and smoke scripts. Frontend: 29 JavaScript files and 9 stylesheets.
+- 131 commits between 2026-08-05 and 2026-09-19.
+- Backend: 65 Python files (about 590 KB). Tests: 49 files (about 470 KB) with 518 test functions; parametrised cases bring the suite to 886 collected tests. Scripts: 17 verification and smoke scripts. Frontend: 29 JavaScript files and 10 stylesheets.
 
 ### Milestones by area
 
@@ -75,7 +75,7 @@ Inference is a self-hosted operations dashboard for one or more n8n instances. I
 
 | Check | Latest result |
 |---|---|
-| Backend suite (Windows, Python 3.13) | 859 passed, 11 skipped before the latest assistant edits; targeted assistant and skills tests 69 passed after them |
+| Backend suite (Windows, Python 3.13) | 875 passed, 11 skipped, 1 warning (all collected tests) |
 | Browser smoke suite (`scripts/smoke_frontend.py`, Playwright with Edge) | 18 PASS |
 | Skills end to end on a fresh database | 9/9 |
 | Local Ollama `qwen2.5:3b` (save without key, connection test, tool-calling check, chat, model-initiated `get_skill`) | 5/5 |
@@ -112,7 +112,7 @@ Executed via `python scripts/smoke_load.py --confirm` against an isolated server
 | Load and performance tests | Completed 2026-09-19 (`scripts/smoke_load.py`). Verified under 10 concurrent workers with 25k seeded errors/spans. |
 | Python 3.10 compatibility check | Completed 2026-09-19 in Linux `python:3.10-slim`. 886 passed, zero failures. `requires-python = ">=3.10"` confirmed. |
 | Linux browser verification | Completed 2026-09-19 in Linux container (`inference:browser` via `tests/docker/Dockerfile.browser` with Playwright bundled Chromium). 18/18 PASS, exit code 0. |
-| Final review | Complete-platform conformance and release review. |
+| Final review | Completed 2026-09-19 (see docs/release-review-2026-09-19.md). Complete-platform conformance and release review completed with zero code blockers; release recommended as ship with caveats. |
 
 ### Open items
 
