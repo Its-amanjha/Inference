@@ -221,6 +221,54 @@ export async function render(container) {
     return [`Run ${row.name}`, args.instance_id ? on : ''];
   };
 
+  // MCP tool results are arbitrary remote content. Every string below travels as a
+  // text node, never as HTML, and URLs stay plain text: tool output is data, never
+  // instructions. One sentence says which tool ran where and what happened; the full
+  // payload stays behind a disclosure, and long output is capped inline.
+  const MCP_INLINE_LIMIT = 1200;
+  const mcpBlockText = block => (block && typeof block === 'object' && block.type === 'text' && typeof block.text === 'string' ? block.text : null);
+  const capInline = text => (text.length > MCP_INLINE_LIMIT ? `${text.slice(0, MCP_INLINE_LIMIT)}… (truncated to ${MCP_INLINE_LIMIT} characters; the full output is in Raw MCP result.)` : text);
+  const renderMcpResult = (row, result) => {
+    const args = row.arguments && typeof row.arguments === 'object' ? row.arguments : {};
+    const head = `Tool “${args.tool_name || 'unknown tool'}” on MCP server ${args.server_id || 'unknown server'}`;
+    const section = el('section', {className: 'mcp-result', 'aria-label': 'MCP tool result'});
+    const done = (sentence, preview = null, note = null) => {
+      section.append(el('p', {className: 'mcp-result-head'}, sentence));
+      if (preview !== null) section.append(el('p', {className: 'mcp-result-text'}, preview));
+      if (note !== null) section.append(el('p', {className: 'muted'}, note));
+      section.append(rawDisclosure(result, 'Raw MCP result'));
+      return section;
+    };
+    if (result === null || result === undefined) return done(`${head} returned no content.`);
+    if (typeof result !== 'object' || Array.isArray(result)) return done(`${head} returned an unrecognized result shape. The full payload is below.`);
+    const blocks = Array.isArray(result.content) ? result.content : null;
+    if (result.isError === true) {
+      const message = blocks ? blocks.map(mcpBlockText).find(text => text !== null && text !== '') : null;
+      const text = typeof result.message === 'string' && result.message ? result.message : (message || 'The tool reported an error without a message.');
+      const short = text.length > 300 ? `${text.slice(0, 300)}… (truncated; the full message is in Raw MCP result.)` : text;
+      return done(`${head} reported an error: ${short}`);
+    }
+    if (blocks) {
+      const texts = blocks.map(mcpBlockText).filter(text => text !== null);
+      const kinds = {};
+      for (const block of blocks) { if (mcpBlockText(block) === null) { const kind = block && typeof block.type === 'string' ? block.type : 'unknown'; kinds[kind] = (kinds[kind] || 0) + 1; } }
+      const attachments = Object.entries(kinds).map(([kind, count]) => `${count} ${kind} attachment${count === 1 ? '' : 's'} (listed, not shown)`);
+      if (!blocks.length && result.structuredContent === undefined) return done(`${head} returned no content.`);
+      const first = texts.find(text => text !== '') || '';
+      const shown = first ? capInline(first) : '';
+      const extra = attachments.length ? ` Also returned: ${attachments.join(', ')}.` : '';
+      const structured = result.structuredContent !== undefined && !blocks.length && !first ? ` Structured content is in the raw payload below.` : '';
+      if (!first && !attachments.length && result.structuredContent === undefined) return done(`${head} returned no content.`);
+      const count = blocks.length + (result.structuredContent !== undefined && !blocks.length ? 1 : 0);
+      return done(`${head} returned ${count} item${count === 1 ? '' : 's'}.${extra}${structured}`, shown || null);
+    }
+    if (result.structuredContent !== undefined) {
+      const keys = result.structuredContent && typeof result.structuredContent === 'object' ? Object.keys(result.structuredContent).length : 0;
+      return done(`${head} returned structured content with ${keys} field${keys === 1 ? '' : 's'}.`, capInline(JSON.stringify(result.structuredContent)));
+    }
+    return done(`${head} returned an unrecognized result shape. The full payload is below.`);
+  };
+
   // Inline repair proposals: one card per action, painted in place wherever it sits in the conversation.
   const fetchAction = async id => {
     try {
@@ -383,7 +431,7 @@ export async function render(container) {
           confirm.disabled = cancel.disabled = true;
           try {
             const result = await request(`/tools/${verb}`, {method: 'POST', json: {action_id: row.id}});
-            if (!signal.aborted) { row.status = result.status; if (result.result !== undefined) messages.append(jsonView(result.result)); }
+            if (!signal.aborted) { row.status = result.status; if (result.result !== undefined) messages.append(row.name === 'mcp_call' ? renderMcpResult(row, result.result) : jsonView(result.result)); }
           } finally { try { if (!signal.aborted) await refreshApprovals(); } finally { acting.delete(row.id); if (!signal.aborted) paintApprovals(); } }
         };
         const confirm = action('Confirm exact action', () => perform('confirm'), true);
