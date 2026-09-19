@@ -1,8 +1,100 @@
 // Readable summaries of API payloads. Every sentence here is derived from response fields;
 // anything not understood stays visible in the raw disclosure instead of being guessed.
-import {el,jsonView} from './html.js';
+import {el,jsonView,button} from './html.js';
 import {icon,registerIcons} from './icons.js';
 import {state} from '../state.js';
+import {api} from '../api.js';
+import {parseTimestamp,relativeLabel} from './triage.js';
+
+// A single loading treatment for initial loads; keep existing content during refreshes.
+export function loadingState(label,{rows=3}={}){
+  return el('div',{class:'loading-state',role:'status','aria-live':'polite'},
+    el('p',{class:'loading-label'},icon('clock'),label),
+    el('div',{class:'loading-rows','aria-hidden':'true'},
+      Array.from({length:rows},()=>el('span',{class:'loading-row'}))));
+}
+
+export function asOf(date=new Date()){
+  return el('p',{class:'load-as-of'},'As of ',el('time',{datetime:date.toISOString(),title:date.toLocaleString()},
+    date.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit',hour12:false})));
+}
+
+const TRANSIENT_CODES=new Set(['rate_limited','upstream_rate_limited','upstream_timeout','upstream_unavailable','probe_timeout']);
+export function isTransient(error){
+  return error instanceof TypeError || error?.name==='TimeoutError' || TRANSIENT_CODES.has(error?.code)
+    || [408,429,502,503,504].includes(error?.status);
+}
+
+export function loadFailure(error,retry,label='Could not refresh data'){
+  const transient=isTransient(error);
+  return el('div',{class:transient?'coverage-partial load-notice':'error load-notice',role:transient?'status':'alert'},
+    icon(transient?'info':'blocked'),el('div',{},el('p',{},el('strong',{},label)),
+      el('p',{},error?.message||'The request did not complete.'),
+      button('Retry',retry,'ghost')));
+}
+
+// Only connection-check metadata is cached, per signed-in user and browser tab.
+// The backend's persisted probe has no read endpoint; never infer health from a saved URL.
+function probeCache(){
+  const user=state.user?.username;
+  if(!user)return {key:null,rows:{}};
+  const key=`inference:probe-cache:${user}`;
+  try{
+    const rows=JSON.parse(sessionStorage.getItem(key)||'{}');
+    return {key,rows:rows&&typeof rows==='object'&&!Array.isArray(rows)?rows:{}};
+  }
+  catch{return {key,rows:{}};}
+}
+export function cachedProbe(instance){
+  const entry=probeCache().rows[instance.id];
+  return entry?.url===instance.url && typeof entry.result?.reachable==='boolean'
+    && parseTimestamp(entry.result.checked_at)?entry.result:null;
+}
+export function rememberProbe(instance,result){
+  const {key,rows}=probeCache();if(!key)return;
+  rows[instance.id]={url:instance.url,result:{instance_id:instance.id,reachable:result.reachable,
+    checked_at:result.checked_at,latency_ms:result.latency_ms,
+    capabilities:result.capabilities,diagnostics:result.diagnostics}};
+  const bounded=Object.fromEntries(Object.entries(rows).sort((a,b)=>String(b[1]?.result?.checked_at).localeCompare(String(a[1]?.result?.checked_at))).slice(0,200));
+  try{sessionStorage.setItem(key,JSON.stringify(bounded));}catch{/* Storage may be disabled. */}
+}
+export function forgetProbe(instanceId){
+  const {key,rows}=probeCache();if(!key)return;delete rows[instanceId];
+  try{sessionStorage.setItem(key,JSON.stringify(rows));}catch{/* Storage may be disabled. */}
+}
+
+// Both reads are viewer-authorized, limited to one record, and independently abortable.
+// Unlike the aggregate /health route, a slow instance cannot hold back other cards.
+export async function checkConnection(instance,{signal}={}){
+  const controller=new AbortController(),started=performance.now(),user=state.user;
+  const cancel=()=>controller.abort(signal?.reason);
+  if(signal?.aborted)cancel();else signal?.addEventListener('abort',cancel,{once:true});
+  let timedOut=false;
+  const timer=setTimeout(()=>{timedOut=true;controller.abort();},10000);
+  try{
+    const resources=[['workflows','workflow_read'],['executions','execution_read']];
+    const results=await Promise.allSettled(resources.map(([resource])=>api(`/api/n8n_proxy/${resource}?`+
+      new URLSearchParams({instance_id:instance.id,limit:'1'}),{signal:controller.signal})));
+    if(signal?.aborted)throw new DOMException('Check cancelled','AbortError');
+    if(timedOut)throw Object.assign(new Error('No response after 10s - the instance may be unreachable'),{code:'probe_timeout'});
+    const capabilities={},diagnostics=[];
+    let reachable=false;
+    results.forEach((result,index)=>{
+      const capability=resources[index][1];
+      if(result.status==='fulfilled'){capabilities[capability]='supported';reachable=true;return;}
+      const error=result.reason,code=error.code||'upstream_unavailable';
+      if(['authentication_required','session_revoked','session_expired','permission_denied'].includes(code))throw error;
+      const denied=['upstream_auth_failed','upstream_forbidden'].includes(code);
+      capabilities[capability]=denied?'forbidden':'unavailable';
+      reachable ||= denied || ['upstream_not_found','upstream_rate_limited','upstream_invalid_response'].includes(code);
+      diagnostics.push({capability,code});
+    });
+    if(results.every(result=>result.status==='rejected'&&isTransient(result.reason)))throw results[0].reason;
+    const result={instance_id:instance.id,reachable,capabilities,diagnostics,checked_at:new Date().toISOString(),latency_ms:Math.round(performance.now()-started)};
+    if(user===state.user)rememberProbe(instance,result);
+    return result;
+  }finally{clearTimeout(timer);signal?.removeEventListener('abort',cancel);}
+}
 
 registerIcons({
   blocked:'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z M5.6 5.6l12.8 12.8',
@@ -77,12 +169,16 @@ export function probeSummary(result){
 }
 
 export function reachabilityBadge(result){
-  return result?.reachable?toneBadge('Reachable','success'):toneBadge('Unreachable','error');
+  if(typeof result?.reachable!=='boolean')return toneBadge('Not checked');
+  if(result.reachable)return toneBadge('Reachable','success');
+  const transient=result.diagnostics?.some(item=>TRANSIENT_CODES.has(item.code));
+  return transient?toneBadge('No response','warning'):toneBadge('Unreachable','error');
 }
 
 export function checkedLine(result){
-  if(!result?.checked_at)return 'No completed check';
-  return `Checked ${formatTime(result.checked_at)}${Number.isFinite(result.latency_ms)?` · ${result.latency_ms} ms`:''}`;
+  const date=parseTimestamp(result?.checked_at);
+  if(!date)return 'Last checked: never';
+  return `Last checked ${relativeLabel(date).toLowerCase()}${Number.isFinite(result.latency_ms)?` · ${result.latency_ms} ms`:''}`;
 }
 
 const SECTION_ICON={blocking:'blocked',warning:'errors',mapped:'check'};

@@ -1,0 +1,22 @@
+/* Shared loading and recovery states; existing theme tokens supply all neutral colors. */
+.loading-state { min-width:0; padding:16px 0; }
+.loading-label { display:flex; align-items:center; gap:8px; margin:0 0 16px; color:var(--color-smoke); overflow-wrap:anywhere; }
+.loading-label .icon { flex:none; width:18px; height:18px; }
+.loading-rows { display:grid; gap:12px; }
+.loading-row { display:block; height:14px; width:100%; border-radius:4px; background:var(--border); animation:loading-pulse 1.8s ease-in-out infinite alternate; }
+.loading-row:last-child { width:64%; }
+.load-as-of { margin:8px 0; color:var(--color-smoke); font-size:12px; font-variant-numeric:tabular-nums; }
+.load-notice { margin:12px 0; min-width:0; }
+.load-notice>div { min-width:0; }
+.load-notice p { overflow-wrap:anywhere; }
+.load-notice .button { margin-top:4px; }
+.error.load-notice { display:flex; align-items:flex-start; gap:12px; }
+.error.load-notice>.icon { flex:none; width:20px; height:20px; }
+.load-progress { margin:8px 0; color:var(--color-smoke); }
+.metric-strip>.loading-state { grid-column:1 / -1; width:100%; }
+.telemetry-strip>.loading-state { flex-basis:100%; }
+.probe-status { display:flex; gap:8px 16px; flex-wrap:wrap; align-items:center; }
+.probe-status p { margin:0; }
+@keyframes loading-pulse { from { opacity:.45; } to { opacity:1; } }
+@media(prefers-reduced-motion:reduce) { .loading-row { animation:none; } }
+@media(max-width:700px) { .load-notice .button { min-height:44px; } }

@@ -3,6 +3,7 @@ import {state,can,pageSize} from '../state.js';
 import {el,button,field,heading,table,notice,empty,jsonView} from '../lib/html.js';
 import {confirmAction,stateBadge} from '../lib/confirm.js';
 import {repairHref} from '../lib/triage.js';
+import {loadingState,loadFailure,asOf} from '../lib/payload.js';
 export async function render(container) {
   const controller=new AbortController(), signal=controller.signal;
   const instances=state.instances.filter(item=>!state.instanceId||item.id===state.instanceId);
@@ -13,17 +14,19 @@ export async function render(container) {
   const search=button('Search',searchFleet);
   container.append(el('form',{class:'toolbar',onsubmit:event=>{event.preventDefault();searchFleet();}},field('Find workflows',input),search),el('p',{class:'muted'},'Results and page limits are per instance. An unavailable instance does not hide the rest of your fleet.'),sections);
   const entries=instances.map(instance=>{
-    const list=el('div'),detail=el('section',{class:'stack',hidden:true}),messages=el('div');
-    const entry={instance,list,detail,messages,cursor:null,loading:false};
+    const list=el('div'),detail=el('section',{class:'stack',hidden:true}),messages=el('div'),stamp=el('div');
+    messages.append(loadingState(`Waiting to load workflows on ${instance.name}…`));
+    const entry={instance,list,detail,messages,stamp,cursor:null,loading:false,loaded:false};
     entry.next=button('Next page',()=>load(entry,entry.cursor),'ghost');
     entry.next.setAttribute('aria-label',`Next workflow page on ${instance.name}`);
     entry.retry=button('Refresh instance',()=>load(entry),'ghost');
-    sections.append(el('section',{class:'card stack','aria-label':`Workflows on ${instance.name}`},el('h2',{},instance.name),messages,list,el('div',{class:'toolbar'},entry.retry,entry.next),detail));
+    sections.append(el('section',{class:'card stack','aria-label':`Workflows on ${instance.name}`},el('h2',{},instance.name),messages,stamp,list,el('div',{class:'toolbar'},entry.retry,entry.next),detail));
     return entry;
   });
   async function load(entry,after=null){
     if(signal.aborted||entry.loading)return;
-    entry.loading=true;entry.next.disabled=entry.retry.disabled=true;entry.messages.replaceChildren();
+    entry.loading=true;entry.next.disabled=entry.retry.disabled=true;
+    entry.messages.replaceChildren(entry.loaded?el('p',{class:'load-progress',role:'status'},`Refreshing workflows on ${entry.instance.name}…`):loadingState(`Loading workflows on ${entry.instance.name}…`));
     const {instance,list,detail}=entry;
     try {
       const params=new URLSearchParams({instance_id:instance.id,limit:String(pageSize())});
@@ -31,6 +34,7 @@ export async function render(container) {
       const result=await api('/api/n8n_proxy/workflows?'+params,{signal});
       if(signal.aborted)return;
       entry.cursor=result.next_cursor;
+      entry.messages.replaceChildren();entry.stamp.replaceChildren(asOf());entry.loaded=true;
       list.replaceChildren(result.data.length?table(['Workflow','Tags','Updated','State','Actions'],result.data.map(row=>{
         const id=encodeURIComponent(row.id),query='?instance_id='+encodeURIComponent(instance.id),name=row.name??row.id;
         const actions=el('div',{class:'toolbar'},button('Inspect',async()=>{
@@ -52,7 +56,7 @@ export async function render(container) {
         },'ghost');toggle.disabled=!can('operator');
         return [name,(row.tags??[]).map(tag=>tag.name).join(', ')||'—',row.updatedAt?new Date(row.updatedAt).toLocaleString():'—',el('div',{class:'state-cell'},badge,toggle),actions];
       })):empty('No matching workflows','Try another name or create a workflow in this instance.'));
-    } catch(error){if(!signal.aborted){entry.cursor=null;list.replaceChildren();notice(entry.messages,error);}}
+    } catch(error){if(!signal.aborted)entry.messages.replaceChildren(loadFailure(error,()=>load(entry,after),`Could not load workflows on ${instance.name}`));}
     finally{entry.loading=false;entry.next.disabled=searching||!entry.cursor;entry.retry.disabled=searching;}
   }
   async function searchFleet(){
@@ -64,5 +68,6 @@ export async function render(container) {
       while(index<entries.length&&!signal.aborted)await load(entries[index++]);
     }));}finally{searching=false;search.disabled=false;input.disabled=false;entries.forEach(entry=>{entry.next.disabled=!entry.cursor;entry.retry.disabled=false;});}
   }
-  await searchFleet();return()=>controller.abort();
+  // Return cleanup immediately so navigation can cancel even the first slow load.
+  searchFleet();return()=>controller.abort();
 }
