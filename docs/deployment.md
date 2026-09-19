@@ -82,3 +82,22 @@ docker run --rm --read-only --tmpfs /tmp:rw,nosuid,size=512m --cap-drop ALL --se
 ```
 
 The suite runs as UID 10001. Tests write only to temporary storage, use local/simulated external services, and do not receive a Docker socket or host data volume. This backend suite does not run the browser or live managed n8n/model/S3 compatibility checks. See [IMPLEMENTATION.md](../IMPLEMENTATION.md) for the actual result; a successful test-image build alone does not prove the tests pass.
+
+## Linux browser smoke suite
+
+Build the release image first, then derive a browser test image that installs Playwright, bundled Chromium, and system browser libraries without modifying locked dependencies.
+
+```text
+docker build --platform linux/amd64 -t inference:local .
+docker build --platform linux/amd64 -f tests/docker/Dockerfile.browser -t inference:browser .
+docker run --rm --shm-size=1g inference:browser
+```
+
+To run with hardened read-only root and dropped privileges:
+
+```text
+docker run --rm --read-only --tmpfs /tmp:rw,nosuid,size=512m --tmpfs /app/test-results:rw,uid=10001,gid=10001,size=64m --shm-size=1g --security-opt no-new-privileges:true inference:browser
+```
+
+The suite executes the complete frontend verification (`scripts/smoke_frontend.py`) using headless Chromium against an ephemeral in-container server process. It runs as UID 10001, creates an isolated temporary database, and does not mount or affect host ports, persistent volumes, or external services.
+
