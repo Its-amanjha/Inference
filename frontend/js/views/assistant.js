@@ -431,7 +431,7 @@ export async function render(container) {
           confirm.disabled = cancel.disabled = true;
           try {
             const result = await request(`/tools/${verb}`, {method: 'POST', json: {action_id: row.id}});
-            if (!signal.aborted) { row.status = result.status; if (result.result !== undefined) messages.append(jsonView(result.result)); }
+            if (!signal.aborted) { row.status = result.status; if (result.result !== undefined) messages.append(row.name === 'mcp_call' ? renderMcpResult(row, result.result) : jsonView(result.result)); }
           } finally { try { if (!signal.aborted) await refreshApprovals(); } finally { acting.delete(row.id); if (!signal.aborted) paintApprovals(); } }
         };
         const confirm = action('Confirm exact action', () => perform('confirm'), true);
