@@ -122,6 +122,12 @@
 .proposal-feedback .error,.proposal-feedback .notice { margin:0; padding:10px 12px; font-size:13px; }
 .proposal-card .raw-payload>pre { max-height:320px; }
 
+/* MCP tool results: one sentence, capped inline output, full payload behind a disclosure. */
+.mcp-result { display:flex; flex-direction:column; gap:8px; min-width:0; margin:12px 0; padding:12px 14px; border:1px solid var(--border); border-radius:12px; background:var(--surface-card-surface); }
+.mcp-result-head { margin:0; font-weight:600; color:var(--color-ink-black); overflow-wrap:anywhere; }
+.mcp-result-text { margin:0; max-height:240px; overflow:auto; padding:10px 12px; border-radius:8px; background:var(--color-ash-mist); white-space:pre-wrap; overflow-wrap:anywhere; font-size:13px; line-height:1.55; }
+.mcp-result>.muted { margin:0; }
+
 /* Rail: compact repair status with a way back to the card. */
 .assistant-approval-panel .stack:has(> .repair-rail-item) { gap:12px; }
 .repair-rail-item { display:flex; flex-direction:column; gap:6px; padding-top:12px; border-top:1px solid var(--border); font-size:12px; min-width:0; }
