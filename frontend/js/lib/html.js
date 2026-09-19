@@ -62,5 +62,30 @@ export function notice(container, error) {
 export function heading(title, description = '') { const route=location.hash.slice(1).split('?')[0]||'dashboard';return el('header',{class:'page-heading'},el('div',{class:'heading-title'},el('span',{class:'heading-icon'},icon(route)),el('h1',{},title)),description ? el('p',{},description) : null); }
 export function empty(title, body = '') { return el('section',{class:'card empty'},el('h2',{},title),el('p',{},body)); }
 // options.numeric lists zero-based column indexes that hold numbers (right-aligned, tabular numerals).
-export function table(headers, rows, options = {}) { const numeric=new Set(options?.numeric||[]),align=index=>numeric.has(index)?'num':undefined; return el('div',{class:'table-wrap',tabindex:0,role:'region','aria-label':headers.filter(Boolean).join(', ')+' table'},el('table',{},el('thead',{},el('tr',{},headers.map((text,index)=>el('th',{scope:'col',class:align(index)},text)))),el('tbody',{},rows.map(row=>el('tr',{},row.map((cell,index)=>el('td',{class:align(index)},cell))))))); }
+// options.stack controls phone row-stacking (defaults to true; false preserves standard horizontal scroll).
+export function table(headers, rows, options = {}) {
+  const numeric = new Set(options?.numeric || []);
+  const stack = options?.stack !== false;
+  const align = index => numeric.has(index) ? 'num' : undefined;
+  const resolveLabel = index => {
+    const raw = headers[index];
+    if (typeof raw === 'string' && raw.trim()) return raw.trim();
+    if (index === headers.length - 1) return 'Actions';
+    return '';
+  };
+  return el('div', {
+    class: ['table-wrap', stack ? 'table-wrap-stack' : 'table-scroll'].filter(Boolean).join(' '),
+    tabindex: 0,
+    role: 'region',
+    'aria-label': headers.filter(Boolean).join(', ') + ' table'
+  }, el('table', stack ? {class: 'table-stack', 'data-stack': 'true'} : {class: 'table-scroll', 'data-stack': 'false'},
+    el('thead', {}, el('tr', {}, headers.map((text, index) => el('th', {scope: 'col', class: align(index)}, text)))),
+    el('tbody', {}, rows.map(row => el('tr', {}, row.map((cell, index) => {
+      const label = resolveLabel(index);
+      const attrs = {class: align(index)};
+      if (stack && label) attrs['data-label'] = label;
+      return el('td', attrs, cell);
+    }))))
+  ));
+}
 export function jsonView(value) { return el('pre',{},JSON.stringify(value,null,2)); }
