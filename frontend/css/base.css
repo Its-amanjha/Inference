@@ -34,12 +34,12 @@ h1,h2,.editorial-title { font-family: var(--font-display); font-weight: 600; col
 h1 { font-size: var(--text-display); } h2 { font-size: var(--text-heading); } h3 { font-size: var(--text-heading-sm); font-weight:600; color:var(--color-ink-black); margin:0 0 12px; }
 p { margin: 0 0 16px; } a { color: var(--selection-text); text-underline-offset: 3px; } button,input,select,textarea { font: inherit; } button,a,input,select,textarea,summary { -webkit-tap-highlight-color: transparent; }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; } [hidden] { display: none !important; }
-button:disabled { opacity:.5; cursor: not-allowed; }
+button:disabled { cursor:not-allowed; background:var(--color-ash-mist); color:var(--color-smoke); border:1px solid var(--border); opacity:1; }
 /* Form control appearance lives in forms.css. */
 code,pre,.mono { font-family:var(--font-mono); font-size:13px; } pre { white-space:pre-wrap; overflow-wrap:anywhere; max-height:460px; overflow:auto; margin:12px 0; padding:18px; border-radius:12px; background:var(--color-ash-mist); }
 hr { border:0; border-top:1px solid var(--border); margin:24px 0; } .muted { color:var(--color-smoke); font-size:14px; } .sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
 .skip-link { position:fixed; left:16px; top:-100px; z-index:1000; padding:12px; background:var(--color-paper-white); } .skip-link:focus { top:16px; }
-@media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important; transition:none!important; scroll-behavior:auto!important; } }
+@media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation-duration:0.01ms!important; animation-iteration-count:1!important; transition-duration:0.01ms!important; scroll-behavior:auto!important; } }
 
 :root { --color-voltage-violet:#0050ff; --color-sky-wash:#c5e0fb; --color-pencil-gray:#8c9baa; --color-carbon:#222222; --color-ink:#000000; --color-paper:#ffffff; --action-fill:#222222; --action-text:#ffffff; --selection-fill:#e9f3ff; --selection-text:#0050c7; }
 [data-theme=dark] { --action-fill:#f0f3f7; --action-text:#18191b; --selection-fill:#18324e; --selection-text:#9bcaff; }
