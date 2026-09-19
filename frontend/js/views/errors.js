@@ -1,6 +1,6 @@
 import {api} from '../api.js';
 import {state,can,pageSize} from '../state.js';
-import {el,button,field,heading,notice,empty} from '../lib/html.js';
+import {el,button,field,heading,table,notice,empty} from '../lib/html.js';
 import {severityOf,severityPill,relativeTime,instanceName,explainHref,repairHref,TRIAGE_FILTERS} from '../lib/triage.js';
 
 const COLUMNS=[['Severity'],['When'],['Workflow / node'],['Instance'],['Count','triage-num'],['Execution'],['Actions','triage-actions-head']];
@@ -42,29 +42,40 @@ export async function render(container){
     const shown=visibleRows();
     if(!rows.length){content.replaceChildren(empty('Nothing to triage',loadedStatus==='open'?'No open errors for this instance selection. An empty list does not prove every execution succeeded; telemetry coverage may be incomplete.':'No resolved errors for this instance selection. Errors marked resolved from the Open list appear here.',loadedStatus==='resolved'?[button('Check again',()=>load(),'ghost'),button('Back to Open',()=>{status.value='open';load();},'ghost')]:[button('Check again',()=>load(),'ghost')]));return;}
     if(!shown.length){content.replaceChildren(empty('No loaded errors of this type',cursor?'Choose All, or load older errors to look further back.':'Choose All to see the other loaded errors.',[button('Show all types',()=>setFilter('all'),'ghost')]));return;}
-    content.replaceChildren(el('div',{class:'table-wrap triage-table-wrap',tabindex:0,role:'region','aria-label':'Errors table'},
-      el('table',{class:'triage-table'},el('thead',{},el('tr',{},COLUMNS.map(([name,className])=>el('th',{scope:'col',class:className},name)))),el('tbody',{},shown.map(renderRow)))));
+    content.replaceChildren(table(
+      ['Severity','When','Workflow / node','Instance','Count','Execution','Actions'],
+      shown.map(renderRowCells),
+      {
+        className:'triage-table',
+        wrapClass:'triage-table-wrap',
+        ariaLabel:'Errors table',
+        numeric:[4],
+        sortable:{0:'text',1:'date',2:'text',3:'text',4:'number',5:'text'},
+        initialSort:{column:1,direction:'desc'}
+      }
+    ));
   }
-  function renderRow(row){
+  function renderRowCells(row){
     const workflow=row.workflow_name||'Workflow name unavailable',node=row.node_name||'Workflow',name=`${workflow} · ${node}`;
     const cell=(label,className,...children)=>el('td',{class:className,'data-label':label},children);
-    const tr=el('tr',{}),actions=el('div',{class:'triage-action-group'},el('a',{class:'button ghost',href:explainHref(row)},'Explain with AI'));
+    const actions=el('div',{class:'triage-action-group'},el('a',{class:'button ghost',href:explainHref(row)},'Explain with AI'));
     // Repair pins this error's workflow as the AI target; applying any change still needs an operator's approval.
     if(can('operator'))actions.append(el('a',{class:'button ghost',href:repairHref(row)},'Repair with AI'));
     if(loadedStatus==='open'&&can('operator')){
-      const resolve=button('Mark resolved',()=>resolveRow(row,tr,resolve,name),'button ghost');
+      const resolve=button('Mark resolved',()=>resolveRow(row,resolve,name),'button ghost');
       resolve.dataset.action='resolve';actions.append(resolve);
     }
-    tr.append(cell('Severity','triage-severity',severityPill(row.error_type)),
-      cell('When','triage-when',relativeTime(row.occurred_at)),
-      cell('Workflow / node','triage-subject',el('div',{class:'triage-subject-body'},el('div',{class:'triage-title'},el('strong',{},workflow),el('span',{class:'triage-node'},node)),message(row.error_message))),
-      cell('Instance','triage-instance',instanceName(row.instance_id)),
-      cell('Count','triage-num',row.count===null||row.count===undefined?el('span',{class:'triage-missing'},'Unavailable'):String(row.count)),
-      cell('Execution','triage-execution',row.execution_id?String(row.execution_id):el('span',{class:'triage-missing'},'Unavailable')),
-      cell('Actions','triage-actions',actions));
-    return tr;
+    return [
+      {sortValue:severityOf(row.error_type).label,content:cell('Severity','triage-severity',severityPill(row.error_type))},
+      {sortValue:row.occurred_at?new Date(row.occurred_at).getTime():0,content:cell('When','triage-when',relativeTime(row.occurred_at))},
+      {sortValue:`${workflow} · ${node}`,content:cell('Workflow / node','triage-subject',el('div',{class:'triage-subject-body'},el('div',{class:'triage-title'},el('strong',{},workflow),el('span',{class:'triage-node'},node)),message(row.error_message)))},
+      {sortValue:instanceName(row.instance_id),content:cell('Instance','triage-instance',instanceName(row.instance_id))},
+      {sortValue:row.count??0,content:cell('Count','triage-num',row.count===null||row.count===undefined?el('span',{class:'triage-missing'},'Unavailable'):String(row.count))},
+      {sortValue:row.execution_id?String(row.execution_id):'',content:cell('Execution','triage-execution',row.execution_id?String(row.execution_id):el('span',{class:'triage-missing'},'Unavailable'))},
+      cell('Actions','triage-actions',actions)
+    ];
   }
-  async function resolveRow(row,tr,control,name){
+  async function resolveRow(row,control,name){
     control.disabled=true;feedback.replaceChildren();announcer.textContent='';
     try{await api(`/api/errors/${encodeURIComponent(row.id)}/resolve`,{method:'POST'});}
     catch(error){
@@ -76,10 +87,7 @@ export async function render(container){
     if(signal.aborted)return;
     // Remove only this row; the rest of the loaded page, filters and cursor stay as they are.
     rows=rows.filter(item=>item!==row);
-    const siblings=tr.isConnected?[...tr.parentElement.children]:[],position=siblings.indexOf(tr);
-    const target=position<0?null:siblings[position+1]||siblings[position-1]||null;
-    if(target){tr.remove();updateCount();(target.querySelector('[data-action=resolve]')||target.querySelector('a,button'))?.focus();}
-    else{draw();(content.querySelector('.triage-table-wrap')||content).focus();}
+    draw();
     announcer.textContent=`${name} marked resolved.`;
   }
   async function load(before=null){

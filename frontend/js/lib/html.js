@@ -129,8 +129,12 @@ export function table(headers, rows, options = {}) {
       const label = resolveLabel(index);
       const attrs = {class: align(index)};
       if (stack && label) attrs['data-label'] = label;
-      const content = cell && typeof cell === 'object' && 'content' in cell ? cell.content : cell;
-      return el('td', attrs, ...(Array.isArray(content) ? content : [content]));
+      const target = cell && typeof cell === 'object' && 'content' in cell ? cell.content : cell;
+      if (target instanceof HTMLTableCellElement || (target && target.tagName === 'TD')) {
+        if (stack && label && !target.hasAttribute('data-label')) target.setAttribute('data-label', label);
+        return target;
+      }
+      return el('td', attrs, ...(Array.isArray(target) ? target : [target]));
     }));
     return { row, tr, origIndex };
   });
