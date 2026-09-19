@@ -8,7 +8,7 @@ export async function render(container) {
   const controller=new AbortController(), signal=controller.signal;
   const instances=state.instances.filter(item=>!state.instanceId||item.id===state.instanceId);
   container.append(heading('Workflows','Search your fleet. Every action stays tied to the instance shown on its section.'));
-  if(!instances.length){container.append(empty('Connect an instance','Add an n8n instance to browse its workflows.',[el('a',{class:'button ghost',href:'#instances'},'Open instances')]));return()=>controller.abort();}
+  if(!instances.length){container.append(empty('Connect an instance','Add an n8n instance to browse its workflows.'));return()=>controller.abort();}
   const input=el('input',{type:'search',placeholder:'Workflow name',maxLength:120}),sections=el('div',{class:'stack'});
   let searching=false, term='';
   const search=button('Search',searchFleet);
@@ -55,7 +55,7 @@ export async function render(container) {
           finally{toggle.disabled=!can('operator');}
         },'ghost');toggle.disabled=!can('operator');
         return [name,(row.tags??[]).map(tag=>tag.name).join(', ')||'—',row.updatedAt?new Date(row.updatedAt).toLocaleString():'—',el('div',{class:'state-cell'},badge,toggle),actions];
-      })):empty('No matching workflows','Try another name or create a workflow in this instance.',[button('Clear search',()=>searchFleet(),'ghost')]));
+      })):empty('No matching workflows','Try another name or create a workflow in this instance.'));
     } catch(error){if(!signal.aborted)entry.messages.replaceChildren(loadFailure(error,()=>load(entry,after),`Could not load workflows on ${instance.name}`));}
     finally{entry.loading=false;entry.next.disabled=searching||!entry.cursor;entry.retry.disabled=searching;}
   }

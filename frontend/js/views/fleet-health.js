@@ -24,7 +24,7 @@ export async function render(container) {
       el('h2',{},instance.name),feedback,body));
     return {instance,body,feedback};
   });
-  if(!entries.length){content.append(empty('Connect your first instance','Add an n8n instance to check fleet health.',[el('a',{class:'button ghost',href:'#instances'},'Open instances')]));refresh.disabled=true;}
+  if(!entries.length){content.append(empty('Connect your first instance','Add an n8n instance to check fleet health.'));refresh.disabled=true;}
   function start(selected=entries){
     if(round||controller.signal.aborted||!selected.length)return;
     const current=new AbortController();round=current;refresh.textContent='Cancel';

@@ -29,7 +29,7 @@ export async function render(container) {
   const scoped=instance?state.instances.filter(row=>row.id===instance):state.instances;
   function renderFleet(metrics) {
     fleet.replaceChildren();
-    if(!scoped.length){fleet.append(empty('Connect your first instance','Connect your automation environment to see workflows and execution history.',[el('a',{class:'button ghost',href:'#instances'},icon('add'),'Open instances')]));return;}
+    if(!scoped.length){fleet.append(empty('Connect your first instance','Connect your automation environment to see workflows and execution history.'),el('a',{class:'button ghost',href:'#instances'},icon('add'),'Open instances'));return;}
     for(const row of scoped){
       const evidence=metrics?.data?.find(item=>item.instance_id===row.id||item.id===row.id);
       const complete=evidence?.workflows_complete&&evidence?.executions_complete;
@@ -93,7 +93,7 @@ export async function render(container) {
       }
       if(results[3].status==='fulfilled'){
         const rows=results[3].value.data;
-        if(!rows.length){const blank=empty('No open findings',scoped.length?'No recorded errors match this instance selection. Telemetry coverage may be incomplete.':'Connect an instance and configure telemetry to start investigating execution anomalies.',[el('a',{class:'button ghost',href:scoped.length?'#errors':'#instances'},scoped.length?'Open errors':'Open instances')]);blank.prepend(icon('observe'));findings.append(blank);}
+        if(!rows.length){const blank=empty('No open findings',scoped.length?'No recorded errors match this instance selection. Telemetry coverage may be incomplete.':'Connect an instance and configure telemetry to start investigating execution anomalies.');blank.prepend(icon('observe'));findings.append(blank);}
         for(const row of rows){
           const occurrences=row.count===null||row.count===undefined?'Occurrences unavailable':`${row.count} occurrence(s)`;
           // Time and execution are shown only when the record carries them.
@@ -103,11 +103,11 @@ export async function render(container) {
         }
         if(rows.length)findings.append(el('p',{class:'muted'},'Latest open findings. Review all errors for earlier records.'));
       }
-      if(results[1].status==='fulfilled'&&!results[1].value)feed.append(state.instances.length?empty('Choose an instance','Pick an instance in the switcher at the top of the page to see its recent executions.',[el('a',{class:'button ghost',href:'#instances'},'Open instances')]):empty('No instances connected',can('admin')?'Connect an n8n instance in Instances, then pick it in the switcher at the top of the page to see its recent executions.':'An administrator needs to connect an n8n instance before recent executions can appear.',can('admin')?[el('a',{class:'button ghost',href:'#instances'},'Open instances')]:[]));
+      if(results[1].status==='fulfilled'&&!results[1].value)feed.append(state.instances.length?empty('Choose an instance','Pick an instance in the switcher at the top of the page to see its recent executions.'):empty('No instances connected',can('admin')?'Connect an n8n instance in Instances, then pick it in the switcher at the top of the page to see its recent executions.':'An administrator needs to connect an n8n instance before recent executions can appear.'));
       else if(results[1].status==='fulfilled'){
         const rows=results[1].value.data;
         const badge=status=>el('span',{class:`badge ${['success','completed'].includes(status)?'success':['error','crashed'].includes(status)?'error':['running','waiting'].includes(status)?'info':''}`},status||'Unknown');
-        feed.append(rows.length?table(['Execution','Workflow','Status','Started'],rows.map(row=>[String(row.id),row.workflowId??'—',badge(row.status),row.startedAt?new Date(row.startedAt).toLocaleString():'—'])):empty('No recent executions','No execution records were returned by this instance.',[button('Refresh executions',()=>refresh(),'ghost')]),el('p',{class:'muted feed-caption'},`Latest ${pageSize()} executions from the selected instance. Refreshes every 30 seconds.`));
+        feed.append(rows.length?table(['Execution','Workflow','Status','Started'],rows.map(row=>[String(row.id),row.workflowId??'—',badge(row.status),row.startedAt?new Date(row.startedAt).toLocaleString():'—'])):empty('No recent executions','No execution records were returned by this instance.'),el('p',{class:'muted feed-caption'},`Latest ${pageSize()} executions from the selected instance. Refreshes every 30 seconds.`));
       }
     }finally{busy=false;refreshButton.disabled=false;}
   }

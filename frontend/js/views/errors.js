@@ -40,8 +40,8 @@ export async function render(container){
   function draw(){
     updateCount();
     const shown=visibleRows();
-    if(!rows.length){content.replaceChildren(empty('Nothing to triage',loadedStatus==='open'?'No open errors for this instance selection. An empty list does not prove every execution succeeded; telemetry coverage may be incomplete.':'No resolved errors for this instance selection. Errors marked resolved from the Open list appear here.',loadedStatus==='resolved'?[button('Refresh',()=>load(),'ghost'),button('Back to Open',()=>{status.value='open';load();},'ghost')]:[button('Refresh',()=>load(),'ghost')]));return;}
-    if(!shown.length){content.replaceChildren(empty('No loaded errors of this type',cursor?'Choose All, or load older errors to look further back.':'Choose All to see the other loaded errors.',[button('Show all types',()=>setFilter('all'),'ghost')]));return;}
+    if(!rows.length){content.replaceChildren(empty('Nothing to triage',loadedStatus==='open'?'No open errors for this instance selection. An empty list does not prove every execution succeeded; telemetry coverage may be incomplete.':'No resolved errors for this instance selection. Errors marked resolved from the Open list appear here.'));return;}
+    if(!shown.length){content.replaceChildren(empty('No loaded errors of this type',cursor?'Choose All, or load older errors to look further back.':'Choose All to see the other loaded errors.'));return;}
     content.replaceChildren(el('div',{class:'table-wrap triage-table-wrap',tabindex:0,role:'region','aria-label':'Errors table'},
       el('table',{class:'triage-table'},el('thead',{},el('tr',{},COLUMNS.map(([name,className])=>el('th',{scope:'col',class:className},name)))),el('tbody',{},shown.map(renderRow)))));
   }
