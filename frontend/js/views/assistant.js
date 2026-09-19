@@ -5,7 +5,7 @@ import {el, field, formCard, heading, jsonView, notice} from '../lib/html.js';
 import {icon,actionIcon} from '../lib/icons.js';
 import {rawDisclosure, instanceName, toneBadge, formatTime} from '../lib/payload.js';
 import {confirmAction} from '../lib/confirm.js';
-import {parseRepairTarget, repairHash, repairContext, contextQuery, describeTarget, listWorkflows, targetChip} from '../lib/repair-target.js';
+import {parseRepairTarget, repairHash, repairContext, contextQuery, describeTarget, listWorkflows, targetChip, createIdPicker} from '../lib/repair-target.js';
 import {isRepairAction, proposalShell, renderProposal, effectiveStatus, statusBadge, statusForError, preconditionsOf, preconditionKey,
   turnSteps, contextSent, contextOverview, RATE_LIMITED_TEXT, INCOMPLETE_TEXT} from '../lib/proposals.js';
 
@@ -484,6 +484,7 @@ export async function render(container) {
       const result = await request('/chat', {method: 'POST', json: body});
       if (signal.aborted) return false;
       chatId = result?.id || result?.chat_id || chatId;
+      rememberChat(chatId, message || lastMessage);
       resumeId.value = chatId || '';
       if (!continueTurn) lastMessage = message;
       if (input.value === message) input.value = '';
@@ -506,6 +507,32 @@ export async function render(container) {
   listen(provider, 'change', () => { chatId = null; resumeId.value=''; showWelcome(); paintToolSupport(); });
   const newChat = action('New conversation', () => { if (busy) return; chatId = null; input.value = ''; resumeId.value = ''; showWelcome(); });
   const resumeId = el('input', {type: 'text', maxLength: 64, placeholder: 'Conversation ID', 'aria-label': 'Conversation ID'});
+  // Recently opened conversations in this browser (ids only; transcripts stay server side).
+  // There is no list endpoint, so this covers what this browser has seen; pasting an ID still works.
+  const recentKey = `inference:recent-chats:${state.user?.username || 'anonymous'}`;
+  function readRecents() {
+    try {
+      const rows = JSON.parse(localStorage.getItem(recentKey) ?? '[]');
+      if (!Array.isArray(rows)) throw new Error('unreadable');
+      return rows.filter(row => row && typeof row.id === 'string');
+    } catch { return null; }
+  }
+  function rememberChat(id, title) {
+    if (!id) return;
+    const rows = readRecents() || [];
+    try { localStorage.setItem(recentKey, JSON.stringify([{id, title: String(title || id).slice(0, 120), ts: Date.now()}, ...rows.filter(row => row.id !== id)].slice(0, 20))); } catch {}
+    recentPicker.reload();
+  }
+  const recentPicker = createIdPicker({label: 'Saved conversations', placeholder: 'Filter saved conversations',
+    hint: 'Recently opened in this browser. Paste an ID below for anything else.',
+    load: async () => {
+      const rows = readRecents();
+      if (rows === null) throw new Error('Saved conversations could not be read from this browser.');
+      return rows.map(row => ({id: row.id, name: row.title || row.id, detail: Number.isFinite(row.ts) ? new Date(row.ts).toLocaleString() : ''}));
+    },
+    emptyText: 'No saved conversations in this browser yet. Paste an ID below to open one.',
+    clearLabel: 'Clear selection',
+    onPick: id => { if (id) openConversation(id).catch(error => { if (!signal.aborted) notice(messages, error); }); }, signal});
   const openConversation = async id => {
     const result = await request(`/chats/${encodeURIComponent(id)}`);
     if (signal.aborted) return;
@@ -518,6 +545,7 @@ export async function render(container) {
       if (signal.aborted) return;
     }
     lastMessage = turnMessage;
+    rememberChat(chatId, turnMessage);
     await refreshApprovals();
   };
   const resume = action('Open conversation', async () => {
@@ -543,7 +571,7 @@ export async function render(container) {
     repairBar,transcript,messages,form);
   const rail=el('aside',{className:'assistant-rail','aria-label':'Actions and conversation tools'},
     el('section',{className:'assistant-approval-panel'},el('div',{className:'assistant-rail-heading'},el('h2',{},'Action review'),action('Refresh proposals',refreshApprovals)),approvals),
-    el('details',{className:'assistant-disclosure'},el('summary',{},'Open a saved conversation'),el('div',{className:'stack'},field('Conversation ID',resumeId),resume)),
+    el('details',{className:'assistant-disclosure'},el('summary',{},'Open a saved conversation'),el('div',{className:'stack'},recentPicker.node,field('Conversation ID',resumeId),resume)),
     el('details',{className:'assistant-disclosure'},el('summary',{},'Context and privacy'),el('div',{},
       el('p',{},`Workspace selection: ${scopeName}.`),
       el('p',{},state.instanceId?`For instance-specific requests, include this ID: ${state.instanceId}`:'Include the instance ID when asking about a specific workflow or execution.'),
