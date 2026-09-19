@@ -8,6 +8,8 @@
 .decision-headline { margin:0; max-width:75ch; font-size:16px; font-weight:500; line-height:1.5; color:var(--color-ink-black); overflow-wrap:anywhere; }
 
 .decision-section { display:flex; flex-direction:column; gap:10px; padding-top:16px; border-top:1px solid var(--border); min-width:0; }
+/* Wizard steps share one heading level and size with the settings-card headings. */
+.wizard-step { font-size:16px; line-height:24px; margin:0; letter-spacing:-.01em; }
 .decision-section>p { margin:0; }
 .decision-section-title { display:flex; align-items:center; gap:8px; margin:0; font-size:15px; letter-spacing:0; }
 .decision-section-title .icon { width:16px; height:16px; flex:none; }
