@@ -66,7 +66,7 @@ export async function render(container){
     else{primary.push(reconcile('button'));more.push(lifecycle('start','ghost'),lifecycle('stop','ghost'));}
     const actions=el('div',{class:'toolbar'},primary,inspect,actionMenu([...more,remove,purge]));
     list.append(el('section',{class:'card stack'},el('div',{class:'title-row'},el('h2',{},name),bundleBadge(item.status)),item.version?el('p',{class:'muted'},'n8n '+item.version):null,actions,detail));}
-    if(!result.data.length)list.append(empty('No owned bundles','Provision a matching n8n and task runner pair. Existing host containers remain outside this inventory.'));}
+    if(!result.data.length)list.append(empty('No owned bundles','Provision a matching n8n and task runner pair. Existing host containers remain outside this inventory.',[button('Provision your first bundle',provision)]));}
   function provision(){
     const specs=[['name','Bundle name','text','','Used for the container and volume names.'],
       ['version','Exact n8n / runner version','text','','Both images use this tag, for example 2.19.0.'],
