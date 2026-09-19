@@ -30,7 +30,7 @@ export async function render(container){
     revision=result.revision;loadedPath=result.path;path.readOnly=true;renderMarkdown(preview,result.content);notice(messages,'Note saved.');await load();
   });
   const deleteNote=()=>act(async()=>{
-    if(!loadedPath||!revision)return;
+    if(!loadedPath||!revision){notice(messages,'Open a note before deleting it.');return;}
     const notePath=loadedPath,noteRevision=revision;
     if(!await confirmAction({title:'Delete note',target:notePath,consequence:'The Markdown file is permanently deleted from the notes folder.',confirmLabel:'Delete note',danger:true}))return;
     if(loadedPath!==notePath||revision!==noteRevision)throw new Error('The open note changed. Review it before deleting.');

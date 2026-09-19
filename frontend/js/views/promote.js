@@ -181,6 +181,7 @@ export async function render(container){
       el('p',{className:'muted'},'Preview expires after 15 minutes. Source and target are checked again before deployment.'),deploy);
   }
   const preflight=button('Review preflight',async()=>{preflight.disabled=true;messages.replaceChildren();const current=++version;preview=null;previewContext=null;deploy.disabled=true;try{
+    if(!source.value||!target.value){notice(messages,new Error('Choose a source and a target instance before running preflight.'));return;}
     const context=describeSelection();
     const result=await api('/api/n8n_promote/preflight',{method:'POST',json:{source_instance_id:source.value,target_instance_id:target.value,workflow_id:workflowId.value.trim()||workflow.value,credential_map:mapping(credential),secret_map:mapping(secrets),subworkflow_map:mapping(subflows)}});
     if(current!==version)return;preview=result;previewContext=context;key=crypto.randomUUID();renderPreview(result,context);deploy.disabled=!result.can_deploy;
