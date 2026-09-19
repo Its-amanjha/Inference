@@ -47,7 +47,7 @@ export async function render(container) {
   async function load(){
     const current=++generation;checks?.abort();checks=new AbortController();const checkSignal=checks.signal;
     const result=await api('/api/n8n_proxy/instances',{signal});if(signal.aborted||current!==generation)return;list.replaceChildren();
-    if(!result.data.length)list.append(empty('No connections yet','Add your first n8n instance to explore workflows and executions.'));
+    if(!result.data.length)list.append(empty('No connections yet','Add your first n8n instance to explore workflows and executions.',can('admin')?[button('Add connection',()=>edit())]:[]));
     const pending=[];
     for(const item of result.data){const detail=el('div'),feedback=el('div'),health=el('div',{class:'probe-status'}),actions=el('div',{class:'toolbar'});
       const cached=cachedProbe(item);let checking=false;

@@ -38,7 +38,7 @@ export async function render(container){
     try{const params=new URLSearchParams({limit:String(pageSize())});if(instance)params.set('instance_id',instance);if(before)params.set('before',before);const result=await api('/api/otel/traces?'+params,{signal:controller.signal});
       if(controller.signal.aborted)return;
       cursor=result.next_cursor;loaded=true;messages.replaceChildren();stamp.replaceChildren(asOf());
-      list.replaceChildren(result.data.length?table(['Trace','Instance','Spans','Error spans',''],result.data.map(row=>[row.trace_id,state.instances.find(item=>item.id===row.instance_id)?.name??row.instance_id,String(row.span_count),String(row.error_spans),button('View waterfall',()=>inspect(row),'button ghost')]),{numeric:[2,3]}):empty('Waiting for telemetry','Create an exporter token in Instances and connect your n8n telemetry exporter.'));
+      list.replaceChildren(result.data.length?table(['Trace','Instance','Spans','Error spans',''],result.data.map(row=>[row.trace_id,state.instances.find(item=>item.id===row.instance_id)?.name??row.instance_id,String(row.span_count),String(row.error_spans),button('View waterfall',()=>inspect(row),'button ghost')]),{numeric:[2,3]}):empty('Waiting for telemetry','Create an exporter token in Instances and connect your n8n telemetry exporter.',[el('a',{class:'button ghost',href:'#instances'},'Open instances')]));
     }catch(error){if(!controller.signal.aborted)messages.replaceChildren(loadFailure(error,()=>load(before),`Could not load traces for ${scope}`));}
     finally{busy=false;next.disabled=!cursor;refresh.disabled=false;}
   }
