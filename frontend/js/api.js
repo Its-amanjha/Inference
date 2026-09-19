@@ -26,8 +26,8 @@ export async function apiFetch(input, options = {}) {
   if (local && response.status === 401 && !base.url.endsWith('/api/auth/login')) window.dispatchEvent(new Event('session-expired'));
   return response;
 }
-// Compatibility with native callers; credentials are injected only on our origin.
-window.fetch = apiFetch;
+// Callers must import apiFetch/api explicitly; this module never replaces window.fetch,
+// so third-party or later code cannot silently inherit credential and CSRF handling.
 export async function api(path, options = {}) {
   const response = await apiFetch(path, options);
   let body; try { body = await response.json(); } catch { body = null; }

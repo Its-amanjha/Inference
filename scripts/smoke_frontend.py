@@ -19,6 +19,50 @@ from frontend_theme_checks import choose_theme
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _launch_browser(pw):
+    """Launch Playwright Chromium with configurable channel and flags.
+
+    Default MUST remain channel='msedge' for Windows reviewer parity.
+    Overrides:
+      CLI flag: --browser <name> or --browser=<name>
+      Env var:  INFERENCE_SMOKE_BROWSER=<name>
+    Special values:
+      'chromium', 'bundled' -> launches bundled Chromium (no channel).
+    """
+    choice = None
+    for i, arg in enumerate(sys.argv[:-1]):
+        if arg == '--browser':
+            choice = sys.argv[i + 1].strip()
+            break
+    if choice is None:
+        for arg in sys.argv:
+            if arg.startswith('--browser='):
+                choice = arg.split('=', 1)[1].strip()
+                break
+    if choice is None:
+        choice = os.environ.get('INFERENCE_SMOKE_BROWSER', '').strip() or None
+
+    if choice is None:
+        choice = 'msedge'
+
+    kwargs = {'headless': True}
+    args = []
+    if sys.platform.startswith('linux'):
+        args.extend(['--no-sandbox', '--disable-dev-shm-usage', '--disable-setuid-sandbox'])
+
+    extra_args = os.environ.get('INFERENCE_SMOKE_BROWSER_ARGS', '').strip()
+    if extra_args:
+        args.extend(extra_args.split())
+
+    if args:
+        kwargs['args'] = args
+
+    if choice.lower() not in ('chromium', 'bundled', 'none', ''):
+        kwargs['channel'] = choice
+
+    return pw.chromium.launch(**kwargs)
+
+
 def main() -> None:
     with socket.socket() as sock:
         sock.bind(('127.0.0.1', 0))
@@ -46,7 +90,7 @@ def main() -> None:
                     else:
                         raise RuntimeError('Local server did not start')
                 with sync_playwright() as pw:
-                    browser = pw.chromium.launch(channel='msedge', headless=True)
+                    browser = _launch_browser(pw)
                     page = browser.new_page(viewport={'width': 1440, 'height': 1000})
                     page.add_init_script("window.WebSocket = class extends WebSocket { constructor(...args) { super(...args); window.smokeSocket = this; } }")
                     errors = []
