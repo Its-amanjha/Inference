@@ -63,6 +63,19 @@ While not a defect in code, the following operational requirement must be observ
    - **Impact:** In standard assistant chat (`GET /api/assistant/chats/{id}`), SQLite documents persist the user messages and final assistant answers, but intermediate tool calls (such as `get_skill` lookups or `list_workflows` inspections) are held in memory during the turn and not recorded in persistent chat history.
    - **Priority:** Low (Intentional privacy/storage design choice, but worth noting for audit continuity).
 
+7. **Promotion Credential Name Discrepancy on Target Readback Verification**
+   - **Evidence:** `backend/modules/n8n_promote/transform.py:114` vs `backend/modules/n8n_promote/router.py:335-336`
+   - **Impact:** In the promotion pipeline, `transform.prepare` remaps the target credential ID (`binding["id"] = target_id`), while leaving `binding["name"]` as the source credential display name. When n8n saves the workflow on the target instance, it sets `binding["name"]` to the target credential's display name. If the target credential display name differs from the source credential display name (e.g. `"Header Auth Source"` vs `"Header Auth Target"`), readback verification in `router.py:335` fails with `fingerprint(writable(actual)) != fingerprint(state['desired'])`, recording `status='uncertain'`, `error_code='upstream_outcome_unknown'`. When credential display names match, promotion succeeds cleanly.
+   - **Workaround / Fix:** Ensure matching credential display names across instances, or update `transform.py:114` to update `binding["name"] = target_name` using target credential metadata.
+   - **Priority:** Medium.
+
+8. **Real-World n8n 2.x OpenTelemetry Span Correlation & Continuation Error Identification**
+   - **Evidence:** `backend/modules/observability/ingest.py:171`, `backend/modules/observability/router.py:248, 281`, `backend/modules/observability/classifier.py:31, 57`
+   - **Impact:** Two subtle discrepancies were identified when testing against real n8n 2.19.0:
+     a) *Span Correlation:* Real n8n 2.x OpenTelemetry exports attach `n8n.execution.id` exclusively to the root `workflow.execute` span. Child `node.execute` spans share `trace_id` and `parentSpanId` but omit `n8n.execution.id`. `router.py:281` queries `WHERE execution_id=?`, missing child node spans. `classifier.py:57` conservatively detects missing node telemetry and marks the execution as `incomplete_telemetry` without false-positive error alarms. To automatically correlate child node spans with executions, `router.py:281` should select spans by `trace_id` or `ingest.py` should propagate execution IDs down the trace tree.
+     b) *Continuation Error Shape:* When a node is configured with `continueOnFail: true` / `onError: continueRegularOutput`, modern n8n 2.x execution engine marks the node run item with `executionStatus: 'success'` and places the error payload in the node's output data (`data.main[0][0].json.error`), rather than top-level `error` or `taskData.continuation`. As a result, `execution_summary` in `router.py:248` records `executionStatus: 'success'`, `error: false`, and `classifier.py:31` (`_failed(run)`) does not detect the continuation error unless the node output payload is inspected.
+   - **Priority:** Medium.
+
 ---
 
 ## 4. Conformance Table
@@ -141,6 +154,15 @@ While not a defect in code, the following operational requirement must be observ
 11. **Live MinIO S3 Backup and Disaster Recovery**:
     - Command: `python scripts/smoke_s3_backup.py --confirm` against disposable MinIO container (`quay.io/minio/minio:RELEASE.2024-01-18T22-51-28Z`)
     - Result: 19/19 PASS (exit code 0). Complete round-trip verified: AWS SigV4 upload, S3 SigV4 download, offline restore into clean directory, database row validation, vault secret decryption, and restored application server boot. Five failure paths verified: unreachable endpoint (`partial`/`s3_upload_failed`/`unknown`), bad credentials 403 (`partial`/`s3_upload_failed`/`rejected`), nonexistent bucket 404 (`partial`/`s3_upload_failed`/`rejected`), corrupted archive bit flip (`ArchiveError`), and wrong restore passphrase (`ArchiveError`). Local archives preserved on all upload failures.
+12. **Live n8n Version Matrix & Cross-Instance Promotion Pipeline**:
+    - Command: `python scripts/smoke_live_matrix.py --confirm` against real, distinct n8n Docker containers
+    - Result: 13/13 PASS (exit code 0, 358.03 s). Real Source n8n 2.17.7 (`n8nio/n8n:latest`) -> Target n8n 2.19.0 (`docker.n8n.io/n8nio/n8n:2.19.0`) cross-instance promotion pipeline verified: container provisioning, owner setup and API key extraction, fleet proxy registration, workflow and credential seeding, preflight diff/mapping (`/preflight`), inactive target deployment with credential remapping (`/deploy`), explicit activation via proxy, idempotent deployment replay, stale preview rejection (`status='rejected'`, `error_code='stale_preview'`), and target outage handling (`status='rejected'`). Zero dangling containers.
+13. **Live OpenTelemetry Correlation & Silent Failure Classification**:
+    - Command: `python scripts/smoke_live_otlp.py --confirm` against real n8n 2.19.0 container
+    - Result: 14/14 PASS (exit code 0, 122.32 s). Real n8n 2.19.0 container exporting native OTLP protobuf traces to Inference: dedicated per-instance machine token generation, workflow deployment (healthy and continuation-failure), webhook execution triggers, span ingestion (7 spans received), 16 KiB attribute cap enforcement, 30s arrival grace window protection (zero premature error flags), conservative incomplete telemetry classification on un-correlated real n8n spans (`health_status='incomplete'`), verified continuation error detection on confirmed node errors (`health_status='error'`, `silent=1`), and healthy execution verification (`health_status='ok'`, zero false-positives). Zero dangling containers.
+14. **Live Model Context Protocol (MCP) Streamable HTTP Client & Bearer Auth**:
+    - Command: `python scripts/smoke_mcp_auth.py --confirm` against authenticated Streamable HTTP MCP server
+    - Result: 11/11 PASS (exit code 0, 7.02 s). MCP 2025-11-25 Streamable HTTP protocol verified with authenticated third-party MCP server: Bearer token authentication, MCP session ID negotiation (`Mcp-Session-Id`), tool discovery, 15-minute human approval gate enforcement (zero autonomous mutations), proposal creation, proposal approval execution, replay attack prevention (`action_consumed` 409), expired proposal rejection (`approval_unavailable` 409), and invalid token rejection (HTTP 502 `mcp_error`).
 
 ### Verified by Static Code Analysis and Reading
 
