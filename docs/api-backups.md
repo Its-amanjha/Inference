@@ -20,7 +20,7 @@ Stop Inference and choose an empty destination. From the project environment run
 .venv\Scripts\python.exe -m backend.modules.backups.restore backup.ibackup D:\inference-restored
 ```
 
-The command prompts for the export passphrase without echoing it. It does not accept a passphrase in command-line arguments. It authenticates the complete archive, rejects duplicate/colliding/traversal/device paths and nonregular entries, validates the vault key against its encrypted contents, checks SQLite integrity/references and validates the current application schema in private staging. Schema v5 archives from the previous export implementation and current v6 archives are accepted. Restore migrates a v5 snapshot in staging, validates it, then installs the migrated database; newer unsupported schemas are rejected.
+The command prompts for the export passphrase without echoing it. It does not accept a passphrase in command-line arguments. It authenticates the complete archive, rejects duplicate/colliding/traversal/device paths and nonregular entries, validates the vault key against its encrypted contents, checks SQLite integrity/references and validates the current application schema in private staging. Schema versions 5 through 7 are accepted. Restore migrates older snapshots in staging, validates them against the current schema version (v7), then installs the migrated database; newer unsupported schemas are rejected.
 
 Validation failures do not populate the destination. Existing files are never overwritten. Files are installed with private permissions and fsync; supported POSIX directory fsync is also attempted. Installation is not one filesystem transaction: an I/O failure or crash may leave a partial destination. Do not start the application in a partial restore. Windows permission guarantees depend on local ACLs, and concurrent directory replacement by a local administrator is outside the filesystem trust boundary.
 
@@ -30,7 +30,7 @@ After success, set `INFERENCE_DATA_DIR` to the destination and configure require
 
 Tests exercise an export/restore/application-start round trip with encrypted fleet credentials, vault values and notes; wrong passphrases, tampering, unsafe ZIP entries, corrupt/incompatible databases, nonempty destinations, role revocation, cancellation, concurrency, size limits and redacted validation errors.
 
-Schedules, persisted run history, local downloads/deletion and optional S3-compatible upload are implemented. The backup frontend, POSIX filesystem verification and live S3/deployment disaster-recovery checks remain. Fixtures include an accelerated background loop, real verified loopback S3-shaped PUT and the AWS published signing vector; they do not establish live provider compatibility.
+Schedules, persisted run history, local downloads/deletion and optional S3-compatible upload are implemented. The backup frontend is implemented in frontend/js/views/backups.js and POSIX filesystem verification passed in the locked Linux container (886 passed). Live S3 and real multi-instance disaster-recovery checks remain. Fixtures include an accelerated background loop, real verified loopback S3-shaped PUT and the AWS published signing vector; they do not establish live provider compatibility.
 
 
 ## Automatic backups and run history
