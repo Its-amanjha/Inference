@@ -58,7 +58,8 @@ def test_declarations_follow_roles():
     assert names('operator', scope='standard') == {'list_workflows', 'get_execution', 'list_errors', 'activate_workflow',
                                                    'deactivate_workflow', 'delete_execution', 'update_node', 'get_skill'}
     assert names('operator', scope='repair') == {'get_workflow_context', 'get_error_context', 'propose_workflow_patch',
-                                                 'propose_restore_workflow', 'activate_workflow', 'deactivate_workflow', 'get_skill'}
+                                                 'propose_restore_workflow', 'activate_workflow', 'deactivate_workflow', 'get_skill',
+                                                 'propose_create_workflow', 'propose_retry_execution'}
     assert names('viewer', scope='repair') == {'get_workflow_context', 'get_error_context', 'get_skill'}
 
 

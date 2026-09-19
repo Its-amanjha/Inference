@@ -275,7 +275,8 @@ def test_missing_malformed_or_oversize_execution_is_unavailable(run):
 def test_build_context_matches_fixture_and_counts_its_own_bytes():
     response = build_context('source', workflow=workflow(), execution=execution(), error_row=ROW, send_error_text=True)
     contract.RepairContextResponse.model_validate(response)
-    expected = FIXTURE['context']
+    contract.RepairContextResponse.model_validate(FIXTURE['context'])  # Persisted v1 remains readable.
+    expected = {**FIXTURE['context'], 'contract': contract.CONTRACT_VERSION}
     assert set(response) == set(expected)
     assert response['bytes'] == len(json.dumps(response, ensure_ascii=False, separators=(',', ':')).encode('utf-8'))
     assert {k: response[k] for k in ('contract', 'trust', 'instance_id', 'error', 'redaction')} == {

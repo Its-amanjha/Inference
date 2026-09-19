@@ -165,6 +165,7 @@ async def load_context(request: Request, target: dict[str, Any], *, include_work
                        send_error_text: bool, focus_nodes: tuple[str, ...] = ()) -> dict[str, Any]:
     """Read and mask a workflow and/or scrub an error. Returns the context plus pinning facts."""
     instance_id = target['instance_id']
+    await instance_row(request, instance_id)  # Instance-only creation context still requires a real target.
     workflow_id = target.get('workflow_id')
     error_row = execution = None
     admin_allows = await error_text_enabled(request)
@@ -184,7 +185,7 @@ async def load_context(request: Request, target: dict[str, Any], *, include_work
     document = await fetch_workflow(request, instance_id, workflow_id) if include_workflow and workflow_id else None
     effective = bool(send_error_text and admin_allows)
     context = build_context(instance_id, workflow=document, execution=execution, error_row=error_row,
-                            send_error_text=effective, focus_nodes=tuple(focus_nodes))
+                            send_error_text=effective, focus_nodes=tuple(focus_nodes), notes=target.get('notes', ''))
     if document is not None and await webhook_directory_enabled(request):
         # Other workflows' trigger addresses let the model find the service a node should call instead of guessing
         # (live test: a model that saw only the target pointed it at its own webhook). Optional context only.
@@ -270,6 +271,9 @@ async def _restore_source(request: Request, args: contract.RestoreArguments, doc
 
 
 async def current_binding(request: Request, name: str, arguments: dict[str, Any]) -> str:
+    if name in {'propose_create_workflow', 'propose_retry_execution'}:
+        from .repair_round2 import current_binding as round2_binding
+        return await round2_binding(request, name, arguments)
     args = contract.ARGUMENT_MODELS[name].model_validate(arguments)
     async with instance_guard(request, args.instance_id):
         document = await fetch_workflow(request, args.instance_id, args.workflow_id)
@@ -301,6 +305,9 @@ async def prepare(request: Request, name: str, arguments: dict[str, Any], *, lin
     """
     if name not in contract.PROPOSAL_TOOLS:
         fail(422, 'unknown_tool', 'The requested tool is not supported.')
+    if name in {'propose_create_workflow', 'propose_retry_execution'}:
+        from .repair_round2 import prepare as prepare_round2
+        return await prepare_round2(request, name, arguments)
     args = contract.ARGUMENT_MODELS[name].model_validate(arguments)
     instance_id, workflow_id = args.instance_id, args.workflow_id
     async with instance_guard(request, instance_id):
@@ -360,6 +367,9 @@ async def _outcome(request: Request, action: str, label: str, details: dict[str,
 
 async def execute(request: Request, action_id: str, name: str, state: dict[str, Any], *,
                   before_write: Callable[[], Awaitable[None]], progress: dict[str, bool]) -> dict[str, Any]:
+    if name in {'propose_create_workflow', 'propose_retry_execution'}:
+        from .repair_round2 import execute as execute_round2
+        return await execute_round2(request, action_id, name, state, before_write=before_write, progress=progress)
     target = state['target']
     instance_id, workflow_id = target['instance_id'], target['workflow_id']
     path = f'/workflows/{workflow_id}'
@@ -421,6 +431,10 @@ async def execute(request: Request, action_id: str, name: str, state: dict[str, 
 
 async def reconcile(request: Request, action_id: str, status: str, state: dict[str, Any]) -> dict[str, Any]:
     """Read-only comparison of the saved workflow with the proposal's before and desired versions."""
+    if state['preview']['kind'] in {'workflow_create', 'execution_retry'}:
+        # An unacknowledged POST cannot be safely rediscovered by name or automatically repeated.
+        return {'id': action_id, 'status': status, 'state': 'manual_reconciliation_required',
+                'target': state['target'], 'result': state.get('result')}
     target = state['target']
     try:
         actual = await N8nClient(request).request(target['instance_id'], 'GET', f"/workflows/{target['workflow_id']}")
