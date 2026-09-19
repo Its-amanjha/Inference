@@ -87,6 +87,7 @@ Inference is a self-hosted operations dashboard for one or more n8n instances. I
 | Locked Linux backend suite in container | 886 passed, zero skipped, 2026-09-18; current rebuilt image, 182.98 s. |
 | Linux CPython 3.10 compatibility suite (`python:3.10-slim`) | 886 passed, zero skipped, 2 warnings, 2026-09-19 (817.79 s). `requires-python = ">=3.10"` verified. |
 | Load and performance benchmark (`scripts/smoke_load.py --confirm`) | Passed 2026-09-19 on Windows & Linux (25k errors, 25k spans, 10 workers). Status 200/429/503 bounds verified. |
+| Linux browser smoke suite in container (Playwright bundled Chromium) | 18 PASS, zero errors, exit code 0, 2026-09-19 |
 
 Skips cover POSIX permission, directory fsync and symlink tests that cannot run on Windows.
 
@@ -110,7 +111,7 @@ Executed via `python scripts/smoke_load.py --confirm` against an isolated server
 |---|---|
 | Load and performance tests | Completed 2026-09-19 (`scripts/smoke_load.py`). Verified under 10 concurrent workers with 25k seeded errors/spans. |
 | Python 3.10 compatibility check | Completed 2026-09-19 in Linux `python:3.10-slim`. 886 passed, zero failures. `requires-python = ">=3.10"` confirmed. |
-| Linux browser verification | Current Linux backend rerun completed 2026-09-18: 886 passed, zero skipped. Browser suite has only run on Windows. |
+| Linux browser verification | Completed 2026-09-19 in Linux container (`inference:browser` via `tests/docker/Dockerfile.browser` with Playwright bundled Chromium). 18/18 PASS, exit code 0. |
 | Final review | Complete-platform conformance and release review. |
 
 ### Open items
@@ -162,3 +163,6 @@ Two stopped containers remain: `inference-live-repair` and `n8n`.
 Review checkpoint 2026-09-18: current worktree was clean at b8696da before documentation updates. Provider/skill tests freshly passed 68 cases; no full or live suites rerun. The 8192-token Ollama context workaround and three September 17 fixes are already verified, not pending. See the latest IMPLEMENTATION.md entry for the current release/product split.
 
 Verification update 2026-09-18: current application/test images rebuilt successfully; full locked Linux backend suite passed all 886 tests without skips. Two dependency deprecation warnings remain. No application code changes were needed.
+
+Verification update 2026-09-19: Linux browser smoke suite containerized and verified (image `inference:browser` derived from `inference:local` with `playwright==1.62.0` and bundled Chromium). All 18 frontend checks passed with zero errors on Linux amd64. Windows Edge smoke suite re-verified with identical 18 PASS results.
+

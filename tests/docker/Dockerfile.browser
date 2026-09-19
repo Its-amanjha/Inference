@@ -1,0 +1,20 @@
+FROM inference:local
+USER 0
+
+# Pinned Playwright test dependencies without upgrading locked packages
+RUN python -m pip install --no-cache-dir --no-deps \
+    playwright==1.62.0 greenlet==3.5.5 pyee==13.0.1 && \
+    python -m pip check
+
+# Install Playwright bundled Chromium and its system dependencies into shared location
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN python -m playwright install --with-deps chromium && \
+    chmod -R 777 /ms-playwright
+
+# Copy test scripts and ensure writable test-results directory
+COPY scripts /app/scripts
+RUN mkdir -p /app/test-results && chown -R 10001:10001 /app/test-results /app/scripts
+
+ENV INFERENCE_SMOKE_BROWSER=chromium
+USER 10001:10001
+CMD ["python", "scripts/smoke_frontend.py"]
