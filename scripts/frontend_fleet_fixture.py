@@ -592,12 +592,51 @@ def exercise_fleet_search(page, ids, state):
     assert 'instance_id=' + ids['target'] in page.url
     page.get_by_role('button', name='Load workflow', exact=True).click()
     expect(page.get_by_role('textbox', name='Code editor', exact=True)).to_have_value('return [];')
-    state['unavailable'] = 'source'
     page.evaluate("location.hash = 'workflows'")
-    expect(source.get_by_role('alert')).to_have_count(1)
+    expect(source.get_by_role('cell', name='Source searchable', exact=True)).to_have_count(1)
+    expect(page.get_by_role('button', name='Search', exact=True)).to_be_enabled()
+    checked_at = source.locator('.load-as-of time').get_attribute('datetime')
+    state['unavailable'] = 'source'
+    try:
+        source.get_by_role('button', name='Refresh instance', exact=True).click()
+        # A 503 is a transient read failure: keep the previous rows and their timestamp,
+        # offer recovery, and do not interrupt screen readers with an assertive alert.
+        expect(source.locator('.coverage-partial.load-notice[role="status"]')).to_have_count(1)
+        expect(source.get_by_role('alert')).to_have_count(0)
+        expect(source.get_by_role('cell', name='Source searchable', exact=True)).to_have_count(1)
+        expect(source.locator('.load-as-of time')).to_have_attribute('datetime', checked_at)
+        expect(source.get_by_role('button', name='Retry', exact=True)).to_be_enabled()
+    finally:
+        state.pop('unavailable', None)
     expect(target.get_by_role('cell', name='Target searchable', exact=True)).to_have_count(1)
-    state.pop('unavailable')
-    source.get_by_role('button', name='Refresh instance', exact=True).click()
+
+    # The n8n fixture's unavailable switch only emits 503. Intercept this one read
+    # to exercise the distinct confirmed-failure contract without changing the server.
+    workflow_route = '**/api/n8n_proxy/workflows?*'
+
+    def confirmed_failure(route):
+        instance = parse_qs(urlsplit(route.request.url).query).get('instance_id')
+        if instance == [ids['source']]:
+            route.fulfill(status=500, json={'code': 'fixture_confirmed_failure',
+                                           'detail': 'Confirmed fixture failure.'})
+        else:
+            route.continue_()
+
+    page.route(workflow_route, confirmed_failure)
+    try:
+        source.get_by_role('button', name='Retry', exact=True).click()
+        expect(source.locator('.error.load-notice[role="alert"]')).to_have_count(1)
+        expect(source.get_by_role('alert')).to_contain_text('Confirmed fixture failure.')
+        expect(source.locator('.coverage-partial.load-notice')).to_have_count(0)
+        expect(source.get_by_role('cell', name='Source searchable', exact=True)).to_have_count(1)
+        expect(source.locator('.load-as-of time')).to_have_attribute('datetime', checked_at)
+        expect(source.get_by_role('button', name='Retry', exact=True)).to_be_enabled()
+    finally:
+        page.unroute(workflow_route, confirmed_failure)
+    source.get_by_role('button', name='Retry', exact=True).click()
+    expect(source.get_by_role('button', name='Refresh instance', exact=True)).to_be_enabled()
+    expect(source.locator('.load-notice')).to_have_count(0)
+    expect(source.locator('.load-as-of time')).not_to_have_attribute('datetime', checked_at)
     expect(source.get_by_role('cell', name='Source searchable', exact=True)).to_have_count(1)
     print('PASS: fleet-wide search, independent pagination, same-ID target isolation, CodeLab target links, partial failure and recovery.', flush=True)
     state['pagination'] = False
