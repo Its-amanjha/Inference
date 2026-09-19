@@ -547,7 +547,13 @@ export async function render(container){
     const target = e.target;
     if (!target) return false;
     const tag = target.tagName?.toLowerCase();
-    return tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable;
+    if (tag === 'textarea' || target.isContentEditable) return true;
+    if (tag === 'input') {
+      const type = target.type?.toLowerCase();
+      return type !== 'checkbox' && type !== 'radio' && type !== 'button' && type !== 'submit' && type !== 'reset';
+    }
+    if (tag === 'select') return true;
+    return false;
   }
 
   function onKeyDown(e) {

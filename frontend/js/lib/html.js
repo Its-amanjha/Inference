@@ -194,9 +194,8 @@ export function table(headers, rows, options = {}) {
     const headerLabel = resolveLabel(colIndex);
     if (announce) {
       announcer.textContent = `Table sorted by ${headerLabel}, ${currentSortDir === 'asc' ? 'ascending' : 'descending'}.`;
+      if (onSort) onSort({ column: currentSortCol, direction: currentSortDir });
     }
-
-    if (onSort) onSort({ column: currentSortCol, direction: currentSortDir });
   }
 
   registerIcons({
