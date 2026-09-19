@@ -4,7 +4,7 @@ Validates end-to-end workflow promotion across real, distinct n8n versions:
 1. Inspects local Docker engine for available n8n images (2.17.7 and 2.19.0).
 2. Provisions Source n8n (2.17.7) and Target n8n (2.19.0) in Docker on ephemeral loopback ports.
 3. Provisions a disposable Inference server with loopback egress allowlist.
-4. Completes owner setup and extracts API keys on both n8n instances.
+4. Completes owner setup and extracts API keys on both n8n instances with explicit polling.
 5. Registers Source and Target instances in Inference.
 6. Deploys a workflow to Source with Code node, Sticky Note, and header auth credential.
 7. Deploys matching credential to Target.
@@ -46,6 +46,9 @@ if str(ROOT) not in sys.path:
 SOURCE_IMAGE = "n8nio/n8n:latest"  # Local image label: 2.17.7
 TARGET_IMAGE = "docker.n8n.io/n8nio/n8n:2.19.0"  # Local image label: 2.19.0
 
+# Operational request timeout for API calls once instances are confirmed healthy
+OPERATIONAL_TIMEOUT = 45.0
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -77,16 +80,25 @@ def docker_cmd(*args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def inspect_image_version(image: str) -> str:
+def inspect_image_version(image: str) -> tuple[bool, str]:
+    """Inspect image version; if missing, attempt pull before returning result."""
     res = docker_cmd("image", "inspect", image)
     if res.returncode != 0:
-        return "unknown"
+        pull_res = docker_cmd("pull", image)
+        if pull_res.returncode != 0:
+            err_msg = pull_res.stderr.strip() or pull_res.stdout.strip()
+            return False, f"Not available locally and docker pull failed ({err_msg[:120]})"
+        res = docker_cmd("image", "inspect", image)
+        if res.returncode != 0:
+            return False, "Inspection failed after pull"
+
     try:
         data = json.loads(res.stdout)
         labels = data[0].get("Config", {}).get("Labels", {})
-        return labels.get("org.opencontainers.image.version", "unknown")
-    except Exception:
-        return "unknown"
+        ver = labels.get("org.opencontainers.image.version") or data[0].get("Id", "")[:12]
+        return True, ver or "unknown"
+    except Exception as exc:
+        return False, f"Failed to parse inspect output: {exc}"
 
 
 def start_n8n_container(name: str, port: int, image: str, volume: str) -> None:
@@ -121,33 +133,101 @@ def start_n8n_container(name: str, port: int, image: str, volume: str) -> None:
         raise RuntimeError(f"Failed to start n8n container {name}: {res.stderr.strip()}")
 
 
-def wait_for_n8n_ready(port: int, timeout_seconds: int = 60) -> None:
-    for _ in range(timeout_seconds):
+def wait_for_n8n_ready(
+    container_name: str,
+    port: int,
+    timeout_budget: float = 240.0,
+    poll_interval: float = 1.0,
+) -> None:
+    """Poll n8n health endpoint until healthy or timeout budget exhausted.
+    
+    Captures and dumps container logs if the instance does not become ready.
+    """
+    url = f"http://127.0.0.1:{port}/healthz"
+    start_time = time.monotonic()
+    last_err = "No response yet"
+    last_log_time = start_time
+
+    while time.monotonic() - start_time < timeout_budget:
+        elapsed = time.monotonic() - start_time
+        if elapsed > 15.0 and (time.monotonic() - last_log_time) >= 15.0:
+            print(
+                f"       Waiting for {container_name} on port {port} to become healthy... ({elapsed:.0f}s elapsed)",
+                flush=True,
+            )
+            last_log_time = time.monotonic()
+
         try:
-            with httpx.Client(timeout=2.0) as client:
-                r = client.get(f"http://127.0.0.1:{port}/healthz")
+            with httpx.Client(timeout=5.0, trust_env=False) as client:
+                r = client.get(url)
                 if (
                     r.status_code == 200
                     and r.headers.get("content-type", "").startswith("application/json")
                     and r.json().get("status") == "ok"
                 ):
                     return
-        except Exception:
-            pass
-        time.sleep(1)
-    raise TimeoutError(f"n8n at port {port} did not become ready within {timeout_seconds}s")
+                last_err = f"HTTP {r.status_code}: {r.text[:150]}"
+        except Exception as exc:
+            last_err = f"{type(exc).__name__}: {exc}"
+
+        time.sleep(poll_interval)
+
+    elapsed = time.monotonic() - start_time
+    log_res = docker_cmd("logs", "--tail", "50", container_name)
+    logs_tail = (log_res.stdout + "\n" + log_res.stderr).strip()
+    msg = (
+        f"\n[TIMEOUT] n8n container '{container_name}' at '{url}' did not become ready after {elapsed:.1f}s.\n"
+        f"Last error: {last_err}\n"
+        f"--- Tail of container logs ({container_name}) ---\n"
+        f"{logs_tail or '<no container logs available>'}\n"
+        f"------------------------------------------------"
+    )
+    raise TimeoutError(msg)
 
 
-def setup_n8n_owner_and_key(port: int) -> str:
+def setup_n8n_owner_and_key(
+    container_name: str,
+    port: int,
+    timeout_budget: float = 180.0,
+) -> str:
+    """Complete owner setup and generate an API key with explicit retry budget and diagnostics."""
     base_url = f"http://127.0.0.1:{port}"
-    with httpx.Client(base_url=base_url, timeout=30.0, trust_env=False) as client:
-        owner_data = {
-            "email": f"matrix_{secrets.token_hex(4)}@example.test",
-            "firstName": "Matrix",
-            "lastName": "Operator",
-            "password": "LivePass9!" + secrets.token_urlsafe(16),
-        }
-        for _ in range(45):
+    start_time = time.monotonic()
+    owner_data = {
+        "email": f"matrix_{secrets.token_hex(4)}@example.test",
+        "firstName": "Matrix",
+        "lastName": "Operator",
+        "password": "LivePass9!" + secrets.token_urlsafe(16),
+    }
+
+    def dump_diagnostics(stage: str, last_err: str) -> None:
+        elapsed = time.monotonic() - start_time
+        log_res = docker_cmd("logs", "--tail", "50", container_name)
+        logs_tail = (log_res.stdout + "\n" + log_res.stderr).strip()
+        print(
+            f"\n[ERROR] {stage} failed on '{container_name}' at {base_url} after {elapsed:.1f}s:\n"
+            f"Last error: {last_err}\n"
+            f"--- Tail of container logs ({container_name}) ---\n"
+            f"{logs_tail or '<no container logs available>'}\n"
+            f"------------------------------------------------",
+            file=sys.stderr,
+            flush=True,
+        )
+
+    # 1. Post owner setup
+    owner_done = False
+    last_err = "No attempts yet"
+    last_log_time = start_time
+    with httpx.Client(base_url=base_url, timeout=15.0, trust_env=False) as client:
+        while time.monotonic() - start_time < timeout_budget:
+            elapsed = time.monotonic() - start_time
+            if elapsed > 15.0 and (time.monotonic() - last_log_time) >= 15.0:
+                print(
+                    f"       Setting up owner on {container_name}... ({elapsed:.0f}s elapsed)",
+                    flush=True,
+                )
+                last_log_time = time.monotonic()
+
             try:
                 r_owner = client.post("/rest/owner/setup", json=owner_data)
                 if (
@@ -155,12 +235,22 @@ def setup_n8n_owner_and_key(port: int) -> str:
                     and r_owner.headers.get("content-type", "").startswith("application/json")
                     and "data" in r_owner.json()
                 ):
+                    owner_done = True
                     break
-            except Exception:
-                pass
-            time.sleep(1)
-        else:
-            raise RuntimeError(f"Owner setup did not succeed within deadline on n8n port {port}")
+                elif r_owner.status_code == 400 and "already been setup" in r_owner.text:
+                    owner_done = True
+                    break
+                last_err = f"HTTP {r_owner.status_code}: {r_owner.text[:150]}"
+            except (httpx.TimeoutException, httpx.NetworkError, Exception) as exc:
+                last_err = f"{type(exc).__name__}: {exc}"
+
+            time.sleep(1.0)
+
+        if not owner_done:
+            dump_diagnostics("Owner setup", last_err)
+            raise TimeoutError(
+                f"Owner setup did not succeed on '{container_name}' at {base_url} within {timeout_budget}s: {last_err}"
+            )
 
         # Set session cookie for subsequent requests
         cookie_header = "; ".join(f"{c.name}={c.value}" for c in client.cookies.jar)
@@ -168,33 +258,69 @@ def setup_n8n_owner_and_key(port: int) -> str:
             cookie_header = "; ".join(f"{k}={v}" for k, v in client.cookies.items())
         client.headers["Cookie"] = cookie_header
 
-        for _ in range(15):
-            r_scopes = client.get("/rest/api-keys/scopes")
-            if r_scopes.status_code == 200 and r_scopes.headers.get("content-type", "").startswith("application/json"):
-                break
-            time.sleep(1)
-        else:
-            raise RuntimeError(f"Failed to get API key scopes: HTTP {r_scopes.status_code} - {r_scopes.text}")
-        scopes = r_scopes.json().get("data", [])
+        # 2. Get scopes
+        scopes = None
+        while time.monotonic() - start_time < timeout_budget:
+            try:
+                r_scopes = client.get("/rest/api-keys/scopes")
+                if (
+                    r_scopes.status_code == 200
+                    and r_scopes.headers.get("content-type", "").startswith("application/json")
+                ):
+                    scopes = r_scopes.json().get("data", [])
+                    break
+                last_err = f"HTTP {r_scopes.status_code}: {r_scopes.text[:150]}"
+            except (httpx.TimeoutException, httpx.NetworkError, Exception) as exc:
+                last_err = f"{type(exc).__name__}: {exc}"
 
-        for _ in range(15):
-            r_key = client.post(
-                "/rest/api-keys",
-                json={
-                    "label": f"Matrix Smoke Key {secrets.token_hex(4)}",
-                    "scopes": scopes,
-                    "expiresAt": None,
-                },
+            time.sleep(1.0)
+
+        if scopes is None:
+            dump_diagnostics("Fetch API key scopes", last_err)
+            raise TimeoutError(
+                f"Failed to get API key scopes on '{container_name}' at {base_url}: {last_err}"
             )
-            if r_key.status_code in (200, 201) and r_key.headers.get("content-type", "").startswith("application/json"):
-                break
-            time.sleep(1)
-        else:
-            raise RuntimeError(f"Failed to create API key: HTTP {r_key.status_code} - {r_key.text}")
-        return r_key.json()["data"]["rawApiKey"]
+
+        # 3. Create API key
+        api_key = None
+        while time.monotonic() - start_time < timeout_budget:
+            try:
+                r_key = client.post(
+                    "/rest/api-keys",
+                    json={
+                        "label": f"Matrix Smoke Key {secrets.token_hex(4)}",
+                        "scopes": scopes,
+                        "expiresAt": None,
+                    },
+                )
+                if (
+                    r_key.status_code in (200, 201)
+                    and r_key.headers.get("content-type", "").startswith("application/json")
+                ):
+                    api_key = r_key.json()["data"]["rawApiKey"]
+                    break
+                last_err = f"HTTP {r_key.status_code}: {r_key.text[:150]}"
+            except (httpx.TimeoutException, httpx.NetworkError, Exception) as exc:
+                last_err = f"{type(exc).__name__}: {exc}"
+
+            time.sleep(1.0)
+
+        if not api_key:
+            dump_diagnostics("Create API key", last_err)
+            raise TimeoutError(
+                f"Failed to create API key on '{container_name}' at {base_url}: {last_err}"
+            )
+
+        return api_key
 
 
-def start_app_server(port: int, data_dir: Path, bootstrap_token: str) -> subprocess.Popen:
+def start_app_server(
+    port: int,
+    data_dir: Path,
+    bootstrap_token: str,
+    timeout_budget: float = 60.0,
+) -> subprocess.Popen:
+    """Boot ephemeral Inference app server, polling /healthz until healthy or dumping server logs."""
     env = {
         **os.environ,
         "INFERENCE_DATA_DIR": str(data_dir),
@@ -225,23 +351,49 @@ def start_app_server(port: int, data_dir: Path, bootstrap_token: str) -> subproc
         stderr=subprocess.STDOUT,
     )
 
-    for _ in range(45):
+    start_time = time.monotonic()
+    url = f"http://127.0.0.1:{port}/healthz"
+    last_err = "No attempts yet"
+
+    while time.monotonic() - start_time < timeout_budget:
+        elapsed = time.monotonic() - start_time
         if process.poll() is not None:
             log_handle.flush()
             log_handle.close()
             content = log_file.read_text(errors="replace")
-            raise RuntimeError(f"Inference server failed to boot:\n{content}")
+            tail = "\n".join(content.strip().splitlines()[-20:])
+            raise RuntimeError(
+                f"Inference server process exited unexpectedly with code {process.returncode} after {elapsed:.1f}s:\n"
+                f"--- Last 20 lines of server.log ---\n{tail}\n-----------------------------------"
+            )
+
         try:
-            with httpx.Client(timeout=1.0) as client:
-                res = client.get(f"http://127.0.0.1:{port}/healthz")
+            with httpx.Client(timeout=2.0, trust_env=False) as client:
+                res = client.get(url)
                 if res.status_code == 200:
                     return process
-        except Exception:
-            pass
-        time.sleep(1)
+                last_err = f"HTTP {res.status_code}: {res.text[:150]}"
+        except Exception as exc:
+            last_err = f"{type(exc).__name__}: {exc}"
 
+        time.sleep(1.0)
+
+    # If timeout expired
     process.terminate()
-    raise RuntimeError("Inference server did not become ready within 45 seconds.")
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+    log_handle.flush()
+    log_handle.close()
+    content = log_file.read_text(errors="replace")
+    tail = "\n".join(content.strip().splitlines()[-20:])
+    elapsed = time.monotonic() - start_time
+    raise TimeoutError(
+        f"Inference server at '{url}' did not become ready within {elapsed:.1f}s.\n"
+        f"Last error: {last_err}\n"
+        f"--- Last 20 lines of server.log ---\n{tail}\n-----------------------------------"
+    )
 
 
 def stop_app_server(process: subprocess.Popen) -> None:
@@ -257,18 +409,37 @@ def run_smoke_test() -> None:
     start_time = time.monotonic()
     steps: list[tuple[str, str, str]] = []
 
+    def step_start(step_name: str, detail: str = "") -> None:
+        status_str = "[START]".ljust(16)
+        print(f"{status_str}{step_name}" + (f" - {detail}" if detail else ""), flush=True)
+
     def record(step_name: str, outcome: str, detail: str = "") -> None:
         steps.append((step_name, outcome, detail))
-        status_str = f"[{outcome}]".ljust(10)
-        print(f"{status_str} {step_name}" + (f" - {detail}" if detail else ""), flush=True)
+        status_str = f"[{outcome}]".ljust(16)
+        print(f"{status_str}{step_name}" + (f" - {detail}" if detail else ""), flush=True)
 
     print("================================================================================")
     print("STARTING LIVE N8N VERSION MATRIX AND PROMOTION SMOKE SUITE")
     print("================================================================================")
 
     # 1. Inspect image versions
-    src_v = inspect_image_version(SOURCE_IMAGE)
-    tgt_v = inspect_image_version(TARGET_IMAGE)
+    step_start("Step 1: Discover Local n8n Version Matrix")
+    src_ok, src_v = inspect_image_version(SOURCE_IMAGE)
+    tgt_ok, tgt_v = inspect_image_version(TARGET_IMAGE)
+    if not src_ok or not tgt_ok:
+        record(
+            "Step 1: Discover Local n8n Version Matrix",
+            "NOT VERIFIED",
+            f"Source ({SOURCE_IMAGE}): {src_v}; Target ({TARGET_IMAGE}): {tgt_v}",
+        )
+        print(
+            "\n[NOT VERIFIED] Required n8n images are not present or cannot be pulled. "
+            "Please pull images manually before running the live matrix suite.",
+            file=sys.stderr,
+            flush=True,
+        )
+        return
+
     record(
         "Step 1: Discover Local n8n Version Matrix",
         "PASS",
@@ -291,22 +462,27 @@ def run_smoke_test() -> None:
 
     try:
         # 2. Start Source & Target containers
-        print(f"Spawning Source n8n ({src_v}) on 127.0.0.1:{src_port}...")
+        step_start(
+            "Step 2: Start Source and Target n8n Containers",
+            f"Source on 127.0.0.1:{src_port}, Target on 127.0.0.1:{tgt_port}",
+        )
+        print(f"       Spawning Source n8n ({src_v}) container {src_name}...")
         start_n8n_container(src_name, src_port, SOURCE_IMAGE, src_vol)
-        print(f"Spawning Target n8n ({tgt_v}) on 127.0.0.1:{tgt_port}...")
+        print(f"       Spawning Target n8n ({tgt_v}) container {tgt_name}...")
         start_n8n_container(tgt_name, tgt_port, TARGET_IMAGE, tgt_vol)
 
-        wait_for_n8n_ready(src_port)
-        wait_for_n8n_ready(tgt_port)
+        wait_for_n8n_ready(src_name, src_port, timeout_budget=240.0)
+        wait_for_n8n_ready(tgt_name, tgt_port, timeout_budget=240.0)
         record(
             "Step 2: Start Source and Target n8n Containers",
             "PASS",
-            f"Source on port {src_port}, Target on port {tgt_port}",
+            f"Source on port {src_port}, Target on port {tgt_port} (both healthy)",
         )
 
         # 3. Setup owner accounts and generate API keys
-        src_key = setup_n8n_owner_and_key(src_port)
-        tgt_key = setup_n8n_owner_and_key(tgt_port)
+        step_start("Step 3: Setup n8n Owners and Create API Keys")
+        src_key = setup_n8n_owner_and_key(src_name, src_port, timeout_budget=180.0)
+        tgt_key = setup_n8n_owner_and_key(tgt_name, tgt_port, timeout_budget=180.0)
         record(
             "Step 3: Setup n8n Owners and Create API Keys",
             "PASS",
@@ -314,8 +490,8 @@ def run_smoke_test() -> None:
         )
 
         # 4. Start Inference server
-        print(f"Starting Inference server on 127.0.0.1:{app_port}...")
-        app_process = start_app_server(app_port, data_dir, bootstrap_token)
+        step_start("Step 4: Boot Disposable Inference Server", f"127.0.0.1:{app_port}")
+        app_process = start_app_server(app_port, data_dir, bootstrap_token, timeout_budget=60.0)
         app_base = f"http://127.0.0.1:{app_port}"
         record(
             "Step 4: Boot Disposable Inference Server",
@@ -324,7 +500,13 @@ def run_smoke_test() -> None:
         )
 
         # 5. Bootstrap admin and configure session
-        with httpx.Client(base_url=app_base, timeout=30.0, trust_env=False, headers={"Origin": app_base}) as client:
+        step_start("Step 5: Bootstrap Administrator Account")
+        with httpx.Client(
+            base_url=app_base,
+            timeout=OPERATIONAL_TIMEOUT,
+            trust_env=False,
+            headers={"Origin": app_base},
+        ) as client:
             admin_pw = "AdminPass9!" + secrets.token_urlsafe(16)
             res_setup = client.post(
                 "/api/auth/setup",
@@ -338,6 +520,7 @@ def run_smoke_test() -> None:
             record("Step 5: Bootstrap Administrator Account", "PASS", "admin authenticated with double-submit CSRF")
 
             # 6. Register Source and Target instances in Inference
+            step_start("Step 6: Register Instances in Fleet Proxy")
             res_src_inst = client.post(
                 "/api/n8n_proxy/instances",
                 json={
@@ -366,8 +549,8 @@ def run_smoke_test() -> None:
             )
 
         # 7. Seed workflow & credential on Source, and matching credential on Target
-        # Use direct n8n API client for seeding
-        with httpx.Client(base_url=f"http://127.0.0.1:{src_port}", timeout=30.0, trust_env=False) as n8n_src:
+        step_start("Step 7: Seed Workflows and Credentials on Instances")
+        with httpx.Client(base_url=f"http://127.0.0.1:{src_port}", timeout=OPERATIONAL_TIMEOUT, trust_env=False) as n8n_src:
             n8n_src.headers["X-N8N-API-KEY"] = src_key
             res_cred_src = n8n_src.post(
                 "/api/v1/credentials",
@@ -435,7 +618,7 @@ def run_smoke_test() -> None:
             assert res_wf_src.status_code in (200, 201), f"Create wf src failed: {res_wf_src.text}"
             src_wf_id = res_wf_src.json()["id"]
 
-        with httpx.Client(base_url=f"http://127.0.0.1:{tgt_port}", timeout=30.0, trust_env=False) as n8n_tgt:
+        with httpx.Client(base_url=f"http://127.0.0.1:{tgt_port}", timeout=OPERATIONAL_TIMEOUT, trust_env=False) as n8n_tgt:
             n8n_tgt.headers["X-N8N-API-KEY"] = tgt_key
             res_cred_tgt = n8n_tgt.post(
                 "/api/v1/credentials",
@@ -455,7 +638,13 @@ def run_smoke_test() -> None:
         )
 
         # 8. Execute Promotion Preflight Check
-        with httpx.Client(base_url=app_base, timeout=30.0, trust_env=False, headers={"Origin": app_base}) as client:
+        step_start("Step 8: Promotion Preflight Check")
+        with httpx.Client(
+            base_url=app_base,
+            timeout=OPERATIONAL_TIMEOUT,
+            trust_env=False,
+            headers={"Origin": app_base},
+        ) as client:
             client.post("/api/auth/login", json={"username": "matrix_admin", "password": admin_pw})
             client.headers["X-AGD-CSRF"] = client.cookies["agd_csrf"]
 
@@ -480,6 +669,7 @@ def run_smoke_test() -> None:
             )
 
             # 9. Deploy workflow to Target instance
+            step_start("Step 9: Deploy Promoted Workflow (Inactive State Enforced)")
             deploy_key_1 = f"matrix-deploy-{secrets.token_hex(6)}"
             res_deploy = client.post(
                 "/api/n8n_promote/deploy",
@@ -492,7 +682,7 @@ def run_smoke_test() -> None:
             assert target_wf_id, "target_workflow_id missing from deploy response"
 
             # Verify Target workflow state directly from Target n8n
-            with httpx.Client(base_url=f"http://127.0.0.1:{tgt_port}", timeout=30.0, trust_env=False) as n8n_tgt:
+            with httpx.Client(base_url=f"http://127.0.0.1:{tgt_port}", timeout=OPERATIONAL_TIMEOUT, trust_env=False) as n8n_tgt:
                 n8n_tgt.headers["X-N8N-API-KEY"] = tgt_key
                 r_wf_tgt = n8n_tgt.get(f"/api/v1/workflows/{target_wf_id}")
                 assert r_wf_tgt.status_code == 200, f"Target wf readback failed: {r_wf_tgt.text}"
@@ -512,13 +702,14 @@ def run_smoke_test() -> None:
             )
 
             # 10. Explicit Activation
+            step_start("Step 10: Explicit Target Workflow Activation")
             res_act = client.post(
                 f"/api/n8n_proxy/workflows/{target_wf_id}/activate",
                 params={"instance_id": tgt_inst_id},
             )
             assert res_act.status_code == 200, f"Activate failed: {res_act.text}"
             # Check target n8n directly
-            with httpx.Client(base_url=f"http://127.0.0.1:{tgt_port}", timeout=30.0, trust_env=False) as n8n_tgt:
+            with httpx.Client(base_url=f"http://127.0.0.1:{tgt_port}", timeout=OPERATIONAL_TIMEOUT, trust_env=False) as n8n_tgt:
                 n8n_tgt.headers["X-N8N-API-KEY"] = tgt_key
                 r_act_check = n8n_tgt.get(f"/api/v1/workflows/{target_wf_id}")
                 assert r_act_check.json().get("active") is True, "Target workflow did not activate"
@@ -529,6 +720,7 @@ def run_smoke_test() -> None:
             )
 
             # 11. Ugly Case 1: Replay deploy with identical idempotency key
+            step_start("Step 11: Idempotent Deployment Replay")
             res_deploy_replay = client.post(
                 "/api/n8n_promote/deploy",
                 json={"preview_id": preview_id, "idempotency_key": deploy_key_1},
@@ -539,7 +731,7 @@ def run_smoke_test() -> None:
                 replay_data.get("target_workflow_id") == target_wf_id
             ), "Replay returned different target workflow ID"
             # Verify no second workflow was created on Target
-            with httpx.Client(base_url=f"http://127.0.0.1:{tgt_port}", timeout=30.0, trust_env=False) as n8n_tgt:
+            with httpx.Client(base_url=f"http://127.0.0.1:{tgt_port}", timeout=OPERATIONAL_TIMEOUT, trust_env=False) as n8n_tgt:
                 n8n_tgt.headers["X-N8N-API-KEY"] = tgt_key
                 r_all = n8n_tgt.get("/api/v1/workflows")
                 assert len(r_all.json().get("data", [])) == 1, "Duplicate workflow created on replay"
@@ -550,6 +742,7 @@ def run_smoke_test() -> None:
             )
 
             # 12. Ugly Case 2: Stale preview rejected
+            step_start("Step 12: Stale Preview Rejection")
             # Explicitly deactivate Target workflow first so target_active blocker is clear
             res_deact = client.post(
                 f"/api/n8n_proxy/workflows/{target_wf_id}/deactivate",
@@ -565,7 +758,7 @@ def run_smoke_test() -> None:
             preview_id_2 = pf2_data["preview_id"]
 
             # Modify Source workflow on Source n8n
-            with httpx.Client(base_url=f"http://127.0.0.1:{src_port}", timeout=30.0, trust_env=False) as n8n_src:
+            with httpx.Client(base_url=f"http://127.0.0.1:{src_port}", timeout=OPERATIONAL_TIMEOUT, trust_env=False) as n8n_src:
                 n8n_src.headers["X-N8N-API-KEY"] = src_key
                 wf_mod = dict(wf_payload)
                 wf_mod["name"] = "Live Cross-Version Pipeline (Modified)"
@@ -591,6 +784,7 @@ def run_smoke_test() -> None:
             )
 
             # 13. Ugly Case 3: Target instance down mid-deploy
+            step_start("Step 13: Target Down Mid-Deploy Handling")
             # Create a fresh preview for the modified workflow
             res_pf3 = client.post("/api/n8n_promote/preflight", json=preflight_body)
             assert res_pf3.status_code == 200
@@ -599,7 +793,7 @@ def run_smoke_test() -> None:
             preview_id_3 = pf3_data["preview_id"]
 
             # Stop Target container to simulate outage during remote write
-            print(f"Stopping Target container {tgt_name} to simulate network/host failure mid-deploy...")
+            print(f"       Stopping Target container {tgt_name} to simulate network/host failure mid-deploy...")
             docker_cmd("stop", tgt_name)
 
             res_down = client.post(
