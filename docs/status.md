@@ -1,6 +1,6 @@
 # Project status
 
-Last updated 2026-09-17. Branch `feat/inference`, 114 commits (first 2026-08-05, latest code commit `8806866`). Pushed to a private GitHub repository.
+Last updated 2026-09-17. Branch `feat/inference`, 114 commits (first 2026-08-05, latest code commit `eeab7c1`). Pushed to a private GitHub repository.
 
 This report covers what Inference does today, the work done so far and how it was verified, and what remains before release. Detailed dated entries are kept in [IMPLEMENTATION.md](../IMPLEMENTATION.md).
 
@@ -84,7 +84,7 @@ Inference is a self-hosted operations dashboard for one or more n8n instances. I
 | Managed n8n 2.19.0 and runners, JavaScript and Python execution, OTLP arrival | Passed 2026-09-14 |
 | Official MCP SDK 1.30.0 interoperability | Passed 2026-09-14 |
 | Container smoke (`scripts/smoke_container.py`: UID 10001, read-only root, restart persistence) | Passed 2026-09-16 |
-| Locked Linux backend suite in container | 671 passed, 2026-09-11 (on an earlier revision; rerun pending) |
+| Locked Linux backend suite in container | 886 passed, zero skipped, 2026-09-18; current rebuilt image, 182.98 s. |
 
 Skips cover POSIX permission, directory fsync and symlink tests that cannot run on Windows.
 
@@ -96,7 +96,7 @@ Skips cover POSIX permission, directory fsync and symlink tests that cannot run 
 |---|---|
 | Load and performance tests | Not started. |
 | Python 3.10 compatibility check | `pyproject.toml` allows 3.10+; only 3.13 has been exercised. |
-| Linux rerun of the suites | Locked Linux backend suite last ran on 2026-09-11 (671 passed); browser suite has only run on Windows. |
+| Linux browser verification | Current Linux backend rerun completed 2026-09-18: 886 passed, zero skipped. Browser suite has only run on Windows. |
 | Final review | Complete-platform conformance and release review. |
 
 ### Open items
@@ -144,3 +144,7 @@ Kept:
 | `n8nio/n8n:latest` | The user's own image; never touched |
 
 Two stopped containers remain: `inference-live-repair` and `n8n`.
+
+Review checkpoint 2026-09-18: current worktree was clean at b8696da before documentation updates. Provider/skill tests freshly passed 68 cases; no full or live suites rerun. The 8192-token Ollama context workaround and three September 17 fixes are already verified, not pending. See the latest IMPLEMENTATION.md entry for the current release/product split.
+
+Verification update 2026-09-18: current application/test images rebuilt successfully; full locked Linux backend suite passed all 886 tests without skips. Two dependency deprecation warnings remain. No application code changes were needed.
