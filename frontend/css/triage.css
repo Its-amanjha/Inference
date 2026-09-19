@@ -39,6 +39,8 @@
 [data-theme=n8n] .table-wrap.triage-table-wrap { border-radius:12px; }
 .triage-table { font-size:13px; }
 .triage-table th { position:sticky; top:0; z-index:1; padding:10px 12px; white-space:nowrap; border-bottom:0; box-shadow:inset 0 -1px 0 var(--border); }
+.triage-table th.is-sortable { padding:0; }
+.triage-table .table-sort-btn { padding:10px 12px; font-size:13px; }
 .triage-table td { padding:10px 12px; vertical-align:baseline; overflow-wrap:normal; }
 .triage-table tbody tr { height:44px; transition:background-color .15s ease-out; }
 .triage-table tbody tr:hover { background:var(--color-ash-mist); }
