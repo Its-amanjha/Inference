@@ -164,13 +164,70 @@ export async function render(container){
     load();
   }, {signal});
 
+  const shortcutsBtn = button('Shortcuts (?)', openShortcutsDialog, 'button ghost');
+  shortcutsBtn.setAttribute('aria-label', 'Keyboard shortcuts');
+  shortcutsBtn.setAttribute('title', 'Keyboard shortcuts (?)');
+
   container.append(heading('Error triage','Confirmed errors and evidence-based findings, newest first.'),
-    el('div',{class:'toolbar'},field('Status',status),button('Refresh',()=>load(),'button ghost')),
+    el('div',{class:'toolbar'},field('Status',status),button('Refresh',()=>load(),'button ghost'),shortcutsBtn),
     savedViewsContainer,
     bulkBar,
     el('div',{class:'triage-filterbar'},el('div',{class:'triage-filters',role:'group','aria-label':'Filter loaded errors by type'},chips),
       el('div',{class:'triage-summary'},count,el('p',{},'Filters apply to loaded errors only.'))),
     announcer,feedback,content,next);
+
+  function openShortcutsDialog() {
+    if (document.querySelector('dialog[open]')) return;
+    const invoker = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const id = `shortcuts-dialog-${Date.now()}`;
+    const closeBtn = button('Close', () => dialog.close(), 'button ghost');
+    closeBtn.setAttribute('aria-label', 'Close keyboard shortcuts dialog');
+
+    const shortcuts = [
+      ['?', 'Show keyboard shortcuts overlay'],
+      ['/', 'Focus status filter'],
+      ['r', 'Refresh error list'],
+      ['j / ↓', 'Focus next error row'],
+      ['k / ↑', 'Focus previous error row'],
+      ['x', 'Toggle selection of focused row'],
+      ['e', 'Resolve selected errors (or focused error)']
+    ];
+
+    const list = el('dl', { class: 'shortcuts-list' });
+    shortcuts.forEach(([keys, desc]) => {
+      const parts = keys.split(' ');
+      const keyNodes = [];
+      parts.forEach((p, idx) => {
+        if (p === '/') {
+          keyNodes.push(el('span', {}, ' / '));
+        } else {
+          keyNodes.push(el('kbd', {}, p));
+        }
+      });
+      list.append(el('dt', {}, ...keyNodes), el('dd', {}, desc));
+    });
+
+    const dialog = el('dialog', {
+      class: 'shortcuts-dialog',
+      'aria-labelledby': `${id}-title`
+    },
+      el('h2', { id: `${id}-title` }, 'Keyboard shortcuts'),
+      list,
+      el('div', { class: 'confirm-actions' }, closeBtn)
+    );
+
+    dialog.addEventListener('cancel', () => {
+      dialog.close();
+    });
+    dialog.addEventListener('close', () => {
+      dialog.remove();
+      if (invoker?.isConnected) invoker.focus();
+    }, { once: true });
+
+    document.body.append(dialog);
+    dialog.showModal();
+    closeBtn.focus();
+  }
 
   renderSavedViews();
 
@@ -459,5 +516,113 @@ export async function render(container){
       if(queued&&!signal.aborted){queued=false;load();}
     }
   }
+  function getRowElements() {
+    return Array.from(content.querySelectorAll('tbody tr'));
+  }
+
+  function focusRow(index) {
+    const trList = getRowElements();
+    if (!trList.length) return;
+    const clamped = Math.max(0, Math.min(index, trList.length - 1));
+    trList.forEach((tr, i) => {
+      const isCurrent = i === clamped;
+      tr.classList.toggle('is-focused', isCurrent);
+      if (isCurrent) {
+        tr.setAttribute('tabindex', '-1');
+        tr.focus();
+        tr.scrollIntoView({ block: 'nearest' });
+      }
+    });
+  }
+
+  function getFocusedRowIndex() {
+    const trList = getRowElements();
+    const active = document.activeElement;
+    const found = trList.findIndex(tr => tr === active || tr.contains(active));
+    if (found !== -1) return found;
+    return trList.findIndex(tr => tr.classList.contains('is-focused'));
+  }
+
+  function isTyping(e) {
+    const target = e.target;
+    if (!target) return false;
+    const tag = target.tagName?.toLowerCase();
+    return tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable;
+  }
+
+  function onKeyDown(e) {
+    if (e.defaultPrevented) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (document.querySelector('dialog[open]')) return;
+    if (isTyping(e)) return;
+
+    if (e.key === '?' || (e.key === '/' && e.shiftKey)) {
+      e.preventDefault();
+      openShortcutsDialog();
+      return;
+    }
+
+    if (e.key === '/') {
+      e.preventDefault();
+      status.focus();
+      return;
+    }
+
+    if (e.key === 'r' || e.key === 'R') {
+      e.preventDefault();
+      load();
+      return;
+    }
+
+    if (e.key === 'j' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      const cur = getFocusedRowIndex();
+      focusRow(cur === -1 ? 0 : cur + 1);
+      return;
+    }
+
+    if (e.key === 'k' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const cur = getFocusedRowIndex();
+      focusRow(cur === -1 ? 0 : cur - 1);
+      return;
+    }
+
+    if (e.key === 'x' || e.key === 'X') {
+      e.preventDefault();
+      const cur = getFocusedRowIndex();
+      if (cur !== -1) {
+        const tr = getRowElements()[cur];
+        const cb = tr?.querySelector('input.triage-row-select');
+        if (cb && !cb.disabled) {
+          cb.checked = !cb.checked;
+          cb.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      }
+      return;
+    }
+
+    if (e.key === 'e' || e.key === 'E') {
+      if (can('operator') && loadedStatus === 'open') {
+        e.preventDefault();
+        if (selectedIds.size > 0) {
+          bulkResolve();
+        } else {
+          const cur = getFocusedRowIndex();
+          if (cur !== -1) {
+            const tr = getRowElements()[cur];
+            const resolveBtn = tr?.querySelector('button[data-action="resolve"]');
+            if (resolveBtn && !resolveBtn.disabled) {
+              resolveBtn.click();
+            }
+          }
+        }
+      }
+      return;
+    }
+  }
+
+  window.addEventListener('keydown', onKeyDown, { signal });
+
   await load();return()=>controller.abort();
 }
