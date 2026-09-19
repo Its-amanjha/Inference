@@ -43,9 +43,9 @@ While not a defect in code, the following operational requirement must be observ
    - **Impact:** On CPU-only hosts running quantized models (e.g. `qwen2.5:3b` at 4–5.5 tokens/sec), generating an answer with a full injected guide requires 120–240 seconds per turn. Although backend timeouts have been extended to 600 seconds for local providers (`backend/modules/assistant/providers.py:46`), operators on CPU hardware must be aware of multi-minute turn latency.
    - **Priority:** High (User experience expectation).
 
-3. **Live S3 Provider and Multi-Node Disaster Recovery Matrix**
-   - **Evidence:** `docs/status.md:145`, `backend/modules/backups/s3.py:45-130`
-   - **Impact:** The backup subsystem implements AWS SigV4 request signing and single-attempt uploads with verified SHA-256 payload checksums. Test fixtures verify the published AWS signing vector and loopback S3-shaped PUT operations, but long-term live uploads against external S3, Cloudflare R2, and MinIO remain operational verification items.
+3. **Multi-Cloud Hosted S3 Provider Matrix**
+   - **Evidence:** `docs/status.md:145`, `backend/modules/backups/s3.py:45-130`, `scripts/smoke_s3_backup.py`
+   - **Impact:** The backup subsystem implements AWS SigV4 request signing and single-attempt uploads with verified SHA-256 payload checksums. Local S3-compatible service round-trip (MinIO `RELEASE.2024-01-18T22-51-28Z`), object persistence, S3 download, offline disaster-recovery restore, and 5 failure paths are verified (`scripts/smoke_s3_backup.py --confirm`). However, continuous production verification across third-party hosted cloud providers (AWS S3, Cloudflare R2, Backblaze B2) remains an operational testing item.
    - **Priority:** Medium.
 
 4. **Workflow and Credential ID Entry Ergonomics (Typed IDs vs Pickers)**
@@ -86,7 +86,7 @@ While not a defect in code, the following operational requirement must be observ
 | **Bundled Skill Library** | Conforming | 15 bundled n8n guides synced from `backend/skills/` to SQLite, read-only `/api/skills` API, `get_skill` assistant tool, Apache 2.0 notice compliance. `backend/modules/skills/router.py`, `backend/skills/`. Tested in `tests/test_skills.py`. |
 | **Docker Manager** | Conforming | aiodocker Unix socket client, Kahn's topological sort for container dependencies, 2-container bundle provisioning (n8n + runners), ownership label enforcement (`inference.managed=true`). `backend/modules/docker_mgr/deployer.py`, `bundle.py`, `client.py`. Tested in `tests/test_docker_mgr.py`. |
 | **Markdown Notes Vault** | Conforming | Local notes filesystem vault, strict path traversal blocking, wikilink backlink scanner (`[[Note]]`), literal text search, atomic saves, escaped HTML preview. `backend/modules/notes/storage.py`, `router.py`. Tested in `tests/test_notes.py`. |
-| **Encrypted Backups & Offline Restore**| Conforming | Scrypt + Fernet encrypted `.ibackup` archive, offline CLI restore with staging and integrity verification, schema v5-v7 migration, scheduled local retention and AWS SigV4 upload. `backend/modules/backups/archive.py`, `restore.py`, `s3.py`. Tested in `tests/test_backups.py`. |
+| **Encrypted Backups & Offline Restore**| Conforming | Scrypt + Fernet encrypted `.ibackup` archive, offline CLI restore with staging and integrity verification, schema v5-v7 migration, scheduled local retention and AWS SigV4 upload. Live MinIO round-trip and 5 failure paths verified. `backend/modules/backups/archive.py`, `restore.py`, `s3.py`. Tested in `tests/test_backups.py`, `scripts/smoke_s3_backup.py`. |
 | **Zero-Build Native Frontend** | Conforming | 14 ES module views, zero build step, dark cobalt/cyan and light themes, responsive mobile layout, action review rail, double-submit CSRF self-healing wrapper (`apiFetch`). `frontend/index.html`, `frontend/js/app.js`, `frontend/css/`. Verified in Playwright test suites. |
 
 ---
@@ -138,6 +138,9 @@ While not a defect in code, the following operational requirement must be observ
    - Result: Official MCP SDK 1.30.0 Streamable HTTP verified.
 10. **Native Ollama Integration**:
     - Result: `qwen2.5:3b` tool-calling, connection verification, and prompt truncation limits verified.
+11. **Live MinIO S3 Backup and Disaster Recovery**:
+    - Command: `python scripts/smoke_s3_backup.py --confirm` against disposable MinIO container (`quay.io/minio/minio:RELEASE.2024-01-18T22-51-28Z`)
+    - Result: 19/19 PASS (exit code 0). Complete round-trip verified: AWS SigV4 upload, S3 SigV4 download, offline restore into clean directory, database row validation, vault secret decryption, and restored application server boot. Five failure paths verified: unreachable endpoint (`partial`/`s3_upload_failed`/`unknown`), bad credentials 403 (`partial`/`s3_upload_failed`/`rejected`), nonexistent bucket 404 (`partial`/`s3_upload_failed`/`rejected`), corrupted archive bit flip (`ArchiveError`), and wrong restore passphrase (`ArchiveError`). Local archives preserved on all upload failures.
 
 ### Verified by Static Code Analysis and Reading
 
