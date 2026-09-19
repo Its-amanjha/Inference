@@ -30,7 +30,7 @@ Inference is a self-hosted operations dashboard for one or more n8n instances. I
 ### Size
 
 - 131 commits between 2026-08-05 and 2026-09-19.
-- Backend: 65 Python files (about 590 KB). Tests: 49 files (about 470 KB) with 518 test functions; parametrised cases bring the suite to 886 collected tests. Scripts: 17 verification and smoke scripts. Frontend: 29 JavaScript files and 10 stylesheets.
+- Backend: 65 Python files (about 590 KB). Tests: 49 files (about 470 KB) with 518 test functions; parametrised cases bring the suite to 886 collected tests. Scripts: 18 verification and smoke scripts. Frontend: 29 JavaScript files and 10 stylesheets.
 
 ### Milestones by area
 
@@ -88,6 +88,7 @@ Inference is a self-hosted operations dashboard for one or more n8n instances. I
 | Linux CPython 3.10 compatibility suite (`python:3.10-slim`) | 886 passed, zero skipped, 2 warnings, 2026-09-19 (817.79 s). `requires-python = ">=3.10"` verified. |
 | Load and performance benchmark (`scripts/smoke_load.py --confirm`) | Passed 2026-09-19 on Windows & Linux (25k errors, 25k spans, 10 workers). Status 200/429/503 bounds verified. |
 | Linux browser smoke suite in container (Playwright bundled Chromium) | 18 PASS, zero errors, exit code 0, 2026-09-19 |
+| Live MinIO S3 backup and disaster recovery (`scripts/smoke_s3_backup.py --confirm`) | 19/19 PASS, zero errors, exit code 0, 2026-09-19 (MinIO RELEASE.2024-01-18T22-51-28Z). Full round-trip + 5 failure paths verified. |
 
 Skips cover POSIX permission, directory fsync and symlink tests that cannot run on Windows.
 
@@ -102,6 +103,29 @@ Executed via `python scripts/smoke_load.py --confirm` against an isolated server
 - **Admin role check (`/api/admin/users`):** 706.8 req/s | p50: 13.46 ms | p95: 19.41 ms | p99: 26.83 ms | 100% 200 OK
 - **Dashboard proxy rate limiter:** 174.7 req/s | 4 allowed (200), 16 rate limited (429) enforcing sliding window protection
 - **OTLP span ingestion (5-span protobuf batch):** 224.3 req/s | p50: 42.76 ms | p95: 61.93 ms | bounded by parser semaphore
+
+### S3 backup and disaster-recovery evidence (2026-09-19)
+
+Executed via `python scripts/smoke_s3_backup.py --confirm` against a disposable local MinIO container (`quay.io/minio/minio:RELEASE.2024-01-18T22-51-28Z`) with generated credentials on an ephemeral loopback port:
+- **Task A (End-to-end round trip):**
+  - Sprouted MinIO and Inference on dynamic ports with `INFERENCE_EGRESS_ALLOW_CIDRS="127.0.0.1/32"`.
+  - Seeded real data: admin user via setup bootstrap, n8n instance with encrypted API key, Markdown note with runbook content, and Fernet vault secrets (`$BACKUP_PASSWORD`, `$S3_CREDS`, `$APP_TOKEN`).
+  - Configured S3 backup schedule pointing to MinIO endpoint via `$S3_CREDS` vault reference.
+  - Triggered manual backup run via API: completed with `status='succeeded'` and `remote_status='uploaded'`.
+  - Verified object exists on MinIO disk (`/data/<bucket>/fleet-backups/<id>.ibackup`) and downloaded over S3 via AWS SigV4 GET with matching size (662,234 B) and exact SHA-256.
+  - Restored offline into an empty directory using `backend.modules.backups.restore.restore_archive`.
+  - Verified restored filesystem artifacts (`dashboard.db`, `.secret_key`, `secrets.json`, note runbook), database rows (users, instances, schedules, runs), and decrypted vault secrets and instance API key.
+  - Booted second Inference process against restored directory: `/healthz` returned 200 and admin login succeeded.
+- **Task B (Five failure paths):**
+  - *Unreachable endpoint:* Scheduled backup against unreachable host recorded `status='partial'`, `code='s3_upload_failed'`, `remote_status='unknown'`; local archive preserved intact.
+  - *Wrong credentials (HTTP 403):* MinIO rejected PUT with `SignatureDoesNotMatch`; recorded `status='partial'`, `code='s3_upload_failed'`, `remote_status='rejected'`; local archive preserved.
+  - *Nonexistent bucket (HTTP 404):* MinIO rejected PUT with `NoSuchBucket`; recorded `status='partial'`, `code='s3_upload_failed'`, `remote_status='rejected'`; local archive preserved.
+  - *Corrupted archive (bit flip):* Restore aborted with `ArchiveError: 'Backup authentication failed'`; destination directory remained empty.
+  - *Wrong passphrase on restore:* Restore aborted with `ArchiveError: 'Backup authentication failed'`; destination directory remained empty.
+- **Repeat command:**
+  ```powershell
+  .venv\Scripts\python.exe scripts/smoke_s3_backup.py --confirm
+  ```
 
 ## What remains
 
@@ -141,8 +165,7 @@ Estimates are for the implementer.
 - Ollama's default context window can truncate a prompt that carries a guide, dropping the system prompt and the question.
 - Standard chat history stores only user messages and final answers, so `get_skill` and other tool calls are not visible in `GET /api/assistant/chats/{id}`.
 - Only `SKILL.md` is served; reference files the guides mention are not available to the model. Some guides assume an n8n-mcp server Inference does not provide.
-- There are no user-added skills or skill editing, by decision. Skills change only by replacing `backend/skills/` and restarting (rebuilding the image for containers).
-- Live integrations not yet verified: hosted streaming, MCP SDK 2.x and authenticated third-party MCP servers, real S3 upload and disaster-recovery restore, exhaustive OTLP span correlation on real data, n8n version matrix and live cross-instance promotion.
+- Live integrations not yet verified: hosted streaming, MCP SDK 2.x and authenticated third-party MCP servers, hosted multi-cloud S3 providers (AWS/R2), exhaustive OTLP span correlation on real data, n8n version matrix and live cross-instance promotion. (Local S3-compatible MinIO upload, download, and offline restore are verified).
 - n8n's update API is not conditional, so an external editor can race a confirmed write after the final read.
 
 ### Docker cleanup
