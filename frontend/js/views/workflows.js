@@ -54,8 +54,17 @@ export async function render(container) {
           catch(error){notice(entry.messages,error);}
           finally{toggle.disabled=!can('operator');}
         },'ghost');toggle.disabled=!can('operator');
-        return [name,(row.tags??[]).map(tag=>tag.name).join(', ')||'—',row.updatedAt?new Date(row.updatedAt).toLocaleString():'—',el('div',{class:'state-cell'},badge,toggle),actions];
-      })):empty('No matching workflows','Try another name or create a workflow in this instance.',[button('Clear search',()=>searchFleet(),'ghost')]));
+        return [
+          { sortValue: row.name ?? row.id, content: name },
+          (row.tags??[]).map(tag=>tag.name).join(', ')||'—',
+          { sortValue: row.updatedAt ? new Date(row.updatedAt).getTime() : 0, content: row.updatedAt ? new Date(row.updatedAt).toLocaleString() : '—' },
+          { sortValue: row.active ? 'Active' : 'Inactive', content: el('div',{class:'state-cell'},badge,toggle) },
+          actions
+        ];
+      }),{
+        sortable: { 0: 'text', 2: 'date', 3: 'text' },
+        initialSort: { column: 0, direction: 'asc' }
+      }):empty('No matching workflows','Try another name or create a workflow in this instance.',[button('Clear search',()=>searchFleet(),'ghost')]));
     } catch(error){if(!signal.aborted)entry.messages.replaceChildren(loadFailure(error,()=>load(entry,after),`Could not load workflows on ${instance.name}`));}
     finally{entry.loading=false;entry.next.disabled=searching||!entry.cursor;entry.retry.disabled=searching;}
   }
