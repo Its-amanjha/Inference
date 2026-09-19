@@ -53,14 +53,23 @@ export function formCard({title, description, body = [], note, actions = [], cla
   const foot = note || actions.length ? el('div',{class:'form-card-foot'}, note ? el('p',{class:'form-card-note'},note) : null, el('div',{class:'form-actions'},actions)) : null;
   return el('form',{class:['card form-card',flat?'is-flat':'',className].filter(Boolean).join(' ')}, head, el('div',{class:'form-card-body'},body), foot);
 }
-export function notice(container, error) {
+export function notice(container, error, options = {}) {
   if (error?.name === 'AbortError' || !container.isConnected) return;
   const failed = error instanceof Error;
   const node = el('div',{class:failed?'error':'notice',role:failed?'alert':'status'}, error?.message || String(error));
+  const {icon: iconName, action} = options;
+  if (iconName) node.prepend(icon(iconName));
+  if (action) node.append(action);
   container.prepend(node); return node;
 }
 export function heading(title, description = '') { const route=location.hash.slice(1).split('?')[0]||'dashboard';return el('header',{class:'page-heading'},el('div',{class:'heading-title'},el('span',{class:'heading-icon'},icon(route)),el('h1',{},title)),description ? el('p',{},description) : null); }
-export function empty(title, body = '') { return el('section',{class:'card empty'},el('h2',{},title),el('p',{},body)); }
+// options.actions (array of Nodes: links, buttons or both) renders a centred action
+// row below the body. Omitting it renders exactly the historic two-argument output.
+export function empty(title, body = '', actions = []) {
+  const node = el('section',{class:'card empty'},el('h2',{},title),el('p',{},body));
+  if (actions && actions.length) node.append(el('div',{class:'empty-actions'},...actions));
+  return node;
+}
 // options.numeric lists zero-based column indexes that hold numbers (right-aligned, tabular numerals).
 // options.stack controls phone row-stacking (defaults to true; false preserves standard horizontal scroll).
 export function table(headers, rows, options = {}) {

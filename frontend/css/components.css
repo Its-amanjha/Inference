@@ -26,6 +26,12 @@
 .markdown-preview hr { border:0; border-top:1px solid var(--border); margin:24px 0; }
 .grid > p { grid-column:1 / -1; }
 .card .empty { box-shadow:none; border:0; }
+/* Empty-state actions: a centred, wrapping row of the caller's .button/.ghost controls. */
+.empty-actions { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:12px; }
+.empty-actions:empty { display:none; }
+/* Failure-banner options: an inline icon and a trailing recovery action. */
+.error>.icon,.notice>.icon { width:16px; height:16px; flex:none; vertical-align:-3px; margin-right:8px; }
+.error>.button,.error>button,.notice>.button,.notice>button { margin-left:12px; }
 .button-ghost { background:transparent; border:1px solid var(--border); color:var(--color-ink-black); }
 dialog { border:1px solid var(--border); border-radius:24px; padding:32px; max-width:min(640px,calc(100vw - 32px)); background:var(--color-paper-white); color:var(--color-graphite); } dialog::backdrop { background:rgba(0,0,0,.3); }
 
