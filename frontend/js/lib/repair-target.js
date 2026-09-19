@@ -67,6 +67,139 @@ export async function listWorkflows(instanceId,signal){
     .map(row=>({id:String(row.id),name:typeof row.name==='string'&&row.name.trim()?row.name:String(row.id),active:row.active}));
 }
 
+// First page of workflows on an instance through the fleet API (masked documents; names are readable).
+// CodeLab and Promote use this for pickers; the workflow list stays lazy per instance.
+export async function loadInstanceWorkflows(instanceId,signal){
+  const result=await api('/api/n8n_proxy/workflows?'+new URLSearchParams({instance_id:instanceId,limit:'250'}),{signal});
+  const rows=Array.isArray(result?.data)?result.data:[];
+  return rows.filter(row=>row&&IDENTIFIER.test(String(row.id??'')))
+    .map(row=>({id:String(row.id),name:typeof row.name==='string'&&row.name.trim()?row.name:String(row.id),detail:typeof row.active==='boolean'?(row.active?'Active':'Inactive'):''}));
+}
+
+// One searchable ID picker for CodeLab, Promote mappings and saved conversations.
+// Human labels with the id as secondary text, filter-as-you-type, arrow/Enter/Escape
+// keyboard support, pasted unknown ids kept as "not in this list", lazy per-scope loading
+// with an empty state and a Retry on failure. The search box always keeps the raw text,
+// so pasting an id never loses anything.
+export function createIdPicker({label,placeholder='',hint=null,load,emptyText='',emptyActions=[],clearLabel='Clear',clearable=true,onPick,signal}){
+  const listId=`id-picker-list-${++sequence}`;
+  const search=el('input',{type:'search',maxLength:256,placeholder,autocomplete:'off',spellcheck:'false',role:'combobox','aria-expanded':'false','aria-controls':listId,'aria-autocomplete':'list'});
+  const list=el('ul',{className:'picker-list',id:listId,role:'listbox',hidden:true});
+  const status=el('p',{className:'picker-status muted',role:'status'});
+  const pickedName=el('strong',{}),pickedId=el('span',{className:'picker-id'});
+  const picked=el('p',{className:'picker-picked',hidden:true},'Selected: ',pickedName,' ',pickedId,' ');
+  const clearPicked=el('button',{type:'button',className:'button ghost picker-clear'},clearLabel);
+  if(clearable)picked.append(clearPicked);
+  const node=el('div',{className:'picker'},field(label,search,hint?{hint}:{}),status,list,picked);
+  let items=null,loadError=null,loading=null,open=false,activeIndex=-1,selectedId='',selectedKnown=false,pendingResolve=false;
+
+  function visibleRows(){
+    const needle=search.value.trim().toLowerCase();
+    const rows=!needle?(items||[]):items.filter(row=>(row.name+' '+row.id+' '+(row.detail||'')).toLowerCase().includes(needle));
+    return rows.slice(0,50);
+  }
+  function unknownOption(){
+    const text=search.value.trim();
+    if(!text||!items||items.some(row=>row.id===text))return null;
+    return {id:text,name:text,detail:'',unknown:true};
+  }
+  function paint(){
+    const rows=visibleRows(),extra=unknownOption();
+    list.replaceChildren(...rows.map((row,index)=>optionNode(row,index)),...(extra?[optionNode(extra,rows.length,true)]:[]));
+    const count=list.childElementCount;
+    list.hidden=!open||count===0;
+    search.setAttribute('aria-expanded',String(open&&!list.hidden));
+    if(activeIndex>=count)activeIndex=count-1;
+    syncActive();
+  }
+  function optionNode(row,index,unknown=false){
+    const item=el('li',{className:'picker-option'+(unknown?' picker-unknown':''),id:`${listId}-${index}`,role:'option','aria-selected':String(index===activeIndex)});
+    item.append(el('span',{className:'picker-name'},unknown?`Use “${row.id}”`:row.name),el('span',{className:'picker-id'},unknown?'(id not in this list)':row.detail?`${row.detail} · ${row.id}`:row.id));
+    item.addEventListener('mousedown',event=>{event.preventDefault();choose(index);});
+    return item;
+  }
+  function syncActive(){
+    for(const [index,item] of [...list.children].entries()){
+      item.setAttribute('aria-selected',String(index===activeIndex));
+      if(index===activeIndex){search.setAttribute('aria-activedescendant',item.id);item.scrollIntoView({block:'nearest'});}
+    }
+    if(activeIndex<0)search.removeAttribute('aria-activedescendant');
+  }
+  function choose(index){
+    const rows=visibleRows(),extra=unknownOption();
+    const row=index<rows.length?rows[index]:extra;
+    if(!row)return;
+    selectedId=row.id;selectedKnown=!row.unknown;
+    search.value=row.id;setOpen(false);paintPicked();
+    onPick(row.id,!row.unknown,row);
+  }
+  function paintPicked(){
+    if(!selectedId){picked.hidden=true;return;}
+    picked.hidden=false;
+    if(selectedKnown){const row=(items||[]).find(row=>row.id===selectedId);pickedName.textContent=row?row.name:selectedId;pickedId.textContent=row?row.id:'';}
+    else{pickedName.textContent=selectedId;pickedId.textContent='(id not in this list)';}
+  }
+  function setOpen(value){
+    open=value;
+    if(open)ensureLoaded();
+    paint();
+  }
+  function ensureLoaded(){
+    if(items!==null||loading||signal.aborted)return Promise.resolve();
+    status.textContent='Loading…';
+    loading=(async()=>{
+      try{
+        const loaded=await load(signal);
+        if(signal.aborted)return;
+        items=Array.isArray(loaded)?loaded:loaded.items||[];
+        loadError=null;
+        if(items.length===0)status.replaceChildren(emptyText||'Nothing to choose yet.',...emptyActions);
+        else status.replaceChildren(loaded.note||'');
+        if(pendingResolve)resolvePending();else paintPicked();
+      }catch(error){
+        if(signal.aborted)return;
+        loadError=error;items=null;
+        status.replaceChildren(`Could not load the list. ${error?.message||error} `,el('button',{type:'button',className:'button ghost picker-retry'},'Retry'));
+        status.querySelector('button').addEventListener('click',()=>{loading=null;ensureLoaded();paint();});
+      }finally{loading=null;}
+      paint();
+    })();
+    return loading;
+  }
+  function resolvePending(){
+    selectedKnown=(items||[]).some(row=>row.id===selectedId);
+    pendingResolve=false;paintPicked();paint();
+  }
+  search.addEventListener('focus',()=>setOpen(true),{signal});
+  search.addEventListener('input',()=>{activeIndex=-1;if(selectedId&&search.value.trim()!==selectedId){selectedId='';picked.hidden=true;}setOpen(true);},{signal});
+  search.addEventListener('blur',()=>setOpen(false),{signal});
+  search.addEventListener('keydown',event=>{
+    if(event.key==='ArrowDown'||event.key==='ArrowUp'){
+      event.preventDefault();
+      const count=list.childElementCount;
+      if(!count)return;
+      if(activeIndex<0)activeIndex=event.key==='ArrowDown'?0:count-1;
+      else activeIndex=event.key==='ArrowDown'?(activeIndex+1)%count:(activeIndex-1+count)%count;
+      setOpen(true);syncActive();
+    }else if(event.key==='Enter'){
+      if(open&&activeIndex>=0){event.preventDefault();choose(activeIndex);}
+      else if(open&&unknownOption()){event.preventDefault();choose(visibleRows().length);}
+      else if(open&&visibleRows().length===1){event.preventDefault();choose(0);}
+    }else if(event.key==='Escape'){setOpen(false);}
+  },{signal});
+  clearPicked.addEventListener('click',()=>{selectedId='';search.value='';picked.hidden=true;search.focus();onPick('',false);},{signal});
+  return {node,input:search,
+    get(){return search.value.trim();},
+    set(id,name=null){
+      search.value=id||'';selectedId=id||'';
+      if(!selectedId){picked.hidden=true;return;}
+      if(items!==null){selectedKnown=(items||[]).some(row=>row.id===selectedId);paintPicked();}
+      else{pendingResolve=true;selectedKnown=Boolean(name);picked.hidden=false;pickedName.textContent=name||selectedId;pickedId.textContent=name?selectedId:'(id not in this list)';ensureLoaded();}
+    },
+    reload(){items=null;loadError=null;setOpen(true);},
+    focus(){search.focus();}};
+}
+
 // Toolbar chip with an inline workflow search. onChange receives the next target, or null to clear it.
 export function targetChip({signal,onChange}){
   const node=el('div',{className:'repair-target',role:'group','aria-label':'Repair target'});

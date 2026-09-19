@@ -2,6 +2,7 @@ import {api} from '../api.js';
 import {state,can} from '../state.js';
 import {el,button,field,formCard,heading,notice,empty} from '../lib/html.js';
 import {confirmAction,askText} from '../lib/confirm.js';
+import {createIdPicker,loadInstanceWorkflows} from '../lib/repair-target.js';
 import {icon} from '../lib/icons.js';
 import {rawDisclosure,instanceName,plural,toneBadge,describeCode,section} from '../lib/payload.js';
 
@@ -102,7 +103,58 @@ export async function render(container){
     try{const result=await api('/api/n8n_promote/deploy',{method:'POST',json:{preview_id:preview.preview_id,idempotency_key:key}});runContext.set(result.id,context);previewBox.append(el('h3',{},'Deployment result'),runCard(result));preview=null;await runs();}
     catch(error){notice(messages,error);previewBox.append(el('p',{className:'muted'},'Check run history before creating another preview. A remote write may have completed.'));await runs();}
   });deploy.disabled=true;
-  function invalidate(){version++;preview=null;previewContext=null;deploy.disabled=true;previewBox.replaceChildren(el('p',{className:'muted'},'Run preflight to review a fresh source and target snapshot.'));}
+  function invalidate(){mappingBox.replaceChildren();resetPreview();}
+  function resetPreview(){version++;preview=null;previewContext=null;deploy.disabled=true;previewBox.replaceChildren(el('p',{className:'muted'},'Run preflight to review a fresh source and target snapshot.'));}
+  const mappingBox=el('div',{className:'mapping-box'});
+  // Choosing a target writes into the mapping JSON the preflight reads, then
+  // resets the preview (deploy stays disabled) without clearing these rows.
+  function mergeMapping(box,key,value){
+    let obj;
+    try{obj=mapping(box);}catch(error){notice(messages,error);return;}
+    obj[key]=value;box.value=JSON.stringify(obj);resetPreview();
+  }
+  function savedTarget(box,key){
+    try{const obj=mapping(box);const value=obj[key];return typeof value==='string'?value:'';}catch{return '';}
+  }
+  async function loadTargetCredentials(signal){
+    const result=await api('/api/n8n_credentials?instance_id='+encodeURIComponent(target.value),{signal});
+    if(result&&result.supported===false)throw new Error(Array.isArray(result.diagnostics)&&result.diagnostics[0]?.message||'Credential discovery is unavailable for this target.');
+    const rows=Array.isArray(result?.data)?result.data:[];
+    return rows.filter(row=>row&&typeof row.id==='string').map(row=>({id:String(row.id),name:String(row.name||row.id),detail:String(row.type||'')}));
+  }
+  function credentialRow(item){
+    const type=String(item.type||'');
+    const picker=createIdPicker({label:`Target credential for “${item.name||item.id}”`,placeholder:'Type a name or paste an ID',
+      hint:'Existing target credentials only. New ones come from a vault reference in the Secrets box.',clearable:false,
+      load:async signal=>{const rows=await loadTargetCredentials(signal);return rows.sort((a,b)=>((b.detail===type)-(a.detail===type)));},
+      emptyText:'No credentials found on the target instance.',
+      onPick:id=>{mergeMapping(credential,String(item.id),id);},signal:controller.signal});
+    const preset=savedTarget(credential,String(item.id));
+    if(preset)picker.set(preset);
+    return el('div',{className:'mapping-row'},
+      el('div',{className:'mapping-source'},el('strong',{},`Credential “${item.name||item.id}”`),type?el('span',{className:'muted'},` (${type})`):null,el('br',{}),el('span',{className:'picker-id'},String(item.id)),item.node?el('span',{className:'muted'},` in node ${item.node}`):null),
+      picker.node);
+  }
+  function subworkflowRow(item){
+    const isError=item.path==='settings.errorWorkflow';
+    const picker=createIdPicker({label:`Target workflow for ${isError?'error workflow':'subworkflow'} ${item.id}`,placeholder:'Type a name or paste an ID',clearable:false,
+      load:signal=>loadInstanceWorkflows(target.value,signal),
+      emptyText:'No workflows found on the target instance.',
+      emptyActions:[el('a',{class:'button ghost',href:'#instances'},'Open instances')],
+      onPick:id=>{mergeMapping(subflows,String(item.id),id);},signal:controller.signal});
+    const preset=savedTarget(subflows,String(item.id));
+    if(preset)picker.set(preset);
+    return el('div',{className:'mapping-row'},
+      el('div',{className:'mapping-source'},el('strong',{},isError?`Error workflow ${item.id}`:`Subworkflow ${item.id}`),item.node?el('span',{className:'muted'},` in node ${item.node}`):null),
+      picker.node);
+  }
+  function renderMappings(result){
+    mappingBox.replaceChildren();
+    const creds=list(result.missing).filter(item=>item?.code==='credential_mapping_required');
+    const flows=list(result.missing).filter(item=>item?.code==='workflow_mapping_required');
+    if(can('admin')&&creds.length)mappingBox.append(el('h3',{},'Map missing credentials'),el('p',{className:'muted'},'Choosing a target writes into the Credential JSON above; run preflight again afterwards.'),...creds.map(credentialRow));
+    if(flows.length)mappingBox.append(el('h3',{},'Map missing workflows'),el('p',{className:'muted'},'Choosing a target writes into the Subworkflow JSON above; run preflight again afterwards.'),...flows.map(subworkflowRow));
+  }
   for(const input of [target,workflow,credential,secrets,subflows])input.addEventListener('input',invalidate,{signal:controller.signal});
   async function workflows(){invalidate();workflow.disabled=true;const selected=source.value;try{let after=null;const options=[];let pages=0;
     do{const params=new URLSearchParams({instance_id:selected,limit:'250'});if(after)params.set('cursor',after);const result=await api('/api/n8n_proxy/workflows?'+params,{signal:controller.signal});options.push(...result.data);after=result.next_cursor;pages++;}while(after&&pages<20);
@@ -118,6 +170,7 @@ export async function render(container){
   }
   function renderPreview(result,context){
     const blocking=[...list(result.missing),...list(result.collisions)],warnings=list(result.warnings),mapped=list(result.mapped);
+    renderMappings(result);
     previewBox.replaceChildren(el('h2',{},'2. Review the changes'),
       el('div',{className:'decision-status'},result.can_deploy?toneBadge('Ready for deployment','success'):toneBadge('Resolve the findings before deployment','error')),
       el('p',{className:'decision-headline'},headline(result,context)),
@@ -139,7 +192,7 @@ export async function render(container){
         el('div',{},el('p',{className:'muted'},'Saved mappings are applied automatically. Use vault references such as $SERVICE, never plaintext secrets. New credential mappings require admin.'),
           field('Credential IDs: source → target (JSON)',credential),
           field('Secrets: source credential → vault reference (JSON)',secrets),
-          field('Subworkflow IDs: source → target (JSON)',subflows)))],
+          field('Subworkflow IDs: source → target (JSON)',subflows))),mappingBox],
     actions:[preflight]});
   chooser.addEventListener('submit',event=>{event.preventDefault();});
   container.append(chooser,messages,previewBox,history);
