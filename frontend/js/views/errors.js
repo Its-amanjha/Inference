@@ -436,7 +436,6 @@ export async function render(container){
     if(loadedStatus==='open'&&can('operator')){
       const resolve=button('Mark resolved',()=>resolveRow(row,resolve,name),'button ghost');
       resolve.dataset.action='resolve';
-      resolve.setAttribute('aria-label', `Mark ${name} resolved`);
       actions.append(resolve);
     }
 
@@ -495,7 +494,19 @@ export async function render(container){
     selectedIds.delete(row.id);
     // Remove only this row; the rest of the loaded page, filters and cursor stay as they are.
     rows=rows.filter(item=>item!==row);
-    draw();
+    const tr=control.closest('tr');
+    const siblings=tr?.isConnected?[...tr.parentElement.children]:[];
+    const position=tr?siblings.indexOf(tr):-1;
+    const target=position<0?null:siblings[position+1]||siblings[position-1]||null;
+    if(target){
+      tr.remove();
+      updateCount();
+      updateSelectionUI();
+      (target.querySelector('[data-action=resolve]')||target.querySelector('a,button'))?.focus();
+    }else{
+      draw();
+      (content.querySelector('.triage-table-wrap')||content).focus();
+    }
     announcer.textContent=`${name} marked resolved.`;
   }
   async function load(before=null){
