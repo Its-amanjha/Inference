@@ -10,7 +10,7 @@
     "--surface-card-surface": "#232427",
     "--surface-nav-pill": "#232427",
     "--surface-input": "#292a2e",
-    "--border": "rgba(255,255,255,.14)",
+    "--border": "rgba(255,255,255,.18)",
     "--shadow-card": "none",
     "--shadow-glow-ring": "none",
     "--focus": "#69adff",

@@ -4,13 +4,13 @@
 :root {
   --control-height:36px;
   --control-radius:8px;
-  --control-border:#a7b0ba;
-  --control-border-hover:#8590a2;
+  --control-border:#7e8a9c;
+  --control-border-hover:#76839a;
   --control-invalid:#c8203a;
   --form-foot-fill:color-mix(in srgb,var(--color-ash-mist) 55%,var(--surface-card-surface));
 }
-[data-theme=dark] { --control-border:#5e6066; --control-border-hover:#76787e; --control-invalid:#ff7a90; }
-[data-theme=n8n] { --control-radius:6px; --control-border:#55555e; --control-border-hover:#6e6e78; --control-invalid:#ff7a90; }
+[data-theme=dark] { --control-border:#7e8086; --control-border-hover:#8f9197; --control-invalid:#ff7a90; }
+[data-theme=n8n] { --control-radius:6px; --control-border:#75757f; --control-border-hover:#86868f; --control-invalid:#ff7a90; }
 
 /* Controls */
 :where(input:not([type=checkbox],[type=radio],[type=range],[type=file],[type=color],[type=hidden]),select,textarea) {
@@ -27,6 +27,12 @@
 :where(input:not([type=checkbox],[type=radio],[type=range],[type=file],[type=color],[type=hidden]),select,textarea):disabled { cursor:not-allowed; color:var(--color-smoke); background-color:var(--color-ash-mist); border-color:var(--border); }
 :where(input:not([type=checkbox],[type=radio],[type=range],[type=file],[type=color],[type=hidden]),textarea):read-only:not(:disabled) { background-color:var(--color-ash-mist); }
 :where(input,textarea)::placeholder { color:var(--color-smoke); opacity:1; }
+
+/* Ghost/secondary button outlines are the button's visual identity (WCAG 1.4.11),
+   so they use the 3:1 --control-border instead of the decorative --border.
+   forms.css loads after components.css, so this border-color wins at equal specificity. */
+.ghost,button.secondary,.button-ghost { border-color:var(--control-border); }
+.ghost:hover:not(:disabled),button.secondary:hover:not(:disabled),.button-ghost:hover:not(:disabled) { border-color:var(--control-border-hover); }
 
 /* Native select with a drawn chevron (no image URLs: the CSP blocks data: images). */
 :where(select) {
