@@ -46,6 +46,19 @@
 .triage-results { margin-bottom:16px; }
 .triage-results:focus { outline:none; }
 
+/* Checkbox selection and bulk actions */
+.triage-select-head,
+.triage-select-cell { width:48px; text-align:center; padding:0 8px; }
+.triage-checkbox-label { display:inline-flex; align-items:center; justify-content:center; min-width:44px; min-height:44px; cursor:pointer; }
+.triage-checkbox-label input[type="checkbox"] { width:18px; height:18px; cursor:pointer; accent-color:var(--selection-text); margin:0; }
+
+.triage-bulk-bar { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px 16px; margin:0 0 14px; padding:10px 14px; border:1px solid var(--selection-text); border-radius:12px; background:var(--surface-card-surface); }
+.triage-bulk-bar[hidden] { display:none !important; }
+.triage-bulk-left { display:flex; align-items:center; gap:8px; }
+.triage-bulk-count { font-weight:600; color:var(--color-ink-black); font-size:13px; font-variant-numeric:tabular-nums; }
+.triage-bulk-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.triage-bulk-actions .button { min-height:36px; }
+
 /* Dense triage table. */
 .table-wrap.triage-table-wrap { border:1px solid var(--border); border-radius:16px; background:var(--surface-card-surface); max-height:max(420px,calc(100dvh - 300px)); }
 [data-theme=n8n] .table-wrap.triage-table-wrap { border-radius:12px; }
@@ -56,6 +69,7 @@
 .triage-table td { padding:10px 12px; vertical-align:baseline; overflow-wrap:normal; }
 .triage-table tbody tr { height:44px; transition:background-color .15s ease-out; }
 .triage-table tbody tr:hover { background:var(--color-ash-mist); }
+.triage-table tbody tr.is-selected { background:var(--selection-fill); }
 .triage-table .triage-num { text-align:right; font-variant-numeric:tabular-nums; }
 .triage-table .triage-actions-head { text-align:right; }
 .triage-severity,.triage-when,.triage-execution { white-space:nowrap; }
@@ -78,6 +92,9 @@
   .metric-cell p.metric-number { font-size:26px; }
   .metric-cell p.metric-number.metric-text { font-size:16px; }
   .triage-filterbar { flex-direction:column; align-items:flex-start; }
+  .triage-bulk-bar { flex-direction:column; align-items:stretch; }
+  .triage-bulk-actions { width:100%; }
+  .triage-bulk-actions .button { min-height:44px; flex:1; }
   /* Each row becomes a stacked card of label/value pairs. */
   .table-wrap:not(.table-scroll) { max-height:none; overflow:visible; scrollbar-gutter:auto; }
   .table-wrap.triage-table-wrap { border:0; border-radius:0; background:transparent; }
@@ -90,7 +107,10 @@
   :is(.triage-table, .table-wrap:not(.table-scroll) table:not(.table-scroll)) thead { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
   :is(.triage-table, .table-wrap:not(.table-scroll) table:not(.table-scroll)) tbody tr { height:auto; margin-bottom:10px; padding:4px 14px; border:1px solid var(--border); border-radius:12px; background:var(--surface-card-surface); }
   :is(.triage-table, .table-wrap:not(.table-scroll) table:not(.table-scroll)) tbody tr:hover { background:var(--surface-card-surface); }
+  :is(.triage-table, .table-wrap:not(.table-scroll) table:not(.table-scroll)) tbody tr.is-selected { background:var(--selection-fill); border-color:var(--selection-text); }
   :is(.triage-table, .table-wrap:not(.table-scroll) table:not(.table-scroll)) td { display:grid; grid-template-columns:minmax(76px,28%) minmax(0,1fr); gap:12px; align-items:baseline; width:auto; min-width:0; padding:9px 0; border-bottom:1px solid var(--border); text-align:left; white-space:normal; }
+  :is(.triage-table, .table-wrap:not(.table-scroll) table:not(.table-scroll)) td.triage-select-cell { align-items:center; min-height:44px; }
+  .triage-checkbox-label { justify-content:flex-start; }
   :is(.triage-table, .table-wrap:not(.table-scroll) table:not(.table-scroll)) td::before { content:attr(data-label); color:var(--color-smoke); font-size:12px; font-weight:500; }
   :is(.triage-table, .table-wrap:not(.table-scroll) table:not(.table-scroll)) td:is(:not([data-label]),[data-label=""])::before { content:none; }
   :is(.triage-table, .table-wrap:not(.table-scroll) table:not(.table-scroll)) td:is(:not([data-label]),[data-label=""]) { grid-template-columns:minmax(0,1fr); }

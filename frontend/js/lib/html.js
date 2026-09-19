@@ -124,8 +124,12 @@ export function table(headers, rows, options = {}) {
   let currentSortCol = options?.initialSort?.column ?? null;
   let currentSortDir = options?.initialSort?.direction ?? 'asc';
 
+  const getRowCells = r => Array.isArray(r) ? (r.cells || r) : (r?.cells || []);
+
   const renderedRows = rows.map((row, origIndex) => {
-    const tr = el('tr', {}, row.map((cell, index) => {
+    const rowCells = getRowCells(row);
+    const rowClass = row?.className || (row?.selected ? 'is-selected' : '');
+    const tr = el('tr', { class: rowClass || undefined }, rowCells.map((cell, index) => {
       const label = resolveLabel(index);
       const attrs = {class: align(index)};
       if (stack && label) attrs['data-label'] = label;
@@ -151,8 +155,8 @@ export function table(headers, rows, options = {}) {
     currentSortDir = dir;
 
     renderedRows.sort((a, b) => {
-      const valA = parseSortValue(a.row[colIndex], type);
-      const valB = parseSortValue(b.row[colIndex], type);
+      const valA = parseSortValue(getRowCells(a.row)[colIndex], type);
+      const valB = parseSortValue(getRowCells(b.row)[colIndex], type);
       let cmp = 0;
       if (type === 'number' || type === 'date') {
         cmp = valA < valB ? -1 : (valA > valB ? 1 : 0);

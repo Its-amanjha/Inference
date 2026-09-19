@@ -6,6 +6,7 @@ import {askText,confirmAction} from '../lib/confirm.js';
 
 const COLUMNS=[['Severity'],['When'],['Workflow / node'],['Instance'],['Count','triage-num'],['Execution'],['Actions','triage-actions-head']];
 const LONG_MESSAGE=100;
+const SORT_COL_KEYS = ['severity', 'when', 'workflow', 'instance', 'count', 'execution'];
 
 // Message text stays a text node; long messages keep the full text in a disclosure.
 function message(text) {
@@ -23,28 +24,38 @@ export async function render(container){
   const initialStatus = initialParams.get('status') === 'resolved' ? 'resolved' : 'open';
   const initialFilter = TRIAGE_FILTERS.some(([k]) => k === initialParams.get('type')) ? initialParams.get('type') : 'all';
   let activeViewName = initialParams.get('view') || '';
-  let currentSort = { column: 1, direction: 'desc' };
+  let currentSort = { key: 'when', direction: 'desc' };
   if (initialParams.has('sort')) {
-    const col = Number(initialParams.get('sort'));
+    const raw = initialParams.get('sort');
     const dir = initialParams.get('dir') === 'asc' ? 'asc' : 'desc';
-    if (!Number.isNaN(col)) currentSort = { column: col, direction: dir };
+    if (SORT_COL_KEYS.includes(raw)) {
+      currentSort = { key: raw, direction: dir };
+    } else {
+      const num = Number(raw);
+      if (!Number.isNaN(num) && num >= 0 && num < SORT_COL_KEYS.length) {
+        currentSort = { key: SORT_COL_KEYS[num], direction: dir };
+      }
+    }
   }
 
   const status=el('select',{},el('option',{value:'open'},'Open'),el('option',{value:'resolved'},'Resolved'));
   status.value = initialStatus;
   let rows=[],cursor=null,busy=false,queued=false,filter=initialFilter,loadedStatus=status.value;
+  const selectedIds = new Set();
   const feedback=el('div',{class:'triage-feedback'}),content=el('div',{class:'triage-results',tabindex:-1});
   const count=el('p',{class:'triage-count','aria-live':'polite'}),announcer=el('p',{class:'triage-announce',role:'status'});
   const chips=TRIAGE_FILTERS.map(([key,label])=>el('button',{type:'button',class:'button ghost triage-chip','aria-pressed':String(key===filter),onclick:()=>setFilter(key)},label));
   const next=button('Older errors',()=>load(cursor),'button ghost');next.disabled=true;
   const savedViewsContainer = el('div', { class: 'triage-saved-bar', role: 'region', 'aria-label': 'Saved filter views' });
+  const bulkBar = el('div', { class: 'triage-bulk-bar', role: 'region', 'aria-label': 'Bulk actions' });
+  bulkBar.hidden = true;
 
   function syncHash() {
     const params = new URLSearchParams();
     if (status.value !== 'open') params.set('status', status.value);
     if (filter !== 'all') params.set('type', filter);
-    if (currentSort.column !== 1 || currentSort.direction !== 'desc') {
-      params.set('sort', String(currentSort.column));
+    if (currentSort.key !== 'when' || currentSort.direction !== 'desc') {
+      params.set('sort', currentSort.key);
       params.set('dir', currentSort.direction);
     }
     if (activeViewName) params.set('view', activeViewName);
@@ -74,7 +85,10 @@ export async function render(container){
         setFilter(match.filters.type, false);
       }
       if (match.filters.sort !== undefined) {
-        currentSort = { column: match.filters.sort, direction: match.filters.dir || 'desc' };
+        const key = typeof match.filters.sort === 'string' && SORT_COL_KEYS.includes(match.filters.sort)
+          ? match.filters.sort
+          : (SORT_COL_KEYS[Number(match.filters.sort)] || 'when');
+        currentSort = { key, direction: match.filters.dir || 'desc' };
         draw();
       }
       syncHash();
@@ -94,7 +108,7 @@ export async function render(container){
       const currentFilters = {
         status: status.value,
         type: filter,
-        sort: currentSort.column,
+        sort: currentSort.key,
         dir: currentSort.direction
       };
       saveView('errors', state.user?.username, name, currentFilters);
@@ -141,6 +155,7 @@ export async function render(container){
   }
 
   status.addEventListener('change', () => {
+    selectedIds.clear();
     if (activeViewName) {
       activeViewName = '';
       renderSavedViews();
@@ -152,6 +167,7 @@ export async function render(container){
   container.append(heading('Error triage','Confirmed errors and evidence-based findings, newest first.'),
     el('div',{class:'toolbar'},field('Status',status),button('Refresh',()=>load(),'button ghost')),
     savedViewsContainer,
+    bulkBar,
     el('div',{class:'triage-filterbar'},el('div',{class:'triage-filters',role:'group','aria-label':'Filter loaded errors by type'},chips),
       el('div',{class:'triage-summary'},count,el('p',{},'Filters apply to loaded errors only.'))),
     announcer,feedback,content,next);
@@ -170,33 +186,191 @@ export async function render(container){
     syncHash();
     draw();
   }
+  function updateSelectionUI() {
+    const canSelect = can('operator') && loadedStatus === 'open';
+    if (!canSelect) {
+      bulkBar.hidden = true;
+      bulkBar.replaceChildren();
+      return;
+    }
+    const visible = visibleRows();
+    const visibleCount = visible.length;
+    const selectedVisibleCount = visible.filter(r => selectedIds.has(r.id)).length;
+    const selectAllBox = container.querySelector('.triage-select-all-box');
+    if (selectAllBox) {
+      if (visibleCount > 0 && selectedVisibleCount === visibleCount) {
+        selectAllBox.checked = true;
+        selectAllBox.indeterminate = false;
+      } else if (selectedVisibleCount > 0) {
+        selectAllBox.checked = false;
+        selectAllBox.indeterminate = true;
+      } else {
+        selectAllBox.checked = false;
+        selectAllBox.indeterminate = false;
+      }
+    }
+    if (selectedIds.size > 0) {
+      bulkBar.hidden = false;
+      const countSpan = el('span', { class: 'triage-bulk-count', 'aria-live': 'polite' }, `${selectedIds.size} error${selectedIds.size === 1 ? '' : 's'} selected`);
+      const resolveBtn = button(`Resolve selected (${selectedIds.size})`, bulkResolve, 'button');
+      resolveBtn.setAttribute('aria-label', `Resolve ${selectedIds.size} selected error${selectedIds.size === 1 ? '' : 's'}`);
+      const selectAllBtn = button('Select all visible', () => {
+        visibleRows().forEach(r => selectedIds.add(r.id));
+        draw();
+      }, 'button ghost');
+      const clearBtn = button('Clear selection', () => {
+        selectedIds.clear();
+        draw();
+      }, 'button ghost');
+      bulkBar.replaceChildren(
+        el('div', { class: 'triage-bulk-left' }, countSpan),
+        el('div', { class: 'triage-bulk-actions' }, resolveBtn, selectAllBtn, clearBtn)
+      );
+    } else {
+      bulkBar.hidden = true;
+      bulkBar.replaceChildren();
+    }
+  }
+
+  async function bulkResolve() {
+    if (!can('operator') || loadedStatus !== 'open') return;
+    const toResolve = rows.filter(r => selectedIds.has(r.id));
+    if (!toResolve.length) return;
+    const count = toResolve.length;
+    const ok = await confirmAction({
+      title: 'Resolve selected errors',
+      target: `${count} error${count === 1 ? '' : 's'}`,
+      consequence: 'Marking these errors resolved removes them from the open triage queue.',
+      confirmLabel: `Resolve ${count} error${count === 1 ? '' : 's'}`,
+      danger: false
+    });
+    if (!ok) return;
+
+    content.setAttribute('aria-busy', 'true');
+    feedback.replaceChildren();
+    announcer.textContent = `Resolving ${count} error${count === 1 ? '' : 's'}…`;
+
+    const successes = [];
+    const failures = [];
+
+    for (const item of toResolve) {
+      if (signal.aborted) return;
+      try {
+        await api(`/api/errors/${encodeURIComponent(item.id)}/resolve`, { method: 'POST', signal });
+        successes.push(item);
+      } catch (err) {
+        failures.push({ item, error: err });
+      }
+    }
+
+    if (signal.aborted) return;
+    content.removeAttribute('aria-busy');
+
+    if (successes.length > 0) {
+      const successIds = new Set(successes.map(s => s.id));
+      rows = rows.filter(r => !successIds.has(r.id));
+      successes.forEach(s => selectedIds.delete(s.id));
+    }
+
+    if (failures.length > 0) {
+      const failSummary = failures.map(f => {
+        const name = `${f.item.workflow_name || 'Workflow'} · ${f.item.node_name || 'Node'}`;
+        return `${name} (${f.error?.message || 'Failed to resolve'})`;
+      }).join('; ');
+      const msg = successes.length > 0
+        ? `Marked ${successes.length} error${successes.length === 1 ? '' : 's'} resolved, but ${failures.length} failed: ${failSummary}.`
+        : `Failed to resolve ${failures.length} error${failures.length === 1 ? '' : 's'}: ${failSummary}.`;
+      const err = new Error(msg);
+      err.code = 'PARTIAL_BULK_FAILURE';
+      notice(feedback, err);
+      announcer.textContent = `${successes.length} resolved, ${failures.length} failed.`;
+    } else {
+      announcer.textContent = `${successes.length} error${successes.length === 1 ? '' : 's'} marked resolved.`;
+    }
+
+    draw();
+  }
+
   function draw(){
     updateCount();
     const shown=visibleRows();
-    if(!rows.length){content.replaceChildren(empty('Nothing to triage',loadedStatus==='open'?'No open errors for this instance selection. An empty list does not prove every execution succeeded; telemetry coverage may be incomplete.':'No resolved errors for this instance selection. Errors marked resolved from the Open list appear here.',loadedStatus==='resolved'?[button('Check again',()=>load(),'ghost'),button('Back to Open',()=>{status.value='open';load();},'ghost')]:[button('Check again',()=>load(),'ghost')]));return;}
-    if(!shown.length){content.replaceChildren(empty('No loaded errors of this type',cursor?'Choose All, or load older errors to look further back.':'Choose All to see the other loaded errors.',[button('Show all types',()=>setFilter('all'),'ghost')]));return;}
-    content.replaceChildren(table(
-      ['Severity','When','Workflow / node','Instance','Count','Execution','Actions'],
-      shown.map(renderRowCells),
+    if(!rows.length){
+      selectedIds.clear();
+      updateSelectionUI();
+      content.replaceChildren(empty('Nothing to triage',loadedStatus==='open'?'No open errors for this instance selection. An empty list does not prove every execution succeeded; telemetry coverage may be incomplete.':'No resolved errors for this instance selection. Errors marked resolved from the Open list appear here.',loadedStatus==='resolved'?[button('Check again',()=>load(),'ghost'),button('Back to Open',()=>{status.value='open';selectedIds.clear();load();},'ghost')]:[button('Check again',()=>load(),'ghost')]));
+      return;
+    }
+    if(!shown.length){
+      updateSelectionUI();
+      content.replaceChildren(empty('No loaded errors of this type',cursor?'Choose All, or load older errors to look further back.':'Choose All to see the other loaded errors.',[button('Show all types',()=>setFilter('all'),'ghost')]));
+      return;
+    }
+
+    const canSelect = can('operator') && loadedStatus === 'open';
+    const colOffset = canSelect ? 1 : 0;
+    const sortColIndex = SORT_COL_KEYS.indexOf(currentSort.key) + colOffset;
+
+    const sortable = {};
+    SORT_COL_KEYS.forEach((k, idx) => {
+      sortable[idx + colOffset] = k === 'when' ? 'date' : (k === 'count' ? 'number' : 'text');
+    });
+
+    let selectAllBox = null;
+    let headers;
+    if (canSelect) {
+      selectAllBox = el('input', {
+        type: 'checkbox',
+        class: 'triage-select-all-box',
+        'aria-label': 'Select all visible errors'
+      });
+      const visibleCount = shown.length;
+      const selectedVisibleCount = shown.filter(r => selectedIds.has(r.id)).length;
+      if (visibleCount > 0 && selectedVisibleCount === visibleCount) {
+        selectAllBox.checked = true;
+      } else if (selectedVisibleCount > 0) {
+        selectAllBox.indeterminate = true;
+      }
+      selectAllBox.addEventListener('change', () => {
+        const shouldSelect = selectAllBox.checked;
+        shown.forEach(r => {
+          if (shouldSelect) selectedIds.add(r.id);
+          else selectedIds.delete(r.id);
+        });
+        draw();
+      });
+      const selectAllHead = el('label', { class: 'triage-checkbox-label', title: 'Select all visible errors' }, selectAllBox);
+      headers = [selectAllHead, 'Severity', 'When', 'Workflow / node', 'Instance', 'Count', 'Execution', 'Actions'];
+    } else {
+      headers = ['Severity', 'When', 'Workflow / node', 'Instance', 'Count', 'Execution', 'Actions'];
+    }
+
+    const tableNode = table(
+      headers,
+      shown.map(row => renderRow(row, canSelect)),
       {
-        className:'triage-table',
-        wrapClass:'triage-table-wrap',
-        ariaLabel:'Errors table',
-        numeric:[4],
-        sortable:{0:'text',1:'date',2:'text',3:'text',4:'number',5:'text'},
-        initialSort:currentSort,
-        onSort:({column,direction})=>{
-          currentSort={column,direction};
-          if(activeViewName){
-            activeViewName='';
+        className: 'triage-table',
+        wrapClass: 'triage-table-wrap',
+        ariaLabel: 'Errors table',
+        numeric: [4 + colOffset],
+        sortable,
+        initialSort: { column: sortColIndex >= 0 ? sortColIndex : (1 + colOffset), direction: currentSort.direction },
+        onSort: ({ column, direction }) => {
+          const normalized = column - colOffset;
+          const key = SORT_COL_KEYS[normalized] || 'when';
+          currentSort = { key, direction };
+          if (activeViewName) {
+            activeViewName = '';
             renderSavedViews();
           }
           syncHash();
         }
       }
-    ));
+    );
+    content.replaceChildren(tableNode);
+    updateSelectionUI();
   }
-  function renderRowCells(row){
+
+  function renderRow(row, canSelect){
     const workflow=row.workflow_name||'Workflow name unavailable',node=row.node_name||'Workflow',name=`${workflow} · ${node}`;
     const cell=(label,className,...children)=>el('td',{class:className,'data-label':label},children);
     const actions=el('div',{class:'triage-action-group'},el('a',{class:'button ghost',href:explainHref(row)},'Explain with AI'));
@@ -204,9 +378,37 @@ export async function render(container){
     if(can('operator'))actions.append(el('a',{class:'button ghost',href:repairHref(row)},'Repair with AI'));
     if(loadedStatus==='open'&&can('operator')){
       const resolve=button('Mark resolved',()=>resolveRow(row,resolve,name),'button ghost');
-      resolve.dataset.action='resolve';actions.append(resolve);
+      resolve.dataset.action='resolve';
+      resolve.setAttribute('aria-label', `Mark ${name} resolved`);
+      actions.append(resolve);
     }
-    return [
+
+    const isRowSelected = selectedIds.has(row.id);
+    const cells = [];
+    if (canSelect) {
+      const checkbox = el('input', {
+        type: 'checkbox',
+        class: 'triage-row-select',
+        'aria-label': `Select error: ${name}`,
+        checked: isRowSelected
+      });
+      checkbox.addEventListener('change', () => {
+        if (checkbox.checked) {
+          selectedIds.add(row.id);
+        } else {
+          selectedIds.delete(row.id);
+        }
+        checkbox.closest('tr')?.classList.toggle('is-selected', checkbox.checked);
+        updateSelectionUI();
+      });
+      cells.push(
+        el('td', { class: 'triage-select-cell', 'data-label': 'Select' },
+          el('label', { class: 'triage-checkbox-label' }, checkbox)
+        )
+      );
+    }
+
+    cells.push(
       {sortValue:severityOf(row.error_type).label,content:cell('Severity','triage-severity',severityPill(row.error_type))},
       {sortValue:row.occurred_at?new Date(row.occurred_at).getTime():0,content:cell('When','triage-when',relativeTime(row.occurred_at))},
       {sortValue:`${workflow} · ${node}`,content:cell('Workflow / node','triage-subject',el('div',{class:'triage-subject-body'},el('div',{class:'triage-title'},el('strong',{},workflow),el('span',{class:'triage-node'},node)),message(row.error_message)))},
@@ -214,8 +416,15 @@ export async function render(container){
       {sortValue:row.count??0,content:cell('Count','triage-num',row.count===null||row.count===undefined?el('span',{class:'triage-missing'},'Unavailable'):String(row.count))},
       {sortValue:row.execution_id?String(row.execution_id):'',content:cell('Execution','triage-execution',row.execution_id?String(row.execution_id):el('span',{class:'triage-missing'},'Unavailable'))},
       cell('Actions','triage-actions',actions)
-    ];
+    );
+
+    return {
+      cells,
+      className: isRowSelected ? 'is-selected' : '',
+      selected: isRowSelected
+    };
   }
+
   async function resolveRow(row,control,name){
     control.disabled=true;feedback.replaceChildren();announcer.textContent='';
     try{await api(`/api/errors/${encodeURIComponent(row.id)}/resolve`,{method:'POST'});}
@@ -226,6 +435,7 @@ export async function render(container){
       control.focus();return;
     }
     if(signal.aborted)return;
+    selectedIds.delete(row.id);
     // Remove only this row; the rest of the loaded page, filters and cursor stay as they are.
     rows=rows.filter(item=>item!==row);
     draw();
