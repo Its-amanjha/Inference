@@ -85,8 +85,22 @@ Inference is a self-hosted operations dashboard for one or more n8n instances. I
 | Official MCP SDK 1.30.0 interoperability | Passed 2026-09-14 |
 | Container smoke (`scripts/smoke_container.py`: UID 10001, read-only root, restart persistence) | Passed 2026-09-16 |
 | Locked Linux backend suite in container | 886 passed, zero skipped, 2026-09-18; current rebuilt image, 182.98 s. |
+| Linux CPython 3.10 compatibility suite (`python:3.10-slim`) | 886 passed, zero skipped, 2 warnings, 2026-09-19 (817.79 s). `requires-python = ">=3.10"` verified. |
+| Load and performance benchmark (`scripts/smoke_load.py --confirm`) | Passed 2026-09-19 on Windows & Linux (25k errors, 25k spans, 10 workers). Status 200/429/503 bounds verified. |
 
 Skips cover POSIX permission, directory fsync and symlink tests that cannot run on Windows.
+
+### Load benchmark evidence (2026-09-19)
+
+Executed via `python scripts/smoke_load.py --confirm` against an isolated server running with 25,000 seeded errors and 25,000 seeded OTLP spans:
+- **Error list retrieval (limit=50):** 239.9 req/s | p50: 39.44 ms | p95: 50.53 ms | p99: 59.37 ms | 100% 200 OK
+- **Error list retrieval (limit=100):** 194.4 req/s | p50: 49.40 ms | p95: 56.21 ms | p99: 67.55 ms | 100% 200 OK
+- **Observability trace summary:** 37.4 req/s | p50: 252.03 ms | p95: 282.50 ms | p99: 367.32 ms | 100% 200 OK
+- **Trace aggregation (GROUP BY trace_id):** 25.8 req/s | p50: 353.62 ms | p95: 594.60 ms | p99: 617.03 ms | 100% 200 OK
+- **Session authentication check (`/auth/status`):** 524.1 req/s | p50: 18.20 ms | p95: 25.29 ms | p99: 28.91 ms | 100% 200 OK
+- **Admin role check (`/api/admin/users`):** 706.8 req/s | p50: 13.46 ms | p95: 19.41 ms | p99: 26.83 ms | 100% 200 OK
+- **Dashboard proxy rate limiter:** 174.7 req/s | 4 allowed (200), 16 rate limited (429) enforcing sliding window protection
+- **OTLP span ingestion (5-span protobuf batch):** 224.3 req/s | p50: 42.76 ms | p95: 61.93 ms | bounded by parser semaphore
 
 ## What remains
 
@@ -94,8 +108,8 @@ Skips cover POSIX permission, directory fsync and symlink tests that cannot run 
 
 | Item | Notes |
 |---|---|
-| Load and performance tests | Not started. |
-| Python 3.10 compatibility check | `pyproject.toml` allows 3.10+; only 3.13 has been exercised. |
+| Load and performance tests | Completed 2026-09-19 (`scripts/smoke_load.py`). Verified under 10 concurrent workers with 25k seeded errors/spans. |
+| Python 3.10 compatibility check | Completed 2026-09-19 in Linux `python:3.10-slim`. 886 passed, zero failures. `requires-python = ">=3.10"` confirmed. |
 | Linux browser verification | Current Linux backend rerun completed 2026-09-18: 886 passed, zero skipped. Browser suite has only run on Windows. |
 | Final review | Complete-platform conformance and release review. |
 
@@ -104,7 +118,7 @@ Skips cover POSIX permission, directory fsync and symlink tests that cannot run 
 | Item | Notes |
 |---|---|
 | Ollama context window | Raise it with `OLLAMA_CONTEXT_LENGTH=8192` for the Ollama process, or a Modelfile with a larger `num_ctx`; the `/v1` endpoint Inference uses does not accept `num_ctx` per request. Verified 2026-09-17: set to 8192 on this machine, no truncation, on-topic answer in 295 s. |
-| Vendored skill license | The upstream `LICENSE` and `NOTICES` are now in `backend/skills/`. The NOTICES file refers to an Apache 2.0 copy for hook scripts that are not vendored; confirm that no Apache-licensed content is included. |
+| Vendored skill license & provenance | Resolved 2026-09-19. Pinned exact upstream revision `29d3c31a6e5acc13ada4565e0d07b297bcc03f34` (`v1.21.0`, 86/86 files matching 100%). Explained 43/43 diff against v1.35.0 across 14 subsequent upstream releases. Added verbatim `backend/skills/NOTICES-APACHE-2.0.txt` in compliance with Apache License 2.0 Section 4 for borrowed structure in `using-n8n-mcp-skills`. |
 
 ### Product queue
 
