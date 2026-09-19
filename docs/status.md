@@ -89,6 +89,9 @@ Inference is a self-hosted operations dashboard for one or more n8n instances. I
 | Load and performance benchmark (`scripts/smoke_load.py --confirm`) | Passed 2026-09-19 on Windows & Linux (25k errors, 25k spans, 10 workers). Status 200/429/503 bounds verified. |
 | Linux browser smoke suite in container (Playwright bundled Chromium) | 18 PASS, zero errors, exit code 0, 2026-09-19 |
 | Live MinIO S3 backup and disaster recovery (`scripts/smoke_s3_backup.py --confirm`) | 19/19 PASS, zero errors, exit code 0, 2026-09-19 (MinIO RELEASE.2024-01-18T22-51-28Z). Full round-trip + 5 failure paths verified. |
+| Live n8n version matrix and promotion pipeline (`scripts/smoke_live_matrix.py --confirm`) | 13/13 PASS, zero errors, exit code 0, 2026-09-19 (Run 1: 220.28 s, Run 2: 145.86 s, Run 3 under load after OTLP: 152.74 s). Real cross-instance promotion verified: n8n 2.17.7 (`n8nio/n8n:latest`) -> n8n 2.19.0 (`docker.n8n.io/n8nio/n8n:2.19.0`), preflight AST diff, inactive deployment, remapped credentials, explicit activation, idempotent replay, stale preview rejection, and target outage handling. Operational guidance: requires Docker Desktop, ~2.5 to 4 minutes execution, and an unsaturated host; separated 180-240s startup polling and 45s operational timeouts prevent false timeouts during container initialization. |
+| Live OpenTelemetry correlation and silent failure classification (`scripts/smoke_live_otlp.py --confirm`) | 14/14 PASS, zero errors, exit code 0, 2026-09-19 (122.32 s). Real n8n 2.19.0 native OTLP protobuf export, 16 KiB attribute cap, 30s arrival grace protection, conservative incomplete telemetry on un-correlated real spans, and continuation error detection. |
+| Live Model Context Protocol (MCP) Streamable HTTP & bearer auth (`scripts/smoke_mcp_auth.py --confirm`) | 11/11 PASS, zero errors, exit code 0, 2026-09-19 (7.02 s). Protocol 2025-11-25, Bearer authentication, session ID negotiation, 15-minute human approval gate, replay rejection, expired proposal rejection, fail-closed auth rejection. |
 
 Skips cover POSIX permission, directory fsync and symlink tests that cannot run on Windows.
 
@@ -125,6 +128,53 @@ Executed via `python scripts/smoke_s3_backup.py --confirm` against a disposable 
 - **Repeat command:**
   ```powershell
   .venv\Scripts\python.exe scripts/smoke_s3_backup.py --confirm
+  ```
+
+### Live n8n version matrix and promotion evidence (2026-09-19)
+
+Executed via `python scripts/smoke_live_matrix.py --confirm` against real, distinct n8n Docker containers running on ephemeral loopback ports:
+- **Discovered matrix:** Source n8n `n8nio/n8n:latest` (version 2.17.7) -> Target n8n `docker.n8n.io/n8nio/n8n:2.19.0` (version 2.19.0).
+- **Provisions & bootstrap:** Disposable Inference instance booted with loopback egress allowlist (`127.0.0.1/32`); admin account initialized with double-submit CSRF protection; both n8n instances onboarded via owner setup and registered in Inference's fleet proxy.
+- **Workflow & credential deployment:** Seeded realistic multi-node workflow (Webhook, Code, Sticky Note, Header Auth credential) on Source (2.17.7); deployed matching target credential on Target (2.19.0).
+- **Promotion preflight:** Verified AST diff generation, node transformations, credential mapping detection (`can_deploy=True`), and preview ID issuance.
+- **Inactive deployment enforcement:** Deployed workflow to Target (2.19.0); verified target workflow created strictly in inactive state (`active: false`) with remapped credential ID.
+- **Explicit activation:** Verified workflow activation (`POST /api/n8n_proxy/workflows/{id}/activate`) successfully transitions target workflow to active on remote instance.
+- **Three edge cases validated:**
+  1. *Idempotent replay:* Re-deploying with identical idempotency key returned cached result; zero duplicate workflows created on target instance.
+  2. *Stale preview rejection:* Modifying Source workflow after preflight rejected subsequent deploy with `status='rejected'`, `error_code='stale_preview'`.
+  3. *Remote outage handling:* Stopping Target container mid-deploy handled cleanly with `status='rejected'` / `uncertain`; zero blind retry loops.
+- **Repeat command:**
+  ```powershell
+  .venv\Scripts\python.exe scripts/smoke_live_matrix.py --confirm
+  ```
+
+### Live OpenTelemetry span correlation and silent failure evidence (2026-09-19)
+
+Executed via `python scripts/smoke_live_otlp.py --confirm` against a real n8n 2.19.0 container exporting native OTLP protobuf traces to Inference:
+- **Instance token issuance:** Generated dedicated per-instance machine OTLP bearer token; hash persisted in `telemetry_tokens`.
+- **Native OTLP export from n8n 2.19.0:** Container booted with `N8N_OTEL_ENABLED=true`, `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`, and bearer auth; exported 7 spans across two workflow executions directly to `/api/otel/v1/traces`.
+- **Span sanitization & limit verification:** Verified ingested spans adhere to the 16 KiB serialized attribute cap.
+- **30s arrival grace window protection:** Classification run immediately after execution confirmed continuation errors are not prematurely flagged before arrival grace elapses.
+- **Conservative incomplete telemetry protection:** On un-correlated child spans from real n8n (where `n8n.execution.id` is emitted on root span only), classifier conservatively reported `health_status='incomplete'`, `error_type='incomplete_telemetry'` without false failure alarms.
+- **Silent failure classification on confirmed node error:** Flagged continuation failure on continued execution with `health_status='error'`, `error_type='continuation_error'`, and `silent=1`.
+- **Healthy execution verification:** Verified healthy execution unflagged (`health_status='ok'`, zero false positives).
+- **Repeat command:**
+  ```powershell
+  .venv\Scripts\python.exe scripts/smoke_live_otlp.py --confirm
+  ```
+
+### Live Model Context Protocol (MCP) Streamable HTTP evidence (2026-09-19)
+
+Executed via `python scripts/smoke_mcp_auth.py --confirm` against a standalone Streamable HTTP MCP server (protocol 2025-11-25) with Bearer token authentication:
+- **Protocol negotiation:** Initialized Streamable HTTP session; verified session ID negotiation (`Mcp-Session-Id`), server capability advertisement, and tool discovery (`tools/list`).
+- **Human approval gate enforcement:** Assistant tool call created 15-minute pending proposal bound to user, session, and exact arguments. Zero autonomous execution permitted.
+- **Proposal confirmation:** Executed approved proposal with double-submit CSRF; verified tool result returned cleanly.
+- **Replay attack rejection:** Replaying the consumed action ID returned HTTP 409 `action_consumed`.
+- **Expired proposal rejection:** Action expired past TTL returned HTTP 409 `approval_unavailable`.
+- **Fail-closed authentication:** Outbound tool call with invalid Bearer token returned HTTP 502 `mcp_error` without exposing raw authorization credentials.
+- **Repeat command:**
+  ```powershell
+  .venv\Scripts\python.exe scripts/smoke_mcp_auth.py --confirm
   ```
 
 ## What remains
@@ -164,8 +214,10 @@ Estimates are for the implementer.
 - Skill-guided answers on CPU inference are slow: 123 to 228 seconds per follow-up turn with the full guide on `qwen2.5:3b`, and a chat can make up to three provider calls.
 - Ollama's default context window can truncate a prompt that carries a guide, dropping the system prompt and the question.
 - Standard chat history stores only user messages and final answers, so `get_skill` and other tool calls are not visible in `GET /api/assistant/chats/{id}`.
-- Only `SKILL.md` is served; reference files the guides mention are not available to the model. Some guides assume an n8n-mcp server Inference does not provide.
-- Live integrations not yet verified: hosted streaming, MCP SDK 2.x and authenticated third-party MCP servers, hosted multi-cloud S3 providers (AWS/R2), exhaustive OTLP span correlation on real data, n8n version matrix and live cross-instance promotion. (Local S3-compatible MinIO upload, download, and offline restore are verified).
+- Live integrations not yet verified: hosted streaming, MCP SDK 2.x, hosted multi-cloud S3 providers (AWS/R2). (Local S3-compatible MinIO upload/download/restore, cross-instance n8n version matrix promotion, live native OTLP span correlation, and authenticated Streamable HTTP MCP client are verified).
+- In real n8n 2.x OpenTelemetry, `n8n.execution.id` is emitted on root workflow spans only, so raw child node spans require trace ID selection to correlate automatically (`backend/modules/observability/router.py:281`). Conservative classification safeguards prevent false-positive alarms by flagging un-correlated spans as `incomplete_telemetry`.
+- In real n8n 2.x, continue-on-fail node errors place the error inside output payload `data.main[0][0].json.error` with `executionStatus: 'success'`, requiring payload inspection to detect continuation errors without prior node error normalization (`backend/modules/observability/router.py:248`).
+- In workflow promotion, target credential display names differing from source credential display names trigger readback mismatch unless display names match (`backend/modules/n8n_promote/transform.py:114`).
 - n8n's update API is not conditional, so an external editor can race a confirmed write after the final read.
 
 ### Docker cleanup
