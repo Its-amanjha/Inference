@@ -86,7 +86,7 @@ function runStatus(run,targetName){
 export async function render(container){
   const controller=new AbortController();container.append(heading('Promote workflows','Preview exact changes, deploy inactive, then activate separately.'));
   if(!can('operator')){container.append(empty('Operator access required','Ask an administrator for permission to promote workflows.'));return()=>controller.abort();}
-  const route=new URLSearchParams(location.hash.split('?')[1]||''),source=el('select'),target=el('select'),workflow=el('select'),previewBox=el('section',{className:'card stack'}),history=el('section',{className:'card stack'}),messages=el('div');let preview=null,previewContext=null,key=null,version=0;
+  const route=new URLSearchParams(location.hash.split('?')[1]||''),source=el('select'),target=el('select'),workflow=el('select'),previewBody=el('div',{className:'stack'}),previewBox=el('section',{className:'card stack'},el('h2',{className:'wizard-step'},'2. Review the changes'),previewBody),history=el('section',{className:'card stack'}),messages=el('div');let preview=null,previewContext=null,key=null,version=0;
   const runContext=new Map();
   for(const item of state.instances){source.append(el('option',{value:item.id},item.name));target.append(el('option',{value:item.id},item.name));}
   source.value=route.get('source_instance_id')||state.instanceId||source.value;target.value=state.instances.find(item=>item.id!==source.value)?.id||'';
@@ -100,11 +100,11 @@ export async function render(container){
       consequence:`${consequence} Activation is a separate step, and source and target are checked again before anything is written.`,
       confirmLabel:'Deploy inactive'}))return;
     deploy.disabled=true;
-    try{const result=await api('/api/n8n_promote/deploy',{method:'POST',json:{preview_id:preview.preview_id,idempotency_key:key}});runContext.set(result.id,context);previewBox.append(el('h3',{},'Deployment result'),runCard(result));preview=null;await runs();}
-    catch(error){notice(messages,error);previewBox.append(el('p',{className:'muted'},'Check run history before creating another preview. A remote write may have completed.'));await runs();}
+    try{const result=await api('/api/n8n_promote/deploy',{method:'POST',json:{preview_id:preview.preview_id,idempotency_key:key}});runContext.set(result.id,context);previewBody.append(el('h3',{},'Deployment result'),runCard(result));preview=null;await runs();}
+    catch(error){notice(messages,error);previewBody.append(el('p',{className:'muted'},'Check run history before creating another preview. A remote write may have completed.'));await runs();}
   });deploy.disabled=true;
   function invalidate(){mappingBox.replaceChildren();resetPreview();}
-  function resetPreview(){version++;preview=null;previewContext=null;deploy.disabled=true;previewBox.replaceChildren(el('p',{className:'muted'},'Run preflight to review a fresh source and target snapshot.'));}
+  function resetPreview(){version++;preview=null;previewContext=null;deploy.disabled=true;previewBody.replaceChildren(el('p',{className:'muted'},'Run preflight to review a fresh source and target snapshot.'));}
   const mappingBox=el('div',{className:'mapping-box'});
   // Choosing a target writes into the mapping JSON the preflight reads, then
   // resets the preview (deploy stays disabled) without clearing these rows.
@@ -171,7 +171,7 @@ export async function render(container){
   function renderPreview(result,context){
     const blocking=[...list(result.missing),...list(result.collisions)],warnings=list(result.warnings),mapped=list(result.mapped);
     renderMappings(result);
-    previewBox.replaceChildren(el('h2',{},'2. Review the changes'),
+    previewBody.replaceChildren(
       el('div',{className:'decision-status'},result.can_deploy?toneBadge('Ready for deployment','success'):toneBadge('Resolve the findings before deployment','error')),
       el('p',{className:'decision-headline'},headline(result,context)),
       blocking.length?section('Blocking findings',blocking.length,'blocking',el('ul',{className:'decision-list'},blocking.map(item=>itemRow('blocked',...findingText(item)))),rawDisclosure({missing:result.missing,collisions:result.collisions})):null,
@@ -229,6 +229,6 @@ export async function render(container){
     card.append(rawDisclosure(run,'Raw run record'));
     return card;
   }
-  async function runs(){try{const result=await api('/api/n8n_promote/runs',{signal:controller.signal});history.replaceChildren(el('h2',{},'3. Deployment history'),button('Refresh runs',runs,'button ghost'),...result.data.map(runCard));if(!result.data.length)history.append(empty('No promotions yet','Your deployment results and recovery actions will appear here.',[button('Start a promotion',()=>{source.scrollIntoView();source.focus({preventScroll:true});},'ghost')]));}catch(error){if(!controller.signal.aborted)notice(history,error);}}
+  async function runs(){try{const result=await api('/api/n8n_promote/runs',{signal:controller.signal});history.replaceChildren(el('h2',{className:'wizard-step'},'3. Deployment history'),button('Refresh runs',runs,'button ghost'),...result.data.map(runCard));if(!result.data.length)history.append(empty('No promotions yet','Your deployment results and recovery actions will appear here.',[button('Start a promotion',()=>{source.scrollIntoView();source.focus({preventScroll:true});},'ghost')]));}catch(error){if(!controller.signal.aborted)notice(history,error);}}
   invalidate();await Promise.all([source.value?workflows():Promise.resolve(),runs()]);return()=>controller.abort();
 }
