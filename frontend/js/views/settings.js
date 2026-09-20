@@ -28,7 +28,7 @@ export async function render(container){
   // disclosures were rejected because they would hide fields that later fail
   // validation; nothing here is ever hidden.
   const groups={};
-  for(const [key,label] of [['account','Account'],['security','Security'],['deployment','Deployment'],['users','Users'],['audit','Audit']])groups[key]=el('section',{class:'settings-section',id:`settings-${key}`,tabindex:-1},el('h2',{class:'settings-group-title'},label));
+  for(const [key,label] of [['account','Account'],['security','Security'],['deployment','Deployment'],['users','Users'],['audit','Audit']])groups[key]=el('section',{class:'settings-section',id:`settings-${key}`},el('h2',{class:'settings-group-title',tabindex:-1},label));
   const navLinks=[['account','Account'],['security','Security'],['display','Display']];
   if(can('admin'))navLinks.push(['deployment','Deployment'],['users','Users'],['audit','Audit']);
   const nav=el('nav',{class:'settings-nav','aria-label':'Settings sections'},
@@ -37,8 +37,16 @@ export async function render(container){
     const link=event.target.closest('a[href^="#settings-"]');
     if(!link)return;
     const target=document.getElementById(link.hash.slice(1));
-    // Never set location.hash: the router would leave this view.
-    if(target){event.preventDefault();target.scrollIntoView();target.focus({preventScroll:true});}
+    // Never set location.hash: the router would leave this view. Focus the
+    // heading so screen readers announce where we landed ("Account, heading"),
+    // and flash the section for sighted keyboard users.
+    if(target){
+      event.preventDefault();target.scrollIntoView();
+      for(const flashed of container.querySelectorAll('.settings-flash'))flashed.classList.remove('settings-flash');
+      target.classList.add('settings-flash');
+      const head=target.querySelector('h2,h3');
+      (head||target).focus({preventScroll:true});
+    }
   });
   let writing=false;
   const api=async(path,options={})=>{
