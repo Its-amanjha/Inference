@@ -1,6 +1,6 @@
 # Project status
 
-Last updated 2026-09-20. Branch `feat/inference`, 239 commits (first 2026-08-05, latest `5bbacf9`). `origin/feat/inference` tracks through `3c50f77`; two local commits on top are unpushed.
+Last updated 2026-09-20. Branch `feat/inference`, 239 commits (first 2026-08-05, latest `5bbacf9`).
 
 This report covers what Inference does today, the work done so far and how it was verified, and what remains before release. Detailed dated entries are kept in [IMPLEMENTATION.md](../IMPLEMENTATION.md).
 
@@ -52,18 +52,21 @@ Inference is a self-hosted operations dashboard for one or more n8n instances. I
 - `b24e047` assistant identifies itself as the Inference assistant; `19717ea` tool rejections name the tool and failing fields; `fe24331` provider setup asks a known service only for key and model.
 - `6e423fe` skill library and `get_skill` tool; `22324f9` local endpoint egress hint and `qwen2.5:3b` placeholder; `c5a3760` `get_skill` in repair conversations and near-miss names; `087191f` a failing read tool in a standard chat goes back to the model instead of ending the chat.
 - Done and verified 2026-09-17: longer timeouts for local providers (`8ad3fac`), the egress hint for private addresses (`a859277`), and the `skill_not_installed` result shape for unknown skill names (`8806866`). Backend suite 880 passed, 11 skipped; browser smoke suite 18 of 18; egress hint 16 of 16 in a real browser.
-- Repair round 2, merged 2026-09-19 (`2d988a2` with `3dd4037`, `0aee8b9`, `d71c7d6`, `30dc384`): creation and restore proposals with operator notes, execution retry review with side-effect warnings, readable repair events announced once.
+- Repair round 2, merged 2026-09-20 (`2d988a2` with `3dd4037`, `0aee8b9`, `d71c7d6`, `30dc384`): creation and restore proposals with operator notes, execution retry review with side-effect warnings, readable repair events announced once.
 
 **Frontend and design**
 - `227c2ac` zero-build SPA shell; `8b6f442`, `2b978d4` operational and specialised views; `8b7fdfc` design system and themes.
 - `7ff5643` forms and navigation rebuilt; `8e17e72` one control scale; `848e29b` last form conversions, native browser dialogs replaced.
 - Phone fixes: `f08eb7e` error type filters scroll on one line; `99f64b9` toasts reserve space so the last controls stay reachable; `e1d923a` proposal code diffs wrap (previously 30 of 82 characters visible); `0d49db1` no duplicate rail card for a completed linked deactivation.
-- Keyboard, tables and triage, merged 2026-09-19: one shortcut registry for every view (`6ec003b` with the shell dispatcher, typing guard and overlay), sortable columns with saved filter views and bulk resolve, focused-row announcement with chatter suppression (`0113037`), per-row controls named for their row (`3763f27`, suite locators derived from the rendered names in `5f571bc`), two-tier triage toolbar (`27532ef`).
-- Metrics and fonts, merged 2026-09-19: navigable metric semantics (`1354ded`, `ded8ec3`, `1c2f462`), Inter and JetBrains Mono bundled offline (`0d66b18`), assistant phone layout (`5dba6c2` with repair-event announcements in `72c7c15`).
-- Promotion pickers, merged 2026-09-19 (`fd9a16a` with `60e06be`, `36e1562`, `42cbb7b`, `20ff93e`, `9f79d88`): source-workflow combobox and per-missing-item target pickers writing lossless JSON, plus conversation and CodeLab pickers from the shared helper.
-- Design review 2 recorded 2026-09-19 (`c234fa9`): 33/40, up from 22/40.
-- Settings sections, merged 2026-09-19 (`3fbf9a5` with `9a7175b`): Account, Security, Display, Deployment, Users and Audit groups with skip navigation; backlinks as a real list (`842a248`); provisioning fieldsets (`90f0153`).
-- Two self-audits closed a dozen defects: null markdown sources (`97437a3`), single-node empty actions (`de803c7`), transient-error recognition (`3aec11e`), disconnected dialog focus restore (`5edf551`), table sort state sync (`8f7fabc`), picker clearing and null guards (`a554e11`, `24b2ffb`, `fa5d13b`, `7cf0566`), shortcuts overlay precedence and key rendering (`b511569`, `1670a0a`), stale mapping pickers (`f8b805e`), resolved-row resurrection (`fbce1b2`), and duplicating Settings sections (`9a7175b` with the group-clear follow-up `83a4f3b`); backlinks deduplication landed alongside (`5c29561`).
+- Keyboard, tables and triage, merged 2026-09-20: one shortcut registry for every view (`6ec003b` with the shell dispatcher, typing guard and overlay), sortable columns with saved filter views and bulk resolve, focused-row announcement with chatter suppression (`0113037`), per-row controls named for their row (`3763f27`, suite locators derived from the rendered names in `5f571bc`), two-tier triage toolbar (`27532ef`).
+- Metrics and fonts, merged 2026-09-20: navigable metric semantics (`1354ded`, `ded8ec3`, `1c2f462`), Inter and JetBrains Mono bundled offline (`0d66b18`), assistant phone layout (`5dba6c2` with repair-event announcements in `72c7c15`).
+- Promotion pickers, merged 2026-09-20 (`fd9a16a` with `60e06be`, `36e1562`, `42cbb7b`, `20ff93e`, `9f79d88`): source-workflow combobox and per-missing-item target pickers writing lossless JSON, plus conversation and CodeLab pickers from the shared helper.
+- Design review 2 recorded 2026-09-20 (`c234fa9`): 33/40, up from 22/40.
+- Settings sections, merged 2026-09-20 (`3fbf9a5` with `9a7175b`): Account, Security, Display, Deployment, Users and Audit groups with skip navigation; backlinks as a real list (`842a248`); provisioning fieldsets (`90f0153`).
+- Two self-audits of the day's frontend work, 2026-09-20, found seven of the dozen defects below; the other five surfaced through suite gates and strict-mode locators.
+  - First audit (frontend, via `4e8468c`): picker clearing on ID reset (`a554e11`), shortcuts overlay precedence over view shortcuts (`b511569`), slash-key rendering (`1670a0a`), stale mapping pickers after raw JSON edits (`f8b805e`), resolved rows resurrected by sorting (`fbce1b2`).
+  - Second audit (frontend, author-verified fixes): Settings sections duplicating themselves on every save (`9a7175b` with the group-clear follow-up `83a4f3b`), and a duplicated schedule-remove block that broke the whole Backups view until the module-parse gate caught it (`b46e37c`).
+  - Suite and gate fallout closed the rest: null markdown sources (`97437a3`), single-node empty actions (`de803c7`), transient-error recognition (`3aec11e`), disconnected dialog focus restore (`5edf551`), table sort state sync (`8f7fabc`), picker null guards (`24b2ffb`, `fa5d13b`, `7cf0566`), and backlinks deduplication (`5c29561`).
 
 **Test infrastructure**
 - `a87b01e` Playwright browser smoke suites and frontend fixtures; `e6e284f` managed n8n runner integration, MCP SDK server and local verification suites.
