@@ -27,8 +27,9 @@ function inline(text, depth = 0) {
 }
 
 export function renderMarkdown(container, source) {
-  const text = String(source);
   container.replaceChildren();
+  if (source === null || source === undefined || source === '') return;
+  const text = String(source);
   // Oversized/dense documents retain a usable text preview with bounded DOM work.
   if (text.length > 262144 || text.split('\n').length > 5000 || (text.match(/[`*_\[]/g) || []).length > 10000) {
     container.append(el('p', {class:'muted'}, 'Large document: showing plain text.'), el('pre', {}, text));

@@ -21,8 +21,11 @@ export function asOf(date=new Date()){
 
 const TRANSIENT_CODES=new Set(['rate_limited','upstream_rate_limited','upstream_timeout','upstream_unavailable','probe_timeout']);
 export function isTransient(error){
-  return error instanceof TypeError || error?.name==='TimeoutError' || TRANSIENT_CODES.has(error?.code)
-    || [408,429,502,503,504].includes(error?.status);
+  if(!error) return false;
+  const status = error.status !== undefined && error.status !== null ? Number(error.status) : undefined;
+  return error instanceof TypeError || error.name === 'TimeoutError' || error.name === 'NetworkError'
+    || TRANSIENT_CODES.has(typeof error === 'string' ? error : error.code)
+    || status === 0 || [408,429,502,503,504].includes(status);
 }
 
 export function loadFailure(error,retry,label='Could not refresh data'){
