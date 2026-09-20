@@ -223,13 +223,15 @@ def test_preview_matches_fixture_patch_and_restore():
     before = fixture_workflow()
     pending = FIXTURE['patch']['pending_action']
     desired = apply_operations(before, pending['arguments']['operations'])
-    expected = pending['preview']
+    contract.Preview.model_validate(pending['preview'])  # Persisted v1 remains readable.
+    expected = {**pending['preview'], 'contract': contract.CONTRACT_VERSION}
     result = preview(before, desired, kind='workflow_patch', model_summary=pending['arguments']['summary'],
                      preconditions=expected['preconditions'], workflow_name='Order synchronization')
     contract.Preview.model_validate(result)
     assert {**result, 'summary_text': None} == {**expected, 'summary_text': None}
     assert result['summary_text'] == 'Change 2 nodes in workflow “Order synchronization”: HTTP Request, Code.'
-    restore = FIXTURE['restore']['pending_action']['preview']
+    contract.Preview.model_validate(FIXTURE['restore']['pending_action']['preview'])
+    restore = {**FIXTURE['restore']['pending_action']['preview'], 'contract': contract.CONTRACT_VERSION}
     assert preview(desired, before, kind='workflow_restore', summary_text=restore['summary_text']) == restore
     assert before == fixture_workflow()
 

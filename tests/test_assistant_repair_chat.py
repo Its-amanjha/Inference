@@ -84,7 +84,7 @@ async def test_one_request_injects_exact_context_and_proposes(workspace):
     assert ERROR_TEXT not in sent['messages'][0]['content']
     assert {tool['function']['name'] for tool in sent['tools']} == {
         'get_workflow_context', 'get_error_context', 'propose_workflow_patch', 'propose_restore_workflow', 'activate_workflow',
-        'deactivate_workflow', 'get_skill'}
+        'deactivate_workflow', 'get_skill', 'propose_create_workflow', 'propose_retry_execution'}
     assert '$ref' not in json.dumps(sent['tools'])
     injected = [message for message in sent['messages'] if message['role'] == 'tool']
     assert len(injected) == 1
@@ -322,7 +322,9 @@ async def test_continue_requires_the_same_target(workspace):
 
 async def test_context_endpoint_validation_and_viewer_access(workspace):
     base = '/api/assistant/repair/context'
-    assert (await workspace.client.get(base, params={'instance_id': workspace.instance})).status_code == 422
+    # v2 permits an existing instance with no workflow for a creation conversation.
+    assert (await workspace.client.get(base, params={'instance_id': workspace.instance})).status_code == 200
+    assert (await workspace.client.get(base, params={'instance_id': 'missing'})).status_code == 404
     both = await workspace.client.get(base, params={'instance_id': workspace.instance, 'error_id': workspace.error_id, 'execution_id': '4821'})
     assert both.status_code == 422
     await workspace.app.state.db.execute("UPDATE users SET role='viewer' WHERE username='owner'")

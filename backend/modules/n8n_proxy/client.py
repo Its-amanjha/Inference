@@ -153,6 +153,21 @@ class N8nClient:
         **kwargs: Any,
     ) -> dict[str, Any]:
         method, mutation, required_role = _operation(method, path)
+        return await self._send(instance_id, method, path, mutation, required_role, **kwargs)
+
+    async def retry_execution(self, instance_id: str, execution_id: str) -> dict[str, Any]:
+        """Retry with the saved workflow, for the assistant's claimed approval only.
+
+        Keep retry outside the generic request allowlist. This explicit operation has no
+        caller-controlled path/body/options and shares all authorization and egress checks.
+        """
+        if not isinstance(execution_id, str) or not re.fullmatch(_IDENTIFIER, execution_id):
+            fail(400, 'invalid_upstream_request', 'A valid execution ID is required.')
+        return await self._send(instance_id, 'POST', f'/executions/{execution_id}/retry', True, 'operator',
+                                json={'loadWorkflow': True})
+
+    async def _send(self, instance_id: str, method: str, path: str, mutation: bool,
+                    required_role: str, **kwargs: Any) -> dict[str, Any]:
         if set(kwargs) - _ALLOWED_KWARGS:
             fail(
                 400,
