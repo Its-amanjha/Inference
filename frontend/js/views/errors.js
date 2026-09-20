@@ -46,9 +46,10 @@ export async function render(container){
   const count=el('p',{class:'triage-count','aria-live':'polite'}),announcer=el('p',{class:'triage-announce',role:'status'});
   const chips=TRIAGE_FILTERS.map(([key,label])=>el('button',{type:'button',class:'button ghost triage-chip','aria-pressed':String(key===filter),onclick:()=>setFilter(key)},label));
   const next=button('Older errors',()=>load(cursor),'button ghost');next.disabled=true;
-  const savedViewsContainer = el('div', { class: 'triage-saved-bar', role: 'region', 'aria-label': 'Saved filter views' });
-  const bulkBar = el('div', { class: 'triage-bulk-bar', role: 'region', 'aria-label': 'Bulk actions' });
+  const savedViewsContainer = el('details', { class: 'triage-saved-dropdown triage-saved-bar', role: 'group', 'aria-label': 'Saved filter views' });
+  const bulkBar = el('div', { class: 'triage-bulk-strip triage-bulk-bar', role: 'region', 'aria-label': 'Bulk actions' });
   bulkBar.hidden = true;
+  const contextStrip = el('div', { class: 'triage-context-strip' });
 
   function syncHash() {
     const params = new URLSearchParams();
@@ -61,6 +62,35 @@ export async function render(container){
     if (activeViewName) params.set('view', activeViewName);
     const qs = params.toString();
     history.replaceState(null, '', qs ? `#errors?${qs}` : '#errors');
+  }
+
+  function updateContextStrip() {
+    if (selectedIds.size > 0 && can('operator') && loadedStatus === 'open') {
+      contextStrip.replaceChildren(bulkBar);
+    } else {
+      let activeBadge = null;
+      if (activeViewName) {
+        const clearActiveBtn = button('Clear view', () => {
+          activeViewName = '';
+          syncHash();
+          renderSavedViews();
+          updateContextStrip();
+        }, 'ghost');
+        clearActiveBtn.setAttribute('aria-label', `Clear active view: ${activeViewName}`);
+        activeBadge = el('div', { class: 'active-view-indicator' },
+          el('span', { class: 'badge info' }, `Active view: ${activeViewName}`),
+          clearActiveBtn
+        );
+      }
+
+      contextStrip.replaceChildren(
+        el('div', { class: 'triage-context-left' },
+          count,
+          el('p', { class: 'triage-scope-note' }, 'Filters apply to loaded errors only.'),
+          activeBadge
+        )
+      );
+    }
   }
 
   function renderSavedViews() {
@@ -92,7 +122,9 @@ export async function render(container){
         draw();
       }
       syncHash();
+      savedViewsContainer.open = false;
       renderSavedViews();
+      updateContextStrip();
       announcer.textContent = `Applied saved view "${match.name}".`;
     });
 
@@ -114,7 +146,9 @@ export async function render(container){
       saveView('errors', state.user?.username, name, currentFilters);
       activeViewName = name;
       syncHash();
+      savedViewsContainer.open = false;
       renderSavedViews();
+      updateContextStrip();
       announcer.textContent = `View "${name}" saved.`;
     }, 'ghost');
 
@@ -132,26 +166,29 @@ export async function render(container){
       const deletedName = activeViewName;
       activeViewName = '';
       syncHash();
+      savedViewsContainer.open = false;
       renderSavedViews();
+      updateContextStrip();
       announcer.textContent = `View "${deletedName}" deleted.`;
     }, 'ghost');
     deleteBtn.disabled = !activeViewName;
 
-    const activeBadge = activeViewName
-      ? el('div', { class: 'active-view-indicator' },
-          el('span', { class: 'badge info' }, `Active view: ${activeViewName}`),
-          button('Clear view', () => {
-            activeViewName = '';
-            syncHash();
-            renderSavedViews();
-          }, 'ghost')
-        )
-      : null;
+    const summaryLabel = activeViewName ? `View: ${activeViewName}` : 'Saved views';
+    const summary = el('summary', {
+      class: 'button ghost triage-saved-toggle',
+      'aria-label': activeViewName ? `Saved views menu, active view: ${activeViewName}` : 'Saved views menu'
+    }, summaryLabel);
 
-    savedViewsContainer.replaceChildren(
-      el('div', { class: 'saved-views-controls' }, select, saveBtn, deleteBtn),
-      activeBadge
+    const panelActions = el('div', { class: 'triage-saved-panel-actions' }, saveBtn, deleteBtn);
+
+    const panel = el('div', { class: 'triage-saved-panel' },
+      select,
+      panelActions
     );
+
+    const wasOpen = savedViewsContainer.open;
+    savedViewsContainer.replaceChildren(summary, panel);
+    if (wasOpen) savedViewsContainer.open = true;
   }
 
   status.addEventListener('change', () => {
@@ -164,17 +201,42 @@ export async function render(container){
     load();
   }, {signal});
 
+  document.addEventListener('click', (e) => {
+    if (savedViewsContainer.open && !savedViewsContainer.contains(e.target)) {
+      savedViewsContainer.open = false;
+    }
+  }, { signal });
+
+  savedViewsContainer.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && savedViewsContainer.open) {
+      e.stopPropagation();
+      savedViewsContainer.open = false;
+      savedViewsContainer.querySelector('summary')?.focus();
+    }
+  });
+
   const shortcutsBtn = button('Shortcuts (?)', openShortcutsDialog, 'button ghost');
   shortcutsBtn.setAttribute('aria-label', 'Keyboard shortcuts');
   shortcutsBtn.setAttribute('title', 'Keyboard shortcuts (?)');
 
-  container.append(heading('Error triage','Confirmed errors and evidence-based findings, newest first.'),
-    el('div',{class:'toolbar'},field('Status',status),button('Refresh',()=>load(),'button ghost'),shortcutsBtn),
-    savedViewsContainer,
-    bulkBar,
-    el('div',{class:'triage-filterbar'},el('div',{class:'triage-filters',role:'group','aria-label':'Filter loaded errors by type'},chips),
-      el('div',{class:'triage-summary'},count,el('p',{},'Filters apply to loaded errors only.'))),
-    announcer,feedback,content,next);
+  const commandStrip = el('div', { class: 'triage-command-strip' },
+    el('div', { class: 'triage-command-main' },
+      el('div', { class: 'triage-status-group' }, field('Status', status)),
+      el('div', { class: 'triage-filters', role: 'group', 'aria-label': 'Filter loaded errors by type' }, chips)
+    ),
+    el('div', { class: 'triage-command-actions' },
+      savedViewsContainer,
+      button('Refresh', () => load(), 'button ghost'),
+      shortcutsBtn
+    )
+  );
+
+  container.append(
+    heading('Error triage', 'Confirmed errors and evidence-based findings, newest first.'),
+    commandStrip,
+    contextStrip,
+    announcer, feedback, content, next
+  );
 
   function openShortcutsDialog() {
     if (document.querySelector('dialog[open]')) return;
@@ -248,6 +310,7 @@ export async function render(container){
     if (!canSelect) {
       bulkBar.hidden = true;
       bulkBar.replaceChildren();
+      updateContextStrip();
       return;
     }
     const visible = visibleRows();
@@ -269,6 +332,7 @@ export async function render(container){
     if (selectedIds.size > 0) {
       bulkBar.hidden = false;
       const countSpan = el('span', { class: 'triage-bulk-count', 'aria-live': 'polite' }, `${selectedIds.size} error${selectedIds.size === 1 ? '' : 's'} selected`);
+      const scopeSpan = el('span', { class: 'triage-bulk-scope' }, `(${visibleCount} visible)`);
       const resolveBtn = button(`Resolve selected (${selectedIds.size})`, bulkResolve, 'button');
       resolveBtn.setAttribute('aria-label', `Resolve ${selectedIds.size} selected error${selectedIds.size === 1 ? '' : 's'}`);
       const selectAllBtn = button('Select all visible', () => {
@@ -280,13 +344,14 @@ export async function render(container){
         draw();
       }, 'button ghost');
       bulkBar.replaceChildren(
-        el('div', { class: 'triage-bulk-left' }, countSpan),
+        el('div', { class: 'triage-bulk-left' }, countSpan, scopeSpan),
         el('div', { class: 'triage-bulk-actions' }, resolveBtn, selectAllBtn, clearBtn)
       );
     } else {
       bulkBar.hidden = true;
       bulkBar.replaceChildren();
     }
+    updateContextStrip();
   }
 
   async function bulkResolve() {
