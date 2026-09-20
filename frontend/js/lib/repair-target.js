@@ -110,7 +110,7 @@ export function createIdPicker({label,placeholder='',hint=null,load,emptyText=''
 
   function visibleRows(){
     const needle=search.value.trim().toLowerCase();
-    const rows=!needle?(items||[]):items.filter(row=>(row.name+' '+row.id+' '+(row.detail||'')).toLowerCase().includes(needle));
+    const rows=!needle?(items||[]):(items||[]).filter(row=>(row.name+' '+row.id+' '+(row.detail||'')).toLowerCase().includes(needle));
     return rows.slice(0,50);
   }
   function unknownOption(){
