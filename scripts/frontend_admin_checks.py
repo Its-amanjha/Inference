@@ -2,6 +2,7 @@
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
+import re
 import secrets
 import sqlite3
 import sys
@@ -19,7 +20,7 @@ def exercise_admin(page):
     page.get_by_role('button', name='Save user', exact=True).click()
     expect(page.get_by_role('cell', name='browser_viewer', exact=True)).to_have_count(1)
     row = page.get_by_role('row').filter(has=page.get_by_role('cell', name='browser_viewer', exact=True))
-    row.get_by_role('button', name='Edit', exact=True).click()
+    row.get_by_role('button', name='Edit user browser_viewer', exact=True).click()
     page.get_by_label('Role', exact=True).select_option('operator')
     page.get_by_role('button', name='Save user', exact=True).click()
     expect(row.get_by_role('cell', name='operator', exact=True)).to_have_count(1)
@@ -67,23 +68,25 @@ def exercise_admin(page):
     page.get_by_role('button', name='Save schedule', exact=True).click()
     page.get_by_role('heading', name='Browser recovery copy', exact=True).wait_for()
     expect(page.get_by_role('button', name='Run now', exact=True)).to_have_count(0)
-    expect(page.get_by_role('button', name='Enable', exact=True)).to_have_count(1)
-    page.get_by_role('button', name='Edit', exact=True).click()
+    expect(page.get_by_role('button', name='Enable schedule Browser recovery copy', exact=True)).to_have_count(1)
+    page.get_by_role('button', name='Edit schedule Browser recovery copy', exact=True).click()
     page.get_by_label('Enabled', exact=True).check()
     page.get_by_role('button', name='Save schedule', exact=True).click()
     with page.expect_response(lambda response: '/api/backups/schedules/' in response.url and response.url.endswith('/run')) as run:
-        page.get_by_role('button', name='Run now', exact=True).click()
+        page.get_by_role('button', name='Run backup now: Browser recovery copy', exact=True).click()
     assert run.value.status == 200, run.value.text()
     assert run.value.json()['status'] == 'succeeded', run.value.text()
     page.get_by_text('Backup outcome: succeeded', exact=True).wait_for()
+    run = page.get_by_role('row').filter(has=page.get_by_role('cell', name='Succeeded', exact=True))
+    expect(run.get_by_role('button', name=re.compile(r'^Download backup from '))).to_have_count(1)
     with page.expect_download() as downloaded:
-        page.get_by_role('button', name='Download', exact=True).click()
+        run.get_by_role('button', name=re.compile(r'^Download backup from ')).click()
     assert downloaded.value.failure() is None
 
     # Destructive schedule actions sit in the overflow menu and confirm in a dialog naming the target.
     schedule = page.locator('section.card').filter(has=page.get_by_role('heading', name='Browser recovery copy', exact=True))
     schedule.locator('summary').filter(has_text='More actions').click()
-    schedule.get_by_role('button', name='Delete schedule', exact=True).click()
+    schedule.get_by_role('button', name='Delete schedule Browser recovery copy', exact=True).click()
     dialog = page.get_by_role('dialog', name='Delete schedule')
     expect(dialog.get_by_text('Browser recovery copy', exact=True)).to_have_count(1)
     expect(dialog.get_by_role('button', name='Cancel', exact=True)).to_be_focused()

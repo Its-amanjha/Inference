@@ -442,7 +442,7 @@ def exercise_fleet(page, fixture_url, state):
         page.get_by_role('button', name='Deactivate workflow Browser workflow on source', exact=True).click()
         page.get_by_role('dialog', name='Deactivate workflow').get_by_role('button', name='Deactivate workflow', exact=True).click()
         page.get_by_role('button', name='Activate workflow Browser workflow on source', exact=True).wait_for()
-        page.locator('#main').get_by_role('link', name='Open Browser workflow in CodeLab', exact=True).click()
+        page.locator('#main').get_by_role('link', name='Open workflow Browser workflow in CodeLab', exact=True).click()
         page.get_by_role('button', name='Load workflow', exact=True).click()
         editor = page.get_by_role('textbox', name='Code editor', exact=True)
         expect(editor).to_have_value('return items;')
@@ -588,7 +588,7 @@ def exercise_fleet_search(page, ids, state):
     target.get_by_role('button', name='Deactivate workflow Target searchable on target', exact=True).click()
     page.get_by_role('dialog', name='Deactivate workflow').get_by_role('button', name='Deactivate workflow', exact=True).click()
     target.get_by_role('button', name='Activate workflow Target searchable on target', exact=True).wait_for()
-    target.get_by_role('link', name='Open Target searchable in CodeLab', exact=True).click()
+    target.get_by_role('link', name='Open workflow Target searchable in CodeLab', exact=True).click()
     assert 'instance_id=' + ids['target'] in page.url
     page.get_by_role('button', name='Load workflow', exact=True).click()
     expect(page.get_by_role('textbox', name='Code editor', exact=True)).to_have_value('return [];')
