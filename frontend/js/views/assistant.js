@@ -5,7 +5,7 @@ import {el, field, formCard, heading, jsonView, notice} from '../lib/html.js';
 import {icon,actionIcon} from '../lib/icons.js';
 import {rawDisclosure, instanceName, toneBadge, formatTime} from '../lib/payload.js';
 import {confirmAction} from '../lib/confirm.js';
-import {parseRepairTarget, repairHash, repairContext, contextQuery, describeTarget, listWorkflows, targetChip, createIdPicker} from '../lib/repair-target.js';
+import {parseRepairTarget, repairHash, repairContext, contextQuery, describeTarget, listWorkflows, targetChip, createIdPicker, MAX_NOTES_CHARS} from '../lib/repair-target.js';
 import {isRepairAction, isRound2Action, proposalShell, renderProposal, effectiveStatus, statusBadge, statusForError, preconditionsOf, preconditionKey,
   turnSteps, contextSent, contextOverview, RATE_LIMITED_TEXT, INCOMPLETE_TEXT, RETRY_WARNING} from '../lib/proposals.js';
 
@@ -69,12 +69,17 @@ export async function render(container) {
   let repairFeedback = null;
   const sendErrorText = el('input', {type: 'checkbox', checked: true});
   const errorTextNote = el('p', {className: 'repair-admin-note', hidden: true}, ERROR_TEXT_OFF);
+  // Native maxlength counts UTF-16 units; the input handler enforces Python's code-point limit.
+  const operatorNotes = el('textarea', {rows: 2, maxLength: MAX_NOTES_CHARS * 2, 'aria-describedby': 'repair-notes-hint repair-notes-remaining', placeholder: 'What should the AI know about this repair?'});
+  const notesRemaining = el('span', {id: 'repair-notes-remaining'}, `${MAX_NOTES_CHARS} characters remaining`);
+  const notesField = el('div', {className: 'repair-notes'}, field('Operator note (optional)', operatorNotes),
+    el('p', {id: 'repair-notes-hint', className: 'muted'}, 'Sent to the AI with your next message. Review the server-masked text in What the AI sees.'), notesRemaining);
   const contextBody = el('div', {className: 'repair-context-body'});
   const contextDetails = el('details', {className: 'repair-context'}, el('summary', {}, 'What the AI sees'),
     el('div', {className: 'repair-context-panel'}, el('label', {className: 'repair-check'}, sendErrorText, el('span', {}, 'Send scrubbed error text to the AI')), errorTextNote, contextBody));
   const modelNotice = el('div', {className: 'repair-model-notice', role: 'status', hidden: true});
   const chip = targetChip({signal, onChange: next => setTarget(next, true)});
-  const repairBar = el('div', {className: 'repair-bar', hidden: true}, chip.node, contextDetails, modelNotice);
+  const repairBar = el('div', {className: 'repair-bar', hidden: true}, chip.node, notesField, contextDetails, modelNotice);
   const errorTextEnabled = () => errorTextAllowed && sendErrorText.checked;
   const applyErrorTextSetting = enabled => {
     const allowed = enabled !== false;
@@ -92,7 +97,7 @@ export async function render(container) {
   };
   const fetchContext = () => {
     if (!target) return Promise.resolve(null);
-    const query = contextQuery(target, errorTextEnabled()).toString();
+    const query = contextQuery(target, errorTextEnabled(), operatorNotes.value).toString();
     if (query !== contextKey || !contextPromise) {
       contextKey = query; contextResult = null;
       const pending = request(`/repair/context?${query}`);
@@ -125,6 +130,18 @@ export async function render(container) {
   };
   listen(contextDetails, 'toggle', () => { if (contextDetails.open) loadContext(); });
   listen(sendErrorText, 'change', () => loadContext());
+  let notesTimer;
+  listen(operatorNotes, 'input', () => {
+    const characters = Array.from(operatorNotes.value);
+    if (characters.length > MAX_NOTES_CHARS) operatorNotes.value = characters.slice(0, MAX_NOTES_CHARS).join('');
+    notesRemaining.textContent = `${Math.max(0, MAX_NOTES_CHARS - characters.length)} characters remaining`;
+    clearTimeout(notesTimer);
+    resetContext();
+    if (contextDetails.open) {
+      contextBody.append(el('p', {className: 'muted', role: 'status'}, 'Updating the masked note…'));
+      notesTimer = setTimeout(() => loadContext(), 350);
+    }
+  });
 
   const selectedProvider = () => providerRows.find(row => row.id === provider.value);
   const toolBadge = el('span', {className: 'badge tool-calling-badge', hidden: true});
@@ -475,14 +492,14 @@ export async function render(container) {
   // Chat turns. Each human action sends one request; nothing continues or retries on its own.
   const actionIds = meta => (Array.isArray(meta?.action_ids) ? meta.action_ids : Array.isArray(meta?.pending_actions) ? meta.pending_actions.map(item => item?.id) : [])
     .filter(id => typeof id === 'string' && id);
-  const retryButton = turn => action('Try again', () => sendTurn(turn.continueTurn ? {continueTurn: true, message: turn.message} : {message: turn.message, retry: true}));
+  const retryButton = turn => action('Try again', () => sendTurn({...turn, retry: !turn.continueTurn}));
   const turnFooter = (meta, turnMessage) => {
     const parts = [];
     const steps = Array.isArray(meta.steps) ? meta.steps : [];
     if (steps.some(step => step?.status === 'rate_limited' || step?.code === 'provider_rate_limited')) parts.push(el('p', {className: 'repair-turn-note'}, RATE_LIMITED_TEXT));
     if (meta.code === 'provider_incomplete' || steps.some(step => step?.code === 'provider_incomplete')) parts.push(el('p', {className: 'repair-turn-note'}, INCOMPLETE_TEXT));
-    if (meta.status === 'awaiting_continue') parts.push(el('p', {className: 'repair-turn-note'}, 'The AI is waiting for you. Continue sends its next request.'), action('Continue', () => sendTurn({continueTurn: true, message: turnMessage}), true));
-    else if (meta.status === 'interrupted') parts.push(el('p', {className: 'repair-turn-note'}, 'This turn stopped before it finished. Nothing was applied.'), retryButton({message: turnMessage}));
+    if (meta.status === 'awaiting_continue') parts.push(el('p', {className: 'repair-turn-note'}, 'The AI is waiting for you. Continue sends its next request.'), action('Continue', () => sendTurn({continueTurn: true, message: turnMessage, repairSnapshot: meta.repairSnapshot}), true));
+    else if (meta.status === 'interrupted') parts.push(el('p', {className: 'repair-turn-note'}, 'This turn stopped before it finished. Nothing was applied.'), retryButton({message: turnMessage, repairSnapshot: meta.repairSnapshot}));
     return parts.length ? el('div', {className: 'repair-turn-footer'}, parts) : null;
   };
   const appendMessage = (role, text, meta = null, turnMessage = '') => {
@@ -497,6 +514,7 @@ export async function render(container) {
       const footer = turnFooter(meta, turnMessage);
       if (footer) node.append(footer);
     }
+    if (role !== 'assistant' && Array.isArray(meta?.context_log) && meta.context_log.length) node.append(contextSent(meta.context_log));
     transcript.append(node);
     transcript.scrollTop=transcript.scrollHeight;
     return node;
@@ -528,12 +546,14 @@ export async function render(container) {
     }
     notice(messages, error); messages.append(el('p', {}, 'No automatic retry was sent. Refresh proposals before trying again; the provider may have created a pending action.'));
   };
-  const sendTurn = async ({message = '', continueTurn = false, retry = false} = {}) => {
+  const sendTurn = async ({message = '', continueTurn = false, retry = false, repairSnapshot} = {}) => {
     if (busy || !provider.value || (!continueTurn && !message.trim())) return false;
     busy = true; send.disabled = true; provider.disabled = true;
     messages.replaceChildren();
     if (!continueTurn && !retry) appendMessage('user', message);
-    const body = {provider_id: provider.value, ...(chatId ? {chat_id: chatId} : {}), ...(target ? {context: repairContext(target, errorTextEnabled())} : {})};
+    // Continue uses the context of the paused turn, even if the next-message note has been edited.
+    const sentContext = repairSnapshot === undefined ? (target ? repairContext(target, errorTextEnabled(), operatorNotes.value) : null) : repairSnapshot;
+    const body = {provider_id: provider.value, ...(chatId ? {chat_id: chatId} : {}), ...(sentContext ? {context: sentContext} : {})};
     if (continueTurn) body.continue_turn = true; else body.message = message;
     try {
       const result = await request('/chat', {method: 'POST', json: body});
@@ -543,12 +563,12 @@ export async function render(container) {
       resumeId.value = chatId || '';
       if (!continueTurn) lastMessage = message;
       if (input.value === message) input.value = '';
-      const node = appendMessage('assistant', result?.content ?? '', result && typeof result === 'object' ? result : {}, message || lastMessage);
+      const node = appendMessage('assistant', result?.content ?? '', {...(result && typeof result === 'object' ? result : {}), repairSnapshot: sentContext}, message || lastMessage);
       await placeProposals(node, result);
       await refreshApprovals().catch(error => { if (!signal.aborted) notice(messages, error); });
       return true;
     } catch (error) {
-      if (!signal.aborted) chatFailure(error, {message: message || lastMessage, continueTurn});
+      if (!signal.aborted) chatFailure(error, {message: message || lastMessage, continueTurn, repairSnapshot: sentContext});
       return false;
     } finally { busy = false; if (!signal.aborted) { send.disabled = !modelsAvailable; provider.disabled = !modelsAvailable; } }
   };
@@ -594,7 +614,7 @@ export async function render(container) {
     chatId = result.id; resumeId.value = chatId; transcript.replaceChildren(); messages.replaceChildren();
     let turnMessage = '';
     for (const item of Array.isArray(result.data) ? result.data : []) {
-      if (item?.role === 'user') { turnMessage = item.content; appendMessage('user', item.content); continue; }
+      if (item?.role === 'user') { turnMessage = item.content; appendMessage('user', item.content, item); continue; }
       const node = appendMessage('assistant', item?.content ?? '', item && typeof item === 'object' ? item : {}, turnMessage);
       await placeProposals(node, item);
       if (signal.aborted) return;
@@ -758,5 +778,5 @@ export async function render(container) {
     // Repaint a card only when its visible status changes, so focus and open disclosures stay put.
     for (const model of proposals.values()) if (model.card.isConnected && model.painted !== effectiveStatus({...model, acting: acting.has(model.action.id)})) paintProposal(model);
   }, 15000);
-  return () => { controller.abort(); clearInterval(timer); };
+  return () => { controller.abort(); clearInterval(timer); clearTimeout(notesTimer); };
 }

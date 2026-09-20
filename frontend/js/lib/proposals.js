@@ -70,7 +70,8 @@ export function contextSent(log){
   return el('details',{className:'context-sent'},el('summary',{},'Context sent'),el('ul',{},log.filter(item=>item&&typeof item==='object').map(item=>{
     const count=Number(item.redaction_count);
     const redacted=item.redaction_count===null||item.redaction_count===undefined||!Number.isFinite(count)?null:count?`${plural(count,'value')} redacted`:'nothing redacted';
-    return el('li',{},[TOOL_LABEL[item.tool]||item.tool||'Context',formatBytes(item.bytes),redacted].filter(Boolean).join(' · '));
+    return el('li',{},[TOOL_LABEL[item.tool]||item.tool||'Context',formatBytes(item.bytes),redacted].filter(Boolean).join(' · '),
+      typeof item.operator_notes==='string'?el('p',{className:'repair-operator-notes'},el('strong',{},'Operator note sent: '),item.operator_notes):null);
   })));
 }
 
@@ -84,6 +85,7 @@ export function contextOverview(result){
   const error=result?.error;
   if(error)lines.push(el('p',{},error.detail==='withheld'?'Error text is withheld from the AI.':error.detail==='unavailable'?'Error details are unavailable for this execution.'
     :`Error${error.last_node?` in “${error.last_node}”`:''}: ${error.message||error.name||'no message recorded'}`));
+  if(typeof result?.notes==='string')lines.push(el('p',{className:'repair-operator-notes'},el('strong',{},'Operator note sent to the AI: '),result.notes));
   lines.push(rawDisclosure(result,'Raw context'));
   return lines;
 }
@@ -279,8 +281,8 @@ export function renderProposal(card,view,handlers){
   card.replaceChildren(
     el('div',{className:'proposal-head'},el('h3',{className:'proposal-title',id:`proposal-${safe}-title`},preview?.summary_text||(action?.name==='propose_restore_workflow'?'Restore an earlier workflow version':'Change a workflow')),statusBadge(status)),
     el('p',{className:'proposal-target'},targetLine(action),status==='pending'&&Number.isFinite(Number(action?.expires_at))?` · Expires ${formatTime(Number(action.expires_at))}`:''),
-    preview?.kind==='execution_retry'?el('div',{className:'proposal-uncertain proposal-retry-warning'},icon('errors'),el('div',{},el('p',{className:'proposal-state-title'},'A retry can repeat payments and other effects'),el('p',{},RETRY_WARNING))):null,
-    state,...sections,footer,feedback,raw);
+    ...(preview?.kind==='execution_retry'?[el('div',{className:'proposal-uncertain proposal-retry-warning'},icon('errors'),el('div',{},el('p',{className:'proposal-state-title'},'A retry can repeat payments and other effects'),el('p',{},RETRY_WARNING)))]:[]),
+    state,...sections,...(round2&&!footer?[]:[footer]),feedback,raw);
   if(focused){
     const target=focused==='card'?null:[...card.querySelectorAll('[data-control]')].find(node=>node.dataset.control===focused&&!node.disabled);
     (target||card).focus({preventScroll:true});
