@@ -180,7 +180,7 @@ function formatKeyNodes(displayStr) {
   const nodes = [];
   parts.forEach((p, idx) => {
     if (idx > 0) nodes.push(document.createTextNode(' '));
-    if (p === '/') {
+    if (p === '/' && parts.length > 1) {
       nodes.push(el('span', {}, '/'));
     } else {
       nodes.push(el('kbd', {}, p));
@@ -289,6 +289,12 @@ function onKeyDown(e) {
     }
   }
 
+  if (e.key === '?' || (e.key === '/' && e.shiftKey)) {
+    e.preventDefault();
+    openShortcutsDialog();
+    return;
+  }
+
   const viewMatch = currentViewShortcuts.find(s => matchShortcutKey(s, e.key));
   if (viewMatch) {
     e.preventDefault();
@@ -300,12 +306,6 @@ function onKeyDown(e) {
     e.preventDefault();
     pendingSequence = 'g';
     pendingTimer = setTimeout(() => { pendingSequence = null; }, 1200);
-    return;
-  }
-
-  if (e.key === '?' || (e.key === '/' && e.shiftKey)) {
-    e.preventDefault();
-    openShortcutsDialog();
     return;
   }
 

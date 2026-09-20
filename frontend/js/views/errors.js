@@ -584,14 +584,12 @@ export async function render(container){
     const tr=control.closest('tr');
     const siblings=tr?.isConnected?[...tr.parentElement.children]:[];
     const position=tr?siblings.indexOf(tr):-1;
-    const target=position<0?null:siblings[position+1]||siblings[position-1]||null;
-    if(target){
-      tr.remove();
-      updateCount();
-      updateSelectionUI();
+    draw();
+    const trList=getRowElements();
+    if(trList.length){
+      const target=position<0?trList[0]:trList[Math.min(position,trList.length-1)];
       (target.querySelector('[data-action=resolve]')||target.querySelector('a,button'))?.focus();
     }else{
-      draw();
       (content.querySelector('.triage-table-wrap')||content).focus();
     }
     announcer.textContent=`${name} marked resolved.`;

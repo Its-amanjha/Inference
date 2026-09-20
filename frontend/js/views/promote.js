@@ -153,7 +153,7 @@ export async function render(container){
   const activeCredPickers=new Map();
   const activeSubflowPickers=new Map();
 
-  function invalidate(){mappingBox.replaceChildren();resetPreview();}
+  function invalidate(){activeCredPickers.clear();activeSubflowPickers.clear();mappingBox.replaceChildren();resetPreview();}
   function resetPreview(){version++;preview=null;previewContext=null;deploy.disabled=true;previewBody.replaceChildren(el('p',{className:'muted'},'Run preflight to review a fresh source and target snapshot.'));}
 
   // Source workflow combobox
@@ -297,30 +297,31 @@ export async function render(container){
 
   // Two-way sync: when textareas are edited directly, update active comboboxes losslessly.
   function syncFromTextareas(){
-    try{
-      const credMap=parseJsonWithComments(credential.value);
-      for(const [k,v] of Object.entries(credMap)){
-        if(activeCredPickers.has(k)&&typeof v==='string'){
-          activeCredPickers.get(k).set(v);
+    let credMap=null,secMap=null,flowMap=null;
+    try{credMap=parseJsonWithComments(credential.value);}catch{}
+    try{secMap=parseJsonWithComments(secrets.value);}catch{}
+    try{flowMap=parseJsonWithComments(subflows.value);}catch{}
+
+    if(credMap!==null||secMap!==null){
+      for(const [k,picker] of activeCredPickers){
+        if(credMap&&typeof credMap[k]==='string'){
+          picker.set(credMap[k]);
+        }else if(secMap&&typeof secMap[k]==='string'){
+          picker.set(secMap[k]);
+        }else if(credMap!==null&&secMap!==null){
+          picker.set('');
         }
       }
-    }catch{}
-    try{
-      const secMap=parseJsonWithComments(secrets.value);
-      for(const [k,v] of Object.entries(secMap)){
-        if(activeCredPickers.has(k)&&typeof v==='string'){
-          activeCredPickers.get(k).set(v);
+    }
+    if(flowMap!==null){
+      for(const [k,picker] of activeSubflowPickers){
+        if(typeof flowMap[k]==='string'){
+          picker.set(flowMap[k]);
+        }else{
+          picker.set('');
         }
       }
-    }catch{}
-    try{
-      const flowMap=parseJsonWithComments(subflows.value);
-      for(const [k,v] of Object.entries(flowMap)){
-        if(activeSubflowPickers.has(k)&&typeof v==='string'){
-          activeSubflowPickers.get(k).set(v);
-        }
-      }
-    }catch{}
+    }
     resetPreview();
   }
 
