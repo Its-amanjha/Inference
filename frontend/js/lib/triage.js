@@ -104,3 +104,24 @@ export function deleteSavedView(scope = 'errors', user = state.user?.username ||
   }
 }
 
+// Delegates to the platform shell shortcut registry
+export function registerShortcuts(shortcuts, title = '') {
+  if (typeof window.registerShortcuts === 'function') {
+    return window.registerShortcuts(shortcuts, title);
+  }
+  return () => {};
+}
+
+export function isTyping(e) {
+  const target = e?.target;
+  if (!target) return false;
+  const tag = target.tagName?.toLowerCase();
+  if (tag === 'textarea' || target.isContentEditable) return true;
+  if (tag === 'input') {
+    const type = target.type?.toLowerCase();
+    return type !== 'checkbox' && type !== 'radio' && type !== 'button' && type !== 'submit' && type !== 'reset';
+  }
+  if (tag === 'select') return true;
+  return false;
+}
+

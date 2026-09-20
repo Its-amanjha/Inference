@@ -13,6 +13,7 @@ mobileNavigation.addEventListener('change',()=>{const menu=root.querySelector('.
 document.querySelector('.skip-link')?.addEventListener('click',event=>{event.preventDefault();const main=document.querySelector('#main');if(main){main.tabIndex=-1;main.focus();main.scrollIntoView({block:'start'});}});
 let cleanup=()=>{}, generation=0, socket=null, reconnect=null, shell=null, selector=null, authPending=false;
 let reconnectDelay=1000, pendingBar=null, pendingCount=0;
+let currentViewShortcuts=[], currentViewTitle='', pendingSequence=null, pendingTimer=null;
 
 // Toasts: one per distinct message (repeats raise a count), dismissible, paused while hovered or focused.
 const TOAST_MS=8000, TOAST_LIMIT=3, toasts=new Map();
@@ -140,9 +141,189 @@ function renderShell() {
   shell=el('main',{id:'main',class:'page',tabIndex:-1});
   root.replaceChildren(el('div',{class:'app-layout'},sidebar,el('div',{class:'workspace'},topbar,shell)));
 }
+
+export function isTyping(e) {
+  const target = e?.target;
+  if (!target) return false;
+  const tag = target.tagName?.toLowerCase();
+  if (tag === 'textarea' || target.isContentEditable) return true;
+  if (tag === 'input') {
+    const type = target.type?.toLowerCase();
+    return type !== 'checkbox' && type !== 'radio' && type !== 'button' && type !== 'submit' && type !== 'reset';
+  }
+  if (tag === 'select') return true;
+  return false;
+}
+
+export function registerShortcuts(shortcuts, title = '') {
+  const items = Array.isArray(shortcuts) ? shortcuts : [shortcuts];
+  const registered = items.map(item => {
+    const keys = Array.isArray(item.key) ? item.key : [item.key];
+    return {
+      keys: keys.map(k => String(k)),
+      display: item.display || keys.join(' / '),
+      description: item.description || '',
+      handler: item.handler
+    };
+  });
+  currentViewShortcuts.push(...registered);
+  if (title) currentViewTitle = title;
+  return () => {
+    currentViewShortcuts = currentViewShortcuts.filter(s => !registered.includes(s));
+    if (currentViewShortcuts.length === 0) currentViewTitle = '';
+  };
+}
+window.registerShortcuts = registerShortcuts;
+
+function formatKeyNodes(displayStr) {
+  const parts = String(displayStr).split(' ');
+  const nodes = [];
+  parts.forEach((p, idx) => {
+    if (idx > 0) nodes.push(document.createTextNode(' '));
+    if (p === '/') {
+      nodes.push(el('span', {}, '/'));
+    } else {
+      nodes.push(el('kbd', {}, p));
+    }
+  });
+  return nodes;
+}
+
+export function openShortcutsDialog(invoker) {
+  if (document.querySelector('dialog.shortcuts-dialog[open]')) return;
+  const trigger = invoker instanceof HTMLElement ? invoker : (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+  const id = `shortcuts-dialog-${Date.now()}`;
+  const closeBtn = button('Close', () => dialog.close(), 'button ghost');
+  closeBtn.setAttribute('aria-label', 'Close keyboard shortcuts dialog');
+
+  const sections = [];
+
+  if (currentViewShortcuts.length > 0) {
+    sections.push(
+      el('h3', {}, currentViewTitle ? `Active view (${currentViewTitle})` : 'Active view'),
+      el('dl', { class: 'shortcuts-list' },
+        ...currentViewShortcuts.map(s => [
+          el('dt', {}, ...formatKeyNodes(s.display)),
+          el('dd', {}, s.description)
+        ]).flat()
+      )
+    );
+  }
+
+  const globalShortcuts = [
+    { display: '?', description: 'Show keyboard shortcuts overlay' },
+    { display: '/', description: 'Focus search or primary filter' },
+    { display: 'g d', description: 'Go to Overview' },
+    { display: 'g e', description: 'Go to Errors' },
+    { display: 'g w', description: 'Go to Workflows' },
+    { display: 'g o', description: 'Go to Observability' },
+    { display: 'g a', description: 'Go to AI workspace' }
+  ];
+
+  sections.push(
+    el('h3', {}, 'Global'),
+    el('dl', { class: 'shortcuts-list' },
+      ...globalShortcuts.map(s => [
+        el('dt', {}, ...formatKeyNodes(s.display)),
+        el('dd', {}, s.description)
+      ]).flat()
+    )
+  );
+
+  const dialog = el('dialog', {
+    class: 'shortcuts-dialog',
+    'aria-labelledby': `${id}-title`
+  },
+    el('h2', { id: `${id}-title` }, 'Keyboard shortcuts'),
+    ...sections,
+    el('div', { class: 'confirm-actions' }, closeBtn)
+  );
+
+  dialog.addEventListener('cancel', () => dialog.close());
+  dialog.addEventListener('close', () => {
+    dialog.remove();
+    if (trigger?.isConnected) trigger.focus();
+  }, { once: true });
+
+  document.body.append(dialog);
+  dialog.showModal();
+  closeBtn.focus();
+}
+window.openShortcutsDialog = openShortcutsDialog;
+
+function matchShortcutKey(shortcut, eventKey) {
+  const normEvent = String(eventKey).toLowerCase();
+  return shortcut.keys.some(k => {
+    const normK = String(k).toLowerCase();
+    return normK === normEvent || k === eventKey;
+  });
+}
+
+function onKeyDown(e) {
+  if (e.defaultPrevented) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (document.querySelector('dialog[open]')) return;
+  if (isTyping(e)) return;
+
+  if (pendingSequence === 'g') {
+    clearTimeout(pendingTimer);
+    pendingSequence = null;
+    const navTargets = {
+      'd': 'dashboard',
+      'e': 'errors',
+      'w': 'workflows',
+      'o': 'observe',
+      'a': 'assistant',
+      's': 'settings',
+      'i': 'instances',
+      'n': 'notes',
+      'b': 'backup',
+      'c': 'codelab',
+      'f': 'fleet-health'
+    };
+    const dest = navTargets[e.key.toLowerCase()];
+    if (dest) {
+      e.preventDefault();
+      location.hash = `#${dest}`;
+      return;
+    }
+  }
+
+  const viewMatch = currentViewShortcuts.find(s => matchShortcutKey(s, e.key));
+  if (viewMatch) {
+    e.preventDefault();
+    viewMatch.handler(e);
+    return;
+  }
+
+  if (e.key === 'g' || e.key === 'G') {
+    e.preventDefault();
+    pendingSequence = 'g';
+    pendingTimer = setTimeout(() => { pendingSequence = null; }, 1200);
+    return;
+  }
+
+  if (e.key === '?' || (e.key === '/' && e.shiftKey)) {
+    e.preventDefault();
+    openShortcutsDialog();
+    return;
+  }
+
+  if (e.key === '/') {
+    e.preventDefault();
+    const searchOrFilter = document.querySelector('#main input[type="search"], #main input[type="text"], .scope-switcher select');
+    searchOrFilter?.focus();
+    return;
+  }
+}
+
 async function navigate() {
   if(!state.user||!shell)return;
   const current=++generation; cleanup();cleanup=()=>{}; clearPendingUpdates();
+  currentViewShortcuts = [];
+  currentViewTitle = '';
+  pendingSequence = null;
+  clearTimeout(pendingTimer);
   const id=location.hash.slice(1).split('?')[0] || 'dashboard';
   root.querySelectorAll('[data-route]').forEach(node=>{if(node.dataset.route===(id==='codelab'?'assistant':id))node.setAttribute('aria-current','page');else node.removeAttribute('aria-current');});
   root.querySelectorAll('.nav-more').forEach(node=>node.open=!mobileNavigation.matches);
@@ -176,6 +357,7 @@ window.addEventListener('session-expired',()=>{if(state.user)toast('Your session
 window.addEventListener('instances-changed',async()=>{try{await loadInstances();}catch(error){toast(error.message);}});
 window.addEventListener('preferences-changed',event=>{applyPreferences(event.detail);setTheme(state.preferences.theme);syncThemeChoice(state.preferences.theme);});
 window.addEventListener('pagehide',()=>{cleanup();closeSocket();});
+window.addEventListener('keydown', onKeyDown);
 // Keep the account menu's theme choice on the theme actually applied, including fallbacks and direct setTheme calls.
 new MutationObserver(()=>{const applied=document.documentElement.dataset.theme;if(['light','dark','n8n'].includes(applied))syncThemeChoice(applied);}).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
 authenticate();
