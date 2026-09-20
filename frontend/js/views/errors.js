@@ -1,7 +1,7 @@
 import {api} from '../api.js';
 import {state,can,pageSize} from '../state.js';
 import {el,button,field,heading,table,notice,empty} from '../lib/html.js';
-import {severityOf,severityPill,relativeTime,instanceName,explainHref,repairHref,TRIAGE_FILTERS,getSavedViews,saveView,deleteSavedView} from '../lib/triage.js';
+import {severityOf,severityPill,relativeTime,instanceName,explainHref,repairHref,TRIAGE_FILTERS,getSavedViews,saveView,deleteSavedView,registerShortcuts} from '../lib/triage.js';
 import {askText,confirmAction} from '../lib/confirm.js';
 
 const COLUMNS=[['Severity'],['When'],['Workflow / node'],['Instance'],['Count','triage-num'],['Execution'],['Actions','triage-actions-head']];
@@ -215,7 +215,7 @@ export async function render(container){
     }
   });
 
-  const shortcutsBtn = button('Shortcuts (?)', openShortcutsDialog, 'button ghost');
+  const shortcutsBtn = button('Shortcuts (?)', () => window.openShortcutsDialog ? window.openShortcutsDialog(shortcutsBtn) : null, 'button ghost');
   shortcutsBtn.setAttribute('aria-label', 'Keyboard shortcuts');
   shortcutsBtn.setAttribute('title', 'Keyboard shortcuts (?)');
 
@@ -238,58 +238,75 @@ export async function render(container){
     announcer, feedback, content, next
   );
 
-  function openShortcutsDialog() {
-    if (document.querySelector('dialog[open]')) return;
-    const invoker = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const id = `shortcuts-dialog-${Date.now()}`;
-    const closeBtn = button('Close', () => dialog.close(), 'button ghost');
-    closeBtn.setAttribute('aria-label', 'Close keyboard shortcuts dialog');
-
-    const shortcuts = [
-      ['?', 'Show keyboard shortcuts overlay'],
-      ['/', 'Focus status filter'],
-      ['r', 'Refresh error list'],
-      ['j / ↓', 'Focus next error row'],
-      ['k / ↑', 'Focus previous error row'],
-      ['x', 'Toggle selection of focused row'],
-      ['e', 'Resolve selected errors (or focused error)']
-    ];
-
-    const list = el('dl', { class: 'shortcuts-list' });
-    shortcuts.forEach(([keys, desc]) => {
-      const parts = keys.split(' ');
-      const keyNodes = [];
-      parts.forEach((p, idx) => {
-        if (p === '/') {
-          keyNodes.push(el('span', {}, ' / '));
-        } else {
-          keyNodes.push(el('kbd', {}, p));
-        }
-      });
-      list.append(el('dt', {}, ...keyNodes), el('dd', {}, desc));
-    });
-
-    const dialog = el('dialog', {
-      class: 'shortcuts-dialog',
-      'aria-labelledby': `${id}-title`
+  const unregisterShortcuts = registerShortcuts([
+    {
+      key: '/',
+      display: '/',
+      description: 'Focus status filter',
+      handler: () => status.focus()
     },
-      el('h2', { id: `${id}-title` }, 'Keyboard shortcuts'),
-      list,
-      el('div', { class: 'confirm-actions' }, closeBtn)
-    );
-
-    dialog.addEventListener('cancel', () => {
-      dialog.close();
-    });
-    dialog.addEventListener('close', () => {
-      dialog.remove();
-      if (invoker?.isConnected) invoker.focus();
-    }, { once: true });
-
-    document.body.append(dialog);
-    dialog.showModal();
-    closeBtn.focus();
-  }
+    {
+      key: ['r', 'R'],
+      display: 'r',
+      description: 'Refresh error list',
+      handler: () => load()
+    },
+    {
+      key: ['j', 'ArrowDown'],
+      display: 'j / ↓',
+      description: 'Focus next error row',
+      handler: () => {
+        const cur = getFocusedRowIndex();
+        focusRow(cur === -1 ? 0 : cur + 1);
+      }
+    },
+    {
+      key: ['k', 'ArrowUp'],
+      display: 'k / ↑',
+      description: 'Focus previous error row',
+      handler: () => {
+        const cur = getFocusedRowIndex();
+        focusRow(cur === -1 ? 0 : cur - 1);
+      }
+    },
+    {
+      key: ['x', 'X'],
+      display: 'x',
+      description: 'Toggle selection of focused row',
+      handler: () => {
+        const cur = getFocusedRowIndex();
+        if (cur !== -1) {
+          const tr = getRowElements()[cur];
+          const cb = tr?.querySelector('input.triage-row-select');
+          if (cb && !cb.disabled) {
+            cb.checked = !cb.checked;
+            cb.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+        }
+      }
+    },
+    {
+      key: ['e', 'E'],
+      display: 'e',
+      description: 'Resolve selected errors (or focused error)',
+      handler: () => {
+        if (can('operator') && loadedStatus === 'open') {
+          if (selectedIds.size > 0) {
+            bulkResolve();
+          } else {
+            const cur = getFocusedRowIndex();
+            if (cur !== -1) {
+              const tr = getRowElements()[cur];
+              const resolveBtn = tr?.querySelector('button[data-action="resolve"]');
+              if (resolveBtn && !resolveBtn.disabled) {
+                resolveBtn.click();
+              }
+            }
+          }
+        }
+      }
+    }
+  ], 'Error triage');
 
   renderSavedViews();
 
@@ -619,92 +636,9 @@ export async function render(container){
     return trList.findIndex(tr => tr.classList.contains('is-focused'));
   }
 
-  function isTyping(e) {
-    const target = e.target;
-    if (!target) return false;
-    const tag = target.tagName?.toLowerCase();
-    if (tag === 'textarea' || target.isContentEditable) return true;
-    if (tag === 'input') {
-      const type = target.type?.toLowerCase();
-      return type !== 'checkbox' && type !== 'radio' && type !== 'button' && type !== 'submit' && type !== 'reset';
-    }
-    if (tag === 'select') return true;
-    return false;
-  }
-
-  function onKeyDown(e) {
-    if (e.defaultPrevented) return;
-    if (e.ctrlKey || e.metaKey || e.altKey) return;
-    if (document.querySelector('dialog[open]')) return;
-    if (isTyping(e)) return;
-
-    if (e.key === '?' || (e.key === '/' && e.shiftKey)) {
-      e.preventDefault();
-      openShortcutsDialog();
-      return;
-    }
-
-    if (e.key === '/') {
-      e.preventDefault();
-      status.focus();
-      return;
-    }
-
-    if (e.key === 'r' || e.key === 'R') {
-      e.preventDefault();
-      load();
-      return;
-    }
-
-    if (e.key === 'j' || e.key === 'ArrowDown') {
-      e.preventDefault();
-      const cur = getFocusedRowIndex();
-      focusRow(cur === -1 ? 0 : cur + 1);
-      return;
-    }
-
-    if (e.key === 'k' || e.key === 'ArrowUp') {
-      e.preventDefault();
-      const cur = getFocusedRowIndex();
-      focusRow(cur === -1 ? 0 : cur - 1);
-      return;
-    }
-
-    if (e.key === 'x' || e.key === 'X') {
-      e.preventDefault();
-      const cur = getFocusedRowIndex();
-      if (cur !== -1) {
-        const tr = getRowElements()[cur];
-        const cb = tr?.querySelector('input.triage-row-select');
-        if (cb && !cb.disabled) {
-          cb.checked = !cb.checked;
-          cb.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-      }
-      return;
-    }
-
-    if (e.key === 'e' || e.key === 'E') {
-      if (can('operator') && loadedStatus === 'open') {
-        e.preventDefault();
-        if (selectedIds.size > 0) {
-          bulkResolve();
-        } else {
-          const cur = getFocusedRowIndex();
-          if (cur !== -1) {
-            const tr = getRowElements()[cur];
-            const resolveBtn = tr?.querySelector('button[data-action="resolve"]');
-            if (resolveBtn && !resolveBtn.disabled) {
-              resolveBtn.click();
-            }
-          }
-        }
-      }
-      return;
-    }
-  }
-
-  window.addEventListener('keydown', onKeyDown, { signal });
-
-  await load();return()=>controller.abort();
+  await load();
+  return () => {
+    unregisterShortcuts();
+    controller.abort();
+  };
 }
