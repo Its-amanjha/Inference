@@ -1,6 +1,6 @@
 # Project status
 
-Last updated 2026-09-19. Branch `main`, 131 commits (first 2026-08-05, latest code commit `2e6aead`). Pushed to a private GitHub repository.
+Last updated 2026-09-20. Branch `feat/inference`, 239 commits (first 2026-08-05, latest `5bbacf9`).
 
 This report covers what Inference does today, the work done so far and how it was verified, and what remains before release. Detailed dated entries are kept in [IMPLEMENTATION.md](../IMPLEMENTATION.md).
 
@@ -13,24 +13,24 @@ Inference is a self-hosted operations dashboard for one or more n8n instances. I
 | Foundation (`backend/`) | Environment settings with `INFERENCE_*` names; encrypted Fernet vault; numbered SQLite migrations with schema validation on every open; egress transport with DNS pinning, SSRF protection and CIDR allowlists; security headers; health endpoint. |
 | Authentication and admin (`auth`, `admin`) | First-admin bootstrap, scrypt passwords, session cookies, signed CSRF, origin checks, viewer/operator/admin roles rechecked inside transactions, TOTP with recovery codes, users, secrets, audit feed, editable session and default-preference settings, credential templates. |
 | Fleet (`n8n_proxy`) | Instance CRUD with encrypted API keys, read-capability probes, fleet health, workflow and execution lists and details, activation, execution deletion, fleet-wide workflow search, dashboard aggregates. Secret parameter values are masked before workflow documents reach a browser. |
-| Credentials and promotion (`n8n_credentials`, `n8n_promote`) | Credential schema inspection and explicit mappings; promotion preflight with structural diffs and fingerprints; inactive create or update; separate activation; reconciliation; previous-version restore. Uncertain writes are never retried. |
+| Credentials and promotion (`n8n_credentials`, `n8n_promote`) | Credential schema inspection and explicit mappings; promotion preflight with structural diffs and fingerprints; inactive create or update; separate activation; reconciliation; previous-version restore. Uncertain writes are never retried. Source workflows are picked from a searchable combobox and credential/subworkflow targets from mapping rows; hand-typed JSON remains as the override path. |
 | CodeLab | Read and replace code in inactive JavaScript and Python Code nodes, with stale-write rejection and readback verification. |
 | Observability and errors (`observability`, `errors`) | Token-scoped OTLP ingestion (JSON, protobuf, gzip), trace queries, execution classification, zero-output warnings, exact model pricing with a price book, retention, error triage feed with in-place resolve. |
-| Assistant (`assistant`) | OpenAI, OpenRouter, Groq, Anthropic, Ollama and custom OpenAI-compatible providers; guided provider setup that asks a known service only for key and model; connection test and tool-calling check; chat with metadata read tools; approval-only mutations bound to user, session, arguments and resource fingerprint; MCP 2025-11-25 Streamable HTTP client with approval-only calls. |
+| Assistant (`assistant`) | OpenAI, OpenRouter, Groq, Anthropic, Ollama and custom OpenAI-compatible providers; guided provider setup that asks a known service only for key and model; connection test and tool-calling check; chat with metadata read tools; approval-only mutations bound to user, session, arguments and resource fingerprint; MCP 2025-11-25 Streamable HTTP client with approval-only calls. Repair round 2 is merged: creation and restore proposals with operator notes, execution retry review with side-effect warnings, readable repair events. |
 | AI repair (`assistant`, contract v1) | Pinned repair conversations with masked workflow and error context, one provider request per human action, server-computed previews and risks, writes only to inactive workflows (with a linked deactivation), readback verification, undo through restore, self-call guard, webhook directory with an administrator switch, error-text consent switch. |
 | Skills (`skills`) | 15 bundled n8n guides synced from `backend/skills/` at boot, a read-only `/api/skills` API and the `get_skill` assistant tool in standard and repair conversations. See [Skill library](skills.md). |
 | Docker manager (`docker_mgr`) | Optional provisioning of owned n8n and runner bundles through a mounted Unix socket, with ownership labels, staged journals, reconciliation and explicit teardown. |
 | Notes | Markdown vault with revision-checked edits, wikilink backlinks, search and path-traversal protection. |
 | Backups | Encrypted export, offline restore with schema migration, local schedules with run history, optional single-attempt S3 upload. |
-| Frontend | 14 views, first-run onboarding, Light, Dark and n8n-inspired themes, AI workspace (chat, repair, manual code editor), action review rail, shared form system, phone layouts. |
+| Frontend | 14 views, first-run onboarding, Light, Dark and n8n-inspired themes, AI workspace (chat, repair, manual code editor), action review rail, shared form system, phone layouts. Tables sort, filter into saved views and bulk-select with keyboard shortcuts; every per-row control names its row; Settings is grouped into labelled sections; CodeLab, conversation resume and promotion mappings use searchable pickers instead of bare IDs. |
 | Delivery | Dockerfile pinned by digest, hashed Linux amd64 dependency lock, Compose file with read-only root, dropped capabilities and loopback-only port. |
 
 ## Work done
 
 ### Size
 
-- 131 commits between 2026-08-05 and 2026-09-19.
-- Backend: 65 Python files (about 590 KB). Tests: 49 files (about 470 KB) with 518 test functions; parametrised cases bring the suite to 886 collected tests. Scripts: 18 verification and smoke scripts. Frontend: 29 JavaScript files and 10 stylesheets.
+- 239 commits between 2026-08-05 and 2026-09-20.
+- Backend: 66 Python files (about 610 KB, excluding vendored skill guides). Tests: 50 files (about 490 KB) with 530 test functions; parametrised cases bring the suite to 906 collected tests. Scripts: 21 verification and smoke scripts. Frontend: 29 JavaScript files and 10 stylesheets.
 
 ### Milestones by area
 
@@ -52,11 +52,21 @@ Inference is a self-hosted operations dashboard for one or more n8n instances. I
 - `b24e047` assistant identifies itself as the Inference assistant; `19717ea` tool rejections name the tool and failing fields; `fe24331` provider setup asks a known service only for key and model.
 - `6e423fe` skill library and `get_skill` tool; `22324f9` local endpoint egress hint and `qwen2.5:3b` placeholder; `c5a3760` `get_skill` in repair conversations and near-miss names; `087191f` a failing read tool in a standard chat goes back to the model instead of ending the chat.
 - Done and verified 2026-09-17: longer timeouts for local providers (`8ad3fac`), the egress hint for private addresses (`a859277`), and the `skill_not_installed` result shape for unknown skill names (`8806866`). Backend suite 880 passed, 11 skipped; browser smoke suite 18 of 18; egress hint 16 of 16 in a real browser.
+- Repair round 2, merged 2026-09-20 (`2d988a2` with `3dd4037`, `0aee8b9`, `d71c7d6`, `30dc384`): creation and restore proposals with operator notes, execution retry review with side-effect warnings, readable repair events announced once.
 
 **Frontend and design**
 - `227c2ac` zero-build SPA shell; `8b6f442`, `2b978d4` operational and specialised views; `8b7fdfc` design system and themes.
 - `7ff5643` forms and navigation rebuilt; `8e17e72` one control scale; `848e29b` last form conversions, native browser dialogs replaced.
 - Phone fixes: `f08eb7e` error type filters scroll on one line; `99f64b9` toasts reserve space so the last controls stay reachable; `e1d923a` proposal code diffs wrap (previously 30 of 82 characters visible); `0d49db1` no duplicate rail card for a completed linked deactivation.
+- Keyboard, tables and triage, merged 2026-09-20: one shortcut registry for every view (`6ec003b` with the shell dispatcher, typing guard and overlay), sortable columns with saved filter views and bulk resolve, focused-row announcement with chatter suppression (`0113037`), per-row controls named for their row (`3763f27`, suite locators derived from the rendered names in `5f571bc`), two-tier triage toolbar (`27532ef`).
+- Metrics and fonts, merged 2026-09-20: navigable metric semantics (`1354ded`, `ded8ec3`, `1c2f462`), Inter and JetBrains Mono bundled offline (`0d66b18`), assistant phone layout (`5dba6c2` with repair-event announcements in `72c7c15`).
+- Promotion pickers, merged 2026-09-20 (`fd9a16a` with `60e06be`, `36e1562`, `42cbb7b`, `20ff93e`, `9f79d88`): source-workflow combobox and per-missing-item target pickers writing lossless JSON, plus conversation and CodeLab pickers from the shared helper.
+- Design review 2 recorded 2026-09-20 (`c234fa9`): 33/40, up from 22/40.
+- Settings sections, merged 2026-09-20 (`3fbf9a5` with `9a7175b`): Account, Security, Display, Deployment, Users and Audit groups with skip navigation; backlinks as a real list (`842a248`); provisioning fieldsets (`90f0153`).
+- Two self-audits of the day's frontend work, 2026-09-20, found seven of the dozen defects below; the other five surfaced through suite gates and strict-mode locators.
+  - First audit (frontend, via `4e8468c`): picker clearing on ID reset (`a554e11`), shortcuts overlay precedence over view shortcuts (`b511569`), slash-key rendering (`1670a0a`), stale mapping pickers after raw JSON edits (`f8b805e`), resolved rows resurrected by sorting (`fbce1b2`).
+  - Second audit (frontend, author-verified fixes): Settings sections duplicating themselves on every save (`9a7175b` with the group-clear follow-up `83a4f3b`), and a duplicated schedule-remove block that broke the whole Backups view until the module-parse gate caught it (`b46e37c`).
+  - Suite and gate fallout closed the rest: null markdown sources (`97437a3`), single-node empty actions (`de803c7`), transient-error recognition (`3aec11e`), disconnected dialog focus restore (`5edf551`), table sort state sync (`8f7fabc`), picker null guards (`24b2ffb`, `fa5d13b`, `7cf0566`), and backlinks deduplication (`5c29561`).
 
 **Test infrastructure**
 - `a87b01e` Playwright browser smoke suites and frontend fixtures; `e6e284f` managed n8n runner integration, MCP SDK server and local verification suites.
@@ -75,8 +85,8 @@ Inference is a self-hosted operations dashboard for one or more n8n instances. I
 
 | Check | Latest result |
 |---|---|
-| Backend suite (Windows, Python 3.13) | 875 passed, 11 skipped, 1 warning (all collected tests) |
-| Browser smoke suite (`scripts/smoke_frontend.py`, Playwright with Edge) | 18 PASS |
+| Backend suite (Windows, Python 3.13) | 895 passed, 11 skipped, 1 warning (all collected tests, verified 2026-09-20) |
+| Browser smoke suite (`scripts/smoke_frontend.py`, Playwright with Edge) | 18 PASS, exit code 0 (verified 2026-09-20) |
 | Skills end to end on a fresh database | 9/9 |
 | Local Ollama `qwen2.5:3b` (save without key, connection test, tool-calling check, chat, model-initiated `get_skill`) | 5/5 |
 | Egress hint on the provider form, real browser, two deployments | 8/8 |
@@ -201,12 +211,9 @@ Estimates are for the implementer.
 
 | Item | Estimate |
 |---|---|
-| Live version-history restore and retry-inactive against real n8n | about 1 hour |
-| Readable MCP tool results and Users table status badges | about 2 hours |
-| Design critique re-run (last score 22/40 before fixes A to F) | about 30 minutes |
-| ID pickers instead of typed IDs (CodeLab workflow, conversation resume, promotion mappings) | about half a day |
-| AI repair round 2: create workflow, retry execution, `notes` field on repair context | about 1 day |
-| Keyboard shortcuts, sortable columns, saved views, bulk resolve | about 1 day |
+| Live verification of version-history restore and retry-inactive against real n8n (the feature merged in `2d988a2`; only the live check remains) | about 1 hour |
+
+Shipped since the last update and removed from this queue: readable MCP tool results and Users table status badges (merged before this window); design review re-run, recorded 33/40 in `c234fa9`; ID pickers instead of typed IDs (core helper predates this window, promotion comboboxes in `fd9a16a`); AI repair round 2 (`2d988a2`); keyboard shortcuts, sortable columns, saved views and bulk resolve (`6ec003b`).
 
 ### Known limits
 

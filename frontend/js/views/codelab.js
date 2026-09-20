@@ -15,7 +15,7 @@ export async function render(container){
     onPick:()=>clear(),signal:controller.signal});
   const workflow=workflowPicker.input;
   workflowPicker.set(new URLSearchParams(location.hash.split('?')[1]||'').get('workflow_id')||'');
-  const nodes=el('select'),language=el('select',{},el('option',{value:'javascript'},'JavaScript'),el('option',{value:'python'},'Python')),textarea=el('textarea',{rows:20,spellcheck:false,'aria-label':'Code editor'}),editorHost=el('div',{className:'code-editor',hidden:true}),messages=el('div');editorHost.style.height='480px';let editor=null,snapshot=null,loadedWorkflow=null,loadedNode=null,sequence=0,active=false;
+  const nodes=el('select'),language=el('select',{},el('option',{value:'javascript'},'JavaScript'),el('option',{value:'python'},'Python')),textarea=el('textarea',{rows:20,spellcheck:false,'aria-label':'Code editor'}),editorHost=el('div',{className:'code-editor',hidden:true,role:'region','aria-label':'Code editor (advanced)'}),messages=el('div');editorHost.style.height='480px';let editor=null,snapshot=null,loadedWorkflow=null,loadedNode=null,sequence=0,active=false;
   language.disabled=true;
   const save=button('Deploy to n8n Code Node',async()=>{
     if(!snapshot||active||!can('operator'))return;
