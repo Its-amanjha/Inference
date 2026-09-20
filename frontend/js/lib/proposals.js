@@ -4,11 +4,12 @@ import {el} from './html.js';
 import {icon,actionIcon} from './icons.js';
 import {rawDisclosure,instanceName,formatTime,plural} from './payload.js';
 
-export const REPAIR_TOOLS=new Set(['propose_workflow_patch','propose_restore_workflow','propose_create_workflow']);
+export const REPAIR_TOOLS=new Set(['propose_workflow_patch','propose_restore_workflow','propose_create_workflow','propose_retry_execution']);
 export const isRepairAction=item=>REPAIR_TOOLS.has(item?.name);
 export const isRound2Action=item=>['workflow_create','execution_retry'].includes(item?.preview?.kind);
 export const RATE_LIMITED_TEXT='Provider rate limited; wait about a minute, then try again.';
 export const INCOMPLETE_TEXT="The model's answer was cut off. Nothing was proposed or applied.";
+export const RETRY_WARNING='Retrying repeats side effects that may already have happened, including writes, emails and payments. Check those effects before confirming.';
 
 const STATUS={pending:['Pending','info','clock'],executing:['Applying','info','refresh'],succeeded:['Applied','success','check'],
   failed:['Not applied','error','blocked'],stale:['Stale','warning','errors'],cancelled:['Cancelled','neutral','close'],
@@ -36,8 +37,9 @@ const ERRORS={
   repair_webhook_directory_disabled:'An administrator turned off sharing other workflows’ trigger addresses with the AI.',
   invalid_patch:'The change no longer applies cleanly to the workflow. Nothing was written.',
   self_call_blocked:'This workflow would call its own trigger in a loop. Ask the AI to use the service it should call instead.',
+  execution_not_retryable:'This execution can no longer be retried. Open its latest state in n8n and choose a failed or crashed execution without an existing successful retry.',
 };
-export const statusForError=code=>({context_stale:'stale',approval_stale:'stale',upstream_outcome_unknown:'uncertain'})[code];
+export const statusForError=code=>({context_stale:'stale',approval_stale:'stale',upstream_outcome_unknown:'uncertain',execution_not_retryable:'failed'})[code];
 export const describeRepairError=error=>ERRORS[error?.code]||error?.message||String(error);
 
 export const formatBytes=bytes=>{
@@ -46,7 +48,7 @@ export const formatBytes=bytes=>{
   return value<1024?plural(Math.round(value),'byte'):`${(value/1024).toFixed(value<10240?1:0)} KB`;
 };
 
-const TOOL_LABEL={get_workflow_context:'Workflow context',get_error_context:'Error context',propose_workflow_patch:'Change proposal',propose_restore_workflow:'Restore proposal',propose_create_workflow:'Create proposal'};
+const TOOL_LABEL={get_workflow_context:'Workflow context',get_error_context:'Error context',propose_workflow_patch:'Change proposal',propose_restore_workflow:'Restore proposal',propose_create_workflow:'Create proposal',propose_retry_execution:'Retry proposal'};
 const STEP_STATUS={done:['Done','success','check'],rate_limited:['Rate limited','warning','clock'],failed:['Failed','error','blocked']};
 
 // One ordered list per repair turn. The rate-limit sentence is shown once, by the turn footer.
@@ -56,7 +58,7 @@ export function turnSteps(steps){
     const size=formatBytes(step.bytes);
     const text=step.kind==='model_request'?`Asked ${step.provider_id?`model ${step.provider_id}`:'the model'}`
       :step.kind==='context_read'?`Read ${(TOOL_LABEL[step.tool]||step.tool||'context').toLowerCase()}`:String(step.tool||step.kind||'Step');
-    const message=['provider_rate_limited','provider_incomplete'].includes(step.code)||!step.message?null:String(step.message);
+    const message=['self_call_blocked','execution_not_retryable'].includes(step.code)?ERRORS[step.code]:['provider_rate_limited','provider_incomplete'].includes(step.code)||!step.message?null:String(step.message);
     return el('li',{'data-status':String(step.status||'unknown')},
       el('div',{className:'repair-step'},el('span',{className:'repair-step-text'},text,size?el('span',{className:'repair-step-size'},` · ${size}`):null),
         el('span',{className:`badge decision-badge repair-step-status${tone==='neutral'?'':` ${tone}`}`},icon(glyph),label)),
@@ -146,11 +148,30 @@ function targetLine(action){
   const target=action?.target&&typeof action.target==='object'?action.target:action?.arguments||{};
   if(action?.preview?.kind==='workflow_create')return `New workflow “${target.workflow_name||'Unnamed workflow'}” on ${target.instance_name||instanceName(target.instance_id)}`;
   const workflow=target.workflow_name?`“${target.workflow_name}” (${target.workflow_id})`:String(target.workflow_id??'unknown');
+  if(action?.preview?.kind==='execution_retry')return `Execution ${target.execution_id||'unknown'} of workflow ${workflow} on ${target.instance_name||instanceName(target.instance_id)}`;
   return `Workflow ${workflow} on ${target.instance_name||instanceName(target.instance_id)}`;
+}
+
+function retryOutcome(view,status,control){
+  const result=view.result;
+  if(status==='pending')return note('Uses the currently saved workflow. Nothing has been retried yet.');
+  if(status==='executing')return el('p',{className:'proposal-state',role:'status'},'Requesting a retry. Wait for verification before doing anything else.');
+  if(status==='succeeded')return el('div',{className:'proposal-result'},
+    el('p',{},result?.verified===true?'Retry accepted and the new execution verified. This does not mean the workflow finished successfully.':'Retry confirmed. Load its saved details to inspect the new execution.'),
+    result?.execution_id?note(`Execution ${result.execution_id} · retry of ${result.retry_of||view.action.target?.execution_id} · recorded status: ${result.execution_status||'unknown'}`):control('Load retry details',view.handlers.reconcile,'ghost'));
+  if(status==='uncertain')return el('div',{className:'proposal-uncertain',role:'status'},icon('errors'),el('div',{},
+    el('p',{className:'proposal-state-title'},'Retry outcome unknown'),
+    el('p',{},'An execution may already be running. Check this instance before requesting another retry. This approval will not run again.'),
+    result?.execution_id?note(`Returned execution ID: ${result.execution_id}. Verification is incomplete.`):null,
+    control('Load saved retry details',view.handlers.reconcile,'ghost')));
+  const text={stale:'Nothing was retried: the workflow or execution changed. Review its latest state before proposing another retry.',
+    failed:'Retry refused or failed. Check the execution in n8n before requesting another proposal.',cancelled:'Retry cancelled. Nothing was retried.',expired:'Retry proposal expired. Nothing was retried.'};
+  return el('p',{className:'proposal-state'},text[status]||`Retry status: ${status}. Check the execution in n8n before taking another action.`);
 }
 
 // Round-2 writes do not have the patch/restore undo snapshot. A lost response never offers Apply again.
 function round2Outcome(view,status,control){
+  if(view.action.preview.kind==='execution_retry')return retryOutcome(view,status,control);
   const result=view.result,follow=[];
   if(status==='pending')return note('Will be created inactive. Activation is a separate approval. Nothing has been created yet.');
   if(status==='executing')return el('p',{className:'proposal-state',role:'status'},'Creating the inactive workflow. Wait for verification.');
@@ -206,7 +227,7 @@ export function renderProposal(card,view,handlers){
     const changes=Array.isArray(preview.changes)?preview.changes.map(changeItem):[];
     const omitted=Number(preview.changes_omitted)||0;
     if(omitted>0)changes.push(el('li',{className:'proposal-change proposal-omitted'},el('div',{className:'proposal-change-head'},icon('info'),el('span',{},`${plural(omitted,'more change')} not shown here.`))));
-    if(!changes.length)changes.push(el('li',{className:'proposal-change'},el('div',{className:'proposal-change-head'},icon('info'),el('span',{},preview.diff?.changed===false?'The server found no differences from the current workflow.':'The server listed no changes.'))));
+    if(!changes.length)changes.push(el('li',{className:'proposal-change'},el('div',{className:'proposal-change-head'},icon('info'),el('span',{},preview.kind==='execution_retry'?'Re-run the execution using the currently saved workflow. The workflow definition is unchanged.':preview.diff?.changed===false?'The server found no differences from the current workflow.':'The server listed no changes.'))));
     sections.push(el('section',{className:'proposal-section'},el('h4',{},'Changes'),el('ul',{className:'proposal-changes'},changes)));
     const risks=Array.isArray(preview.risks)?preview.risks.filter(item=>item&&typeof item==='object'):[];
     if(risks.length)sections.push(el('section',{className:'proposal-section'},el('h4',{},'Risks to review'),el('ul',{className:'proposal-risks'},risks.map(risk=>
@@ -243,7 +264,7 @@ export function renderProposal(card,view,handlers){
   let footer=null;
   if(status==='pending'){
     const apply=preview?.apply&&typeof preview.apply==='object'?preview.apply:{};
-    const primary=control(apply.label||'Apply change',handlers.apply,apply.danger?'danger':'');
+    const primary=control(preview?.kind==='execution_retry'?'Review execution retry':apply.label||'Apply change',handlers.apply,apply.danger?'danger':'');
     const hint=!view.canOperate?'Only operators and administrators can apply changes.':!preview?'This proposal has no server preview.':blocked?'Finish the steps under Before you apply first.':null;
     primary.disabled=blocked||!view.canOperate;
     if(hint)primary.setAttribute('aria-describedby',`proposal-${safe}-hint`);
@@ -258,6 +279,7 @@ export function renderProposal(card,view,handlers){
   card.replaceChildren(
     el('div',{className:'proposal-head'},el('h3',{className:'proposal-title',id:`proposal-${safe}-title`},preview?.summary_text||(action?.name==='propose_restore_workflow'?'Restore an earlier workflow version':'Change a workflow')),statusBadge(status)),
     el('p',{className:'proposal-target'},targetLine(action),status==='pending'&&Number.isFinite(Number(action?.expires_at))?` · Expires ${formatTime(Number(action.expires_at))}`:''),
+    preview?.kind==='execution_retry'?el('div',{className:'proposal-uncertain proposal-retry-warning'},icon('errors'),el('div',{},el('p',{className:'proposal-state-title'},'A retry can repeat payments and other effects'),el('p',{},RETRY_WARNING))):null,
     state,...sections,footer,feedback,raw);
   if(focused){
     const target=focused==='card'?null:[...card.querySelectorAll('[data-control]')].find(node=>node.dataset.control===focused&&!node.disabled);

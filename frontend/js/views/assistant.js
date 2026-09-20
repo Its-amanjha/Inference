@@ -7,7 +7,7 @@ import {rawDisclosure, instanceName, toneBadge, formatTime} from '../lib/payload
 import {confirmAction} from '../lib/confirm.js';
 import {parseRepairTarget, repairHash, repairContext, contextQuery, describeTarget, listWorkflows, targetChip, createIdPicker} from '../lib/repair-target.js';
 import {isRepairAction, isRound2Action, proposalShell, renderProposal, effectiveStatus, statusBadge, statusForError, preconditionsOf, preconditionKey,
-  turnSteps, contextSent, contextOverview, RATE_LIMITED_TEXT, INCOMPLETE_TEXT} from '../lib/proposals.js';
+  turnSteps, contextSent, contextOverview, RATE_LIMITED_TEXT, INCOMPLETE_TEXT, RETRY_WARNING} from '../lib/proposals.js';
 
 // Real approval statuses from the assistant API; unknown values are shown verbatim.
 const APPROVAL_STATUS = {pending: ['Pending', 'info', 'clock'], executing: ['Executing', 'info', 'refresh'], succeeded: ['Succeeded', 'success', 'check'],
@@ -298,10 +298,11 @@ export async function render(container) {
   };
   const applyProposal = async model => {
     const id = model.action.id, apply = model.action.preview?.apply || {};
+    const executionRetry = model.action.preview?.kind === 'execution_retry';
     if (acting.has(id)) return;
-    if (apply.danger || apply.typed_confirmation) {
-      const ok = await confirmAction({title: apply.label || 'Apply change', target: targetNodes(targetOf(model)), consequence: model.action.preview?.summary_text || 'This writes the change to the workflow.',
-        confirmLabel: apply.label || 'Apply change', danger: Boolean(apply.danger), requireText: apply.typed_confirmation || undefined});
+    if (executionRetry || apply.danger || apply.typed_confirmation) {
+      const ok = await confirmAction({title: executionRetry ? 'Review execution retry' : apply.label || 'Apply change', target: executionRetry ? [`Execution ${targetOf(model).execution_id} of `, ...targetNodes(targetOf(model))] : targetNodes(targetOf(model)), consequence: executionRetry ? RETRY_WARNING : model.action.preview?.summary_text || 'This writes the change to the workflow.',
+        confirmLabel: executionRetry ? 'Retry execution' : apply.label || 'Apply change', danger: executionRetry || Boolean(apply.danger), requireText: executionRetry ? 'RETRY' : apply.typed_confirmation || undefined});
       if (!ok || signal.aborted) return;
     }
     acting.add(id); model.feedback = null; paintProposal(model);
