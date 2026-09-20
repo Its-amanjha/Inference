@@ -430,19 +430,19 @@ def exercise_fleet(page, fixture_url, state):
     page.reload(wait_until='domcontentloaded')
     page.get_by_label('Selected instance').select_option(ids['source'])
     page.evaluate("location.hash = 'workflows'")
-    page.get_by_role('button', name='Activate', exact=True).wait_for()
+    page.get_by_role('button', name='Activate workflow Browser workflow on source', exact=True).wait_for()
     accept = lambda dialog: dialog.accept()
     page.on('dialog', accept)
     try:
-        page.get_by_role('button', name='Activate', exact=True).click()
+        page.get_by_role('button', name='Activate workflow Browser workflow on source', exact=True).click()
         # Activation changes now confirm in an in-app dialog that names the workflow and instance.
         page.get_by_role('dialog', name='Activate workflow').get_by_role('button', name='Activate workflow', exact=True).click()
-        page.get_by_role('button', name='Deactivate', exact=True).wait_for()
+        page.get_by_role('button', name='Deactivate workflow Browser workflow on source', exact=True).wait_for()
         assert state['source']['active'] is True and state['target'] is None
-        page.get_by_role('button', name='Deactivate', exact=True).click()
+        page.get_by_role('button', name='Deactivate workflow Browser workflow on source', exact=True).click()
         page.get_by_role('dialog', name='Deactivate workflow').get_by_role('button', name='Deactivate workflow', exact=True).click()
-        page.get_by_role('button', name='Activate', exact=True).wait_for()
-        page.locator('#main').get_by_role('link', name='CodeLab', exact=True).click()
+        page.get_by_role('button', name='Activate workflow Browser workflow on source', exact=True).wait_for()
+        page.locator('#main').get_by_role('link', name='Open Browser workflow in CodeLab', exact=True).click()
         page.get_by_role('button', name='Load workflow', exact=True).click()
         editor = page.get_by_role('textbox', name='Code editor', exact=True)
         expect(editor).to_have_value('return items;')
@@ -580,15 +580,15 @@ def exercise_fleet_search(page, ids, state):
     expect(source.get_by_role('heading', name='No matching workflows', exact=True)).to_have_count(1)
     expect(target.get_by_role('cell', name='Target searchable', exact=True)).to_have_count(1)
     before = len(state['writes'])
-    target.get_by_role('button', name='Activate', exact=True).click()
+    target.get_by_role('button', name='Activate workflow Target searchable on target', exact=True).click()
     # The dialog is attached to the document body, outside the target section.
     page.get_by_role('dialog', name='Activate workflow').get_by_role('button', name='Activate workflow', exact=True).click()
-    target.get_by_role('button', name='Deactivate', exact=True).wait_for()
+    target.get_by_role('button', name='Deactivate workflow Target searchable on target', exact=True).wait_for()
     assert state['writes'][before:] == [('target','POST','workflows/source-wf/activate')]
-    target.get_by_role('button', name='Deactivate', exact=True).click()
+    target.get_by_role('button', name='Deactivate workflow Target searchable on target', exact=True).click()
     page.get_by_role('dialog', name='Deactivate workflow').get_by_role('button', name='Deactivate workflow', exact=True).click()
-    target.get_by_role('button', name='Activate', exact=True).wait_for()
-    target.get_by_role('link', name='CodeLab', exact=True).click()
+    target.get_by_role('button', name='Activate workflow Target searchable on target', exact=True).wait_for()
+    target.get_by_role('link', name='Open Target searchable in CodeLab', exact=True).click()
     assert 'instance_id=' + ids['target'] in page.url
     page.get_by_role('button', name='Load workflow', exact=True).click()
     expect(page.get_by_role('textbox', name='Code editor', exact=True)).to_have_value('return [];')
@@ -598,7 +598,7 @@ def exercise_fleet_search(page, ids, state):
     checked_at = source.locator('.load-as-of time').get_attribute('datetime')
     state['unavailable'] = 'source'
     try:
-        source.get_by_role('button', name='Refresh instance', exact=True).click()
+        source.get_by_role('button', name='Refresh workflows on source', exact=True).click()
         # A 503 is a transient read failure: keep the previous rows and their timestamp,
         # offer recovery, and do not interrupt screen readers with an assertive alert.
         expect(source.locator('.coverage-partial.load-notice[role="status"]')).to_have_count(1)
@@ -634,7 +634,7 @@ def exercise_fleet_search(page, ids, state):
     finally:
         page.unroute(workflow_route, confirmed_failure)
     source.get_by_role('button', name='Retry', exact=True).click()
-    expect(source.get_by_role('button', name='Refresh instance', exact=True)).to_be_enabled()
+    expect(source.get_by_role('button', name='Refresh workflows on source', exact=True)).to_be_enabled()
     expect(source.locator('.load-notice')).to_have_count(0)
     expect(source.locator('.load-as-of time')).not_to_have_attribute('datetime', checked_at)
     expect(source.get_by_role('cell', name='Source searchable', exact=True)).to_have_count(1)
