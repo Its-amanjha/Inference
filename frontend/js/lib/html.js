@@ -13,8 +13,8 @@ export function el(tag, attrs = {}, ...children) {
   }
   return node;
 }
-export function button(label, callback, className = 'button') {
-  const node = el('button', {type:'button', class:className.includes('button') ? className : `button ${className}`}, actionIcon(label),label);
+export function button(label, callback, className = 'button', extra = {}) {
+  const node = el('button', {type:'button', class:className.includes('button') ? className : `button ${className}`, ...extra}, actionIcon(label),label);
   let busy = false;
   node.addEventListener('click', async event => {
     if (node.disabled || busy) return;
