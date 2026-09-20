@@ -325,6 +325,16 @@ export async function render(container) {
       const text = mcpBlockText(block);
       if (text !== null) {
         if (text.trim() && text.trim() !== structuredText) values.push(mcpTextValue(text));
+      } else if (block?.type === 'resource_link' || (block?.type === 'resource' && block.resource && typeof block.resource === 'object')) {
+        const resource = block.type === 'resource' ? block.resource : block;
+        const detail = {resource: block.type === 'resource' ? 'Embedded resource' : 'Linked resource'};
+        for (const key of ['name', 'uri', 'mimeType', 'description']) {
+          if (typeof resource[key] === 'string') detail[key] = resource[key];
+        }
+        if (typeof resource.text === 'string') detail.content = mcpTextValue(resource.text);
+        else if (typeof resource.blob === 'string') detail.content = 'Binary content is available in Raw MCP result.';
+        // Resource URLs are identifiers, not permission to fetch or navigate.
+        values.push(detail);
       } else {
         const kind = block && typeof block.type === 'string' ? block.type : 'unknown';
         kinds.set(kind, (kinds.get(kind) || 0) + 1);
