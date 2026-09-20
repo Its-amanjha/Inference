@@ -28,6 +28,7 @@ export function actionMenu(items,label='More actions'){
 export function askText({title,label,description,value='',confirmLabel='Continue',placeholder}={}){
   if(active)return Promise.resolve(null);
   const invoker=document.activeElement instanceof HTMLElement?document.activeElement:null;
+  const fallback=invoker?.closest('main, [role="main"], #app, .view-content, .content, section') || invoker?.parentElement || null;
   const id=`ask-${++sequence}`;
   return new Promise(resolve=>{
     let result=null;
@@ -48,6 +49,7 @@ export function askText({title,label,description,value='',confirmLabel='Continue
       window.removeEventListener('hashchange',onRoute);
       dialog.remove();active=null;
       if(invoker?.isConnected)invoker.focus();
+      else if(fallback?.isConnected){if(!fallback.hasAttribute('tabindex'))fallback.setAttribute('tabindex','-1');fallback.focus();}
       resolve(result);
     },{once:true});
     active=dialog;
@@ -62,6 +64,7 @@ export function askText({title,label,description,value='',confirmLabel='Continue
 export function confirmAction({title,target,consequence,confirmLabel='Confirm',danger=false,requireText}={}){
   if(active)return Promise.resolve(false);
   const invoker=document.activeElement instanceof HTMLElement?document.activeElement:null;
+  const fallback=invoker?.closest('main, [role="main"], #app, .view-content, .content, section') || invoker?.parentElement || null;
   const id=`confirm-${++sequence}`;
   return new Promise(resolve=>{
     let result=false;
@@ -86,6 +89,7 @@ export function confirmAction({title,target,consequence,confirmLabel='Confirm',d
       window.removeEventListener('hashchange',onRoute);
       dialog.remove();active=null;
       if(invoker?.isConnected)invoker.focus();
+      else if(fallback?.isConnected){if(!fallback.hasAttribute('tabindex'))fallback.setAttribute('tabindex','-1');fallback.focus();}
       resolve(result);
     },{once:true});
     active=dialog;
