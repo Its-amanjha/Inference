@@ -2,7 +2,7 @@ import {api} from '../api.js';
 import {state,can} from '../state.js';
 import {el,button,field,formCard,heading,notice,empty} from '../lib/html.js';
 import {confirmAction,askText} from '../lib/confirm.js';
-import {createIdPicker,loadInstanceWorkflows} from '../lib/repair-target.js';
+import {createIdPicker,loadInstanceWorkflows,loadTargetCredentials} from '../lib/repair-target.js';
 import {icon} from '../lib/icons.js';
 import {rawDisclosure,instanceName,plural,toneBadge,describeCode,section} from '../lib/payload.js';
 
@@ -83,15 +83,110 @@ function runStatus(run,targetName){
   return [String(status),'neutral',`Reported status: ${status}.`];
 }
 
+// Helper: strip JSON comments (// and /* */) without corrupting string literals.
+function stripJsonComments(text){
+  return text.replace(/("(?:[^"\\]|\\.)*")|(\/\*[\s\S]*?\*\/|\/\/[^\r\n]*)/g,(m,str)=>str||'');
+}
+
+// Helper: parse JSON tolerating comments and trailing commas.
+function parseJsonWithComments(text){
+  const cleaned=stripJsonComments(text).replace(/,(\s*[}\]])/g,'$1').trim();
+  if(!cleaned)return {};
+  const parsed=JSON.parse(cleaned);
+  if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))throw new Error('Must be a JSON object.');
+  return parsed;
+}
+
+function escapeRegex(str){
+  return str.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+}
+
+// Helper: update a key in a raw JSON string in place, preserving comments, formatting, and other keys.
+function updateJsonText(rawText,key,newValue){
+  const text=rawText.trim();
+  if(!text||text==='{}'){
+    if(!newValue)return '{}';
+    return `{\n  ${JSON.stringify(key)}: ${JSON.stringify(newValue)}\n}`;
+  }
+  const keyPattern=new RegExp(`("${escapeRegex(key)}"\\s*:\\s*)(?:"(?:[^"\\\\]|\\\\.)*"|\\b[\\w.-]+\\b|null)`,'g');
+  if(keyPattern.test(text)){
+    if(!newValue){
+      return text.replace(new RegExp(`(,\\s*)?"${escapeRegex(key)}"\\s*:\\s*(?:"(?:[^"\\\\]|\\\\.)*"|\\b[\\w.-]+\\b|null)(,\\s*)?`), (match, beforeComma, afterComma) => {
+        if(beforeComma&&afterComma)return ',';
+        return '';
+      });
+    }
+    return text.replace(keyPattern,`$1${JSON.stringify(newValue)}`);
+  }
+  if(!newValue)return text;
+  const lastBrace=text.lastIndexOf('}');
+  if(lastBrace===-1)return text;
+  const before=text.slice(0,lastBrace).trimEnd();
+  const after=text.slice(lastBrace);
+  const needsComma=before.length>0&&!before.endsWith('{')&&!before.endsWith(',');
+  return `${before}${needsComma?',':''}\n  ${JSON.stringify(key)}: ${JSON.stringify(newValue)}\n${after}`;
+}
+
 export async function render(container){
   const controller=new AbortController();container.append(heading('Promote workflows','Preview exact changes, deploy inactive, then activate separately.'));
   if(!can('operator')){container.append(empty('Operator access required','Ask an administrator for permission to promote workflows.'));return()=>controller.abort();}
-  const route=new URLSearchParams(location.hash.split('?')[1]||''),source=el('select'),target=el('select'),workflow=el('select'),previewBody=el('div',{className:'stack'}),previewBox=el('section',{className:'card stack'},el('h2',{className:'wizard-step'},'2. Review the changes'),previewBody),history=el('section',{className:'card stack'}),messages=el('div');let preview=null,previewContext=null,key=null,version=0;
+  const route=new URLSearchParams(location.hash.split('?')[1]||'');
+  const source=el('select'),target=el('select');
+  const previewBody=el('div',{className:'stack'});
+  const previewBox=el('section',{className:'card stack'},el('h2',{className:'wizard-step'},'2. Review the changes'),previewBody);
+  const history=el('section',{className:'card stack'}),messages=el('div');
+  let preview=null,previewContext=null,key=null,version=0;
   const runContext=new Map();
-  for(const item of state.instances){source.append(el('option',{value:item.id},item.name));target.append(el('option',{value:item.id},item.name));}
-  source.value=route.get('source_instance_id')||state.instanceId||source.value;target.value=state.instances.find(item=>item.id!==source.value)?.id||'';
+
+  for(const item of state.instances){
+    source.append(el('option',{value:item.id},item.name||item.id));
+    target.append(el('option',{value:item.id},item.name||item.id));
+  }
+  source.value=route.get('source_instance_id')||state.instanceId||source.value;
+  target.value=route.get('target_instance_id')||state.instances.find(item=>item.id!==source.value)?.id||'';
+
   const jsonBox=()=>el('textarea',{rows:3,value:'{}',spellcheck:'false',class:'control-mono'});
-  const credential=jsonBox(),secrets=jsonBox(),subflows=jsonBox();credential.disabled=secrets.disabled=!can('admin');
+  const credential=jsonBox(),secrets=jsonBox(),subflows=jsonBox();
+  credential.disabled=secrets.disabled=!can('admin');
+
+  // Track active combobox pickers for two-way synchronization.
+  const activeCredPickers=new Map();
+  const activeSubflowPickers=new Map();
+
+  function invalidate(){mappingBox.replaceChildren();resetPreview();}
+  function resetPreview(){version++;preview=null;previewContext=null;deploy.disabled=true;previewBody.replaceChildren(el('p',{className:'muted'},'Run preflight to review a fresh source and target snapshot.'));}
+
+  // Source workflow combobox
+  const workflowPicker=createIdPicker({
+    label:'Source workflow',
+    placeholder:'Type a name or paste an ID',
+    hint:'Search workflows on the source instance, or paste a workflow ID.',
+    clearAriaLabel:'Clear source workflow selection',
+    load:signal=>loadInstanceWorkflows(source.value,signal),
+    emptyText:'No workflows found on this instance.',
+    emptyActions:[el('a',{class:'button ghost',href:'#instances'},'Open instances')],
+    onPick:(id)=>{
+      invalidate();
+      if(id)inspectWorkflow(id);
+    },
+    signal:controller.signal
+  });
+
+  if(route.get('workflow_id')){
+    workflowPicker.set(route.get('workflow_id'));
+  }
+
+  source.addEventListener('change',()=>{
+    workflowPicker.setScope(signal=>loadInstanceWorkflows(source.value,signal));
+    invalidate();
+    if(workflowPicker.getId())inspectWorkflow(workflowPicker.getId());
+  },{signal:controller.signal});
+
+  target.addEventListener('change',()=>{
+    invalidate();
+    if(workflowPicker.getId())inspectWorkflow(workflowPicker.getId());
+  },{signal:controller.signal});
+
   const deploy=button('Deploy inactive workflow',async()=>{
     if(!preview)return;
     const context=previewContext,operation=preview.diff?.operation;
@@ -103,71 +198,200 @@ export async function render(container){
     try{const result=await api('/api/n8n_promote/deploy',{method:'POST',json:{preview_id:preview.preview_id,idempotency_key:key}});runContext.set(result.id,context);previewBody.append(el('h3',{},'Deployment result'),runCard(result));preview=null;await runs();}
     catch(error){notice(messages,error);previewBody.append(el('p',{className:'muted'},'Check run history before creating another preview. A remote write may have completed.'));await runs();}
   });deploy.disabled=true;
-  function invalidate(){mappingBox.replaceChildren();resetPreview();}
-  function resetPreview(){version++;preview=null;previewContext=null;deploy.disabled=true;previewBody.replaceChildren(el('p',{className:'muted'},'Run preflight to review a fresh source and target snapshot.'));}
+
   const mappingBox=el('div',{className:'mapping-box'});
-  // Choosing a target writes into the mapping JSON the preflight reads, then
-  // resets the preview (deploy stays disabled) without clearing these rows.
-  function mergeMapping(box,key,value){
-    let obj;
-    try{obj=mapping(box);}catch(error){notice(messages,error);return;}
-    obj[key]=value;box.value=JSON.stringify(obj);resetPreview();
+
+  function mapping(input){
+    let value;
+    try{
+      value=parseJsonWithComments(input.value);
+    }catch(err){
+      throw new Error(`Invalid JSON in mappings: ${err.message}`);
+    }
+    if(!value||Array.isArray(value)||typeof value!=='object'||Object.values(value).some(item=>typeof item!=='string')){
+      throw new Error('Mappings must be JSON objects of source IDs to target strings.');
+    }
+    return value;
   }
+
   function savedTarget(box,key){
     try{const obj=mapping(box);const value=obj[key];return typeof value==='string'?value:'';}catch{return '';}
   }
-  async function loadTargetCredentials(signal){
-    const result=await api('/api/n8n_credentials?instance_id='+encodeURIComponent(target.value),{signal});
-    if(result&&result.supported===false)throw new Error(Array.isArray(result.diagnostics)&&result.diagnostics[0]?.message||'Credential discovery is unavailable for this target.');
-    const rows=Array.isArray(result?.data)?result.data:[];
-    return rows.filter(row=>row&&typeof row.id==='string').map(row=>({id:String(row.id),name:String(row.name||row.id),detail:String(row.type||'')}));
-  }
+
   function credentialRow(item){
     const type=String(item.type||'');
-    const picker=createIdPicker({label:`Target credential for “${item.name||item.id}”`,placeholder:'Type a name or paste an ID',
-      hint:'Existing target credentials only. New ones come from a vault reference in the Secrets box.',clearable:false,
-      load:async signal=>{const rows=await loadTargetCredentials(signal);return rows.sort((a,b)=>((b.detail===type)-(a.detail===type)));},
+    const sourceId=String(item.id);
+    const displayName=item.name||item.id;
+    const picker=createIdPicker({
+      label:`Target credential for “${displayName}”`,
+      placeholder:'Type a name, paste ID, or $VAULT_REF',
+      hint:'Existing target credentials or $VAULT_REFERENCE.',
+      clearAriaLabel:`Clear target credential for “${displayName}”`,
+      clearable:true,
+      load:async signal=>{
+        const rows=await loadTargetCredentials(target.value,signal);
+        return rows.sort((a,b)=>((b.detail===type)-(a.detail===type)));
+      },
       emptyText:'No credentials found on the target instance.',
-      onPick:id=>{mergeMapping(credential,String(item.id),id);},signal:controller.signal});
-    const preset=savedTarget(credential,String(item.id));
-    if(preset)picker.set(preset);
+      onPick:id=>{
+        if(id.startsWith('$')){
+          secrets.value=updateJsonText(secrets.value,sourceId,id);
+          credential.value=updateJsonText(credential.value,sourceId,'');
+        }else{
+          credential.value=updateJsonText(credential.value,sourceId,id);
+          secrets.value=updateJsonText(secrets.value,sourceId,'');
+        }
+        resetPreview();
+      },
+      signal:controller.signal
+    });
+
+    const presetCred=savedTarget(credential,sourceId);
+    const presetSecret=savedTarget(secrets,sourceId);
+    if(presetCred)picker.set(presetCred);
+    else if(presetSecret)picker.set(presetSecret);
+
+    activeCredPickers.set(sourceId,picker);
+
     return el('div',{className:'mapping-row'},
-      el('div',{className:'mapping-source'},el('strong',{},`Credential “${item.name||item.id}”`),type?el('span',{className:'muted'},` (${type})`):null,el('br',{}),el('span',{className:'picker-id'},String(item.id)),item.node?el('span',{className:'muted'},` in node ${item.node}`):null),
+      el('div',{className:'mapping-source'},
+        el('strong',{},`Credential “${displayName}”`),
+        type?el('span',{className:'muted'},` (${type})`):null,
+        el('br',{}),
+        el('span',{className:'picker-id'},sourceId),
+        item.node?el('span',{className:'muted'},` in node ${item.node}`):null),
       picker.node);
   }
+
   function subworkflowRow(item){
+    const sourceId=String(item.id);
     const isError=item.path==='settings.errorWorkflow';
-    const picker=createIdPicker({label:`Target workflow for ${isError?'error workflow':'subworkflow'} ${item.id}`,placeholder:'Type a name or paste an ID',clearable:false,
+    const rowTitle=isError?`Error workflow ${sourceId}`:`Subworkflow ${sourceId}`;
+    const picker=createIdPicker({
+      label:`Target workflow for ${isError?'error workflow':'subworkflow'} ${sourceId}`,
+      placeholder:'Type a name or paste an ID',
+      hint:'Search workflows on the target instance, or paste an ID.',
+      clearAriaLabel:`Clear target workflow for ${rowTitle}`,
+      clearable:true,
       load:signal=>loadInstanceWorkflows(target.value,signal),
       emptyText:'No workflows found on the target instance.',
       emptyActions:[el('a',{class:'button ghost',href:'#instances'},'Open instances')],
-      onPick:id=>{mergeMapping(subflows,String(item.id),id);},signal:controller.signal});
-    const preset=savedTarget(subflows,String(item.id));
+      onPick:id=>{
+        subflows.value=updateJsonText(subflows.value,sourceId,id);
+        resetPreview();
+      },
+      signal:controller.signal
+    });
+
+    const preset=savedTarget(subflows,sourceId);
     if(preset)picker.set(preset);
+
+    activeSubflowPickers.set(sourceId,picker);
+
     return el('div',{className:'mapping-row'},
-      el('div',{className:'mapping-source'},el('strong',{},isError?`Error workflow ${item.id}`:`Subworkflow ${item.id}`),item.node?el('span',{className:'muted'},` in node ${item.node}`):null),
+      el('div',{className:'mapping-source'},
+        el('strong',{},rowTitle),
+        item.node?el('span',{className:'muted'},` in node ${item.node}`):null),
       picker.node);
   }
-  function renderMappings(result){
+
+  // Two-way sync: when textareas are edited directly, update active comboboxes losslessly.
+  function syncFromTextareas(){
+    try{
+      const credMap=parseJsonWithComments(credential.value);
+      for(const [k,v] of Object.entries(credMap)){
+        if(activeCredPickers.has(k)&&typeof v==='string'){
+          activeCredPickers.get(k).set(v);
+        }
+      }
+    }catch{}
+    try{
+      const secMap=parseJsonWithComments(secrets.value);
+      for(const [k,v] of Object.entries(secMap)){
+        if(activeCredPickers.has(k)&&typeof v==='string'){
+          activeCredPickers.get(k).set(v);
+        }
+      }
+    }catch{}
+    try{
+      const flowMap=parseJsonWithComments(subflows.value);
+      for(const [k,v] of Object.entries(flowMap)){
+        if(activeSubflowPickers.has(k)&&typeof v==='string'){
+          activeSubflowPickers.get(k).set(v);
+        }
+      }
+    }catch{}
+    resetPreview();
+  }
+
+  for(const input of [credential,secrets,subflows]){
+    input.addEventListener('input',syncFromTextareas,{signal:controller.signal});
+  }
+
+  async function inspectWorkflow(wfId){
+    if(!wfId||!source.value)return;
+    try{
+      const doc=await api('/api/n8n_proxy/workflows/'+encodeURIComponent(wfId)+'?instance_id='+encodeURIComponent(source.value),{signal:controller.signal});
+      if(controller.signal.aborted)return;
+      const creds=[],flows=[];
+      const seenCreds=new Set(),seenFlows=new Set();
+      for(const node of list(doc?.nodes)){
+        if(node.credentials&&typeof node.credentials==='object'){
+          for(const [type,item] of Object.entries(node.credentials)){
+            if(item?.id&&!seenCreds.has(item.id)){
+              seenCreds.add(item.id);
+              creds.push({id:String(item.id),name:String(item.name||item.id),type,node:node.name});
+            }
+          }
+        }
+        if(node.type==='n8n-nodes-base.executeWorkflow'&&node.parameters?.workflowId){
+          const subId=String(node.parameters.workflowId);
+          if(!seenFlows.has(subId)){
+            seenFlows.add(subId);
+            flows.push({id:subId,node:node.name,path:'parameters.workflowId'});
+          }
+        }
+      }
+      if(doc?.settings?.errorWorkflow&&!seenFlows.has(String(doc.settings.errorWorkflow))){
+        flows.push({id:String(doc.settings.errorWorkflow),path:'settings.errorWorkflow'});
+      }
+      renderMappingRows(creds,flows);
+    }catch{
+      // Fallback: preflight will return exact findings
+    }
+  }
+
+  function renderMappingRows(creds,flows){
+    activeCredPickers.clear();
+    activeSubflowPickers.clear();
     mappingBox.replaceChildren();
+    if(creds.length===0&&flows.length===0)return;
+    const rows=[];
+    if(can('admin')&&creds.length){
+      rows.push(el('div',{className:'mapping-box-head'},el('h3',{},'Credential mappings')));
+      rows.push(...creds.map(credentialRow));
+    }
+    if(flows.length){
+      rows.push(el('div',{className:'mapping-box-head'},el('h3',{},'Subworkflow mappings')));
+      rows.push(...flows.map(subworkflowRow));
+    }
+    mappingBox.append(...rows);
+  }
+
+  function renderMappings(result){
     const creds=list(result.missing).filter(item=>item?.code==='credential_mapping_required');
     const flows=list(result.missing).filter(item=>item?.code==='workflow_mapping_required');
-    if(can('admin')&&creds.length)mappingBox.append(el('h3',{},'Map missing credentials'),el('p',{className:'muted'},'Choosing a target writes into the Credential JSON above; run preflight again afterwards.'),...creds.map(credentialRow));
-    if(flows.length)mappingBox.append(el('h3',{},'Map missing workflows'),el('p',{className:'muted'},'Choosing a target writes into the Subworkflow JSON above; run preflight again afterwards.'),...flows.map(subworkflowRow));
+    if(creds.length||flows.length){
+      renderMappingRows(creds,flows);
+    }
   }
-  for(const input of [target,workflow,credential,secrets,subflows])input.addEventListener('input',invalidate,{signal:controller.signal});
-  async function workflows(){invalidate();workflow.disabled=true;const selected=source.value;try{let after=null;const options=[];let pages=0;
-    do{const params=new URLSearchParams({instance_id:selected,limit:'250'});if(after)params.set('cursor',after);const result=await api('/api/n8n_proxy/workflows?'+params,{signal:controller.signal});options.push(...result.data);after=result.next_cursor;pages++;}while(after&&pages<20);
-    if(source.value!==selected)return;workflow.replaceChildren(...options.map(row=>el('option',{value:row.id},row.name)));if(route.has('workflow_id'))workflow.value=route.get('workflow_id');if(after)notice(messages,new Error('Showing the first 5,000 workflows. Use the workflow ID field below for another workflow.'));
-  }catch(error){if(!controller.signal.aborted)notice(messages,error);}finally{workflow.disabled=false;}}
-  source.addEventListener('change',workflows,{signal:controller.signal});
-  const workflowId=el('input',{placeholder:'Optional explicit workflow ID',maxLength:128});workflowId.addEventListener('input',invalidate,{signal:controller.signal});
-  function mapping(input){const value=JSON.parse(input.value);if(!value||Array.isArray(value)||typeof value!=='object'||Object.values(value).some(item=>typeof item!=='string'))throw new Error('Mappings must be JSON objects of source IDs to target strings.');return value;}
+
   function describeSelection(){
-    const override=workflowId.value.trim(),id=override||workflow.value;
-    const name=(!override||override===workflow.value)?workflow.selectedOptions[0]?.textContent:null;
+    const id=workflowPicker.getId();
+    const name=workflowPicker.getName();
     return {workflowLabel:name?quoted(name):`workflow ${id}`,sourceName:instanceName(source.value),targetName:instanceName(target.value)};
   }
+
   function renderPreview(result,context){
     const blocking=[...list(result.missing),...list(result.collisions)],warnings=list(result.warnings),mapped=list(result.mapped);
     renderMappings(result);
@@ -180,23 +404,106 @@ export async function render(container){
       diffSection(result.diff,context.targetName),
       el('p',{className:'muted'},'Preview expires after 15 minutes. Source and target are checked again before deployment.'),deploy);
   }
-  const preflight=button('Review preflight',async()=>{preflight.disabled=true;messages.replaceChildren();const current=++version;preview=null;previewContext=null;deploy.disabled=true;try{
-    if(!source.value||!target.value){notice(messages,new Error('Choose a source and a target instance before running preflight.'));return;}
-    const context=describeSelection();
-    const result=await api('/api/n8n_promote/preflight',{method:'POST',json:{source_instance_id:source.value,target_instance_id:target.value,workflow_id:workflowId.value.trim()||workflow.value,credential_map:mapping(credential),secret_map:mapping(secrets),subworkflow_map:mapping(subflows)}});
-    if(current!==version)return;preview=result;previewContext=context;key=crypto.randomUUID();renderPreview(result,context);deploy.disabled=!result.can_deploy;
-  }catch(error){notice(messages,error);}finally{preflight.disabled=false;}});
-  const chooser=formCard({title:'1. Choose source and target',description:'Preflight compares a fresh snapshot of both instances.',
-    body:[el('div',{className:'form-row'},field('Source instance',source),field('Target instance',target)),
-      el('div',{className:'form-row'},field('Source workflow',workflow),field('Workflow ID override',workflowId,{hint:'Use this when the workflow is not in the list.'})),
-      el('details',{className:'form-disclosure'},el('summary',{},icon('chevron'),'Credential and subworkflow mappings'),
-        el('div',{},el('p',{className:'muted'},'Saved mappings are applied automatically. Use vault references such as $SERVICE, never plaintext secrets. New credential mappings require admin.'),
-          field('Credential IDs: source → target (JSON)',credential),
-          field('Secrets: source credential → vault reference (JSON)',secrets),
-          field('Subworkflow IDs: source → target (JSON)',subflows))),mappingBox],
-    actions:[preflight]});
+
+  const preflight=button('Review preflight',async()=>{
+    messages.replaceChildren();
+    // Client-side validation: catch errors in form before sending request
+    if(!source.value||!target.value){
+      notice(messages,new Error('Choose both a source and a target instance before running preflight.'));
+      (source.value?target:source).focus();
+      return;
+    }
+    if(source.value===target.value){
+      notice(messages,new Error('Choose distinct source and target instances. Workflows cannot be promoted to the same instance.'));
+      target.focus();
+      return;
+    }
+    const wfId=workflowPicker.getId();
+    if(!wfId){
+      notice(messages,new Error('Choose or enter a source workflow to promote.'));
+      workflowPicker.focus();
+      return;
+    }
+
+    let cMap={},sMap={},subMap={};
+    try{
+      cMap=mapping(credential);
+    }catch(err){
+      notice(messages,err);
+      credential.focus();
+      return;
+    }
+    try{
+      sMap=mapping(secrets);
+    }catch(err){
+      notice(messages,err);
+      secrets.focus();
+      return;
+    }
+    try{
+      subMap=mapping(subflows);
+    }catch(err){
+      notice(messages,err);
+      subflows.focus();
+      return;
+    }
+
+    // Check for conflicting mappings across credential and secret maps
+    const conflicts=Object.keys(cMap).filter(k=>Object.prototype.hasOwnProperty.call(sMap,k));
+    if(conflicts.length>0){
+      notice(messages,new Error(`Credential “${conflicts[0]}” is mapped in both Credential IDs and Secrets. Choose one mapping method.`));
+      return;
+    }
+
+    preflight.disabled=true;
+    const current=++version;
+    preview=null;previewContext=null;deploy.disabled=true;
+    try{
+      const context=describeSelection();
+      const result=await api('/api/n8n_promote/preflight',{method:'POST',json:{
+        source_instance_id:source.value,
+        target_instance_id:target.value,
+        workflow_id:wfId,
+        credential_map:cMap,
+        secret_map:sMap,
+        subworkflow_map:subMap
+      }});
+      if(current!==version)return;
+      preview=result;
+      previewContext=context;
+      key=crypto.randomUUID();
+      renderPreview(result,context);
+      deploy.disabled=!result.can_deploy;
+    }catch(error){
+      notice(messages,error);
+    }finally{
+      preflight.disabled=false;
+    }
+  });
+
+  const rawDisclosureNode=el('details',{className:'form-disclosure raw-json-disclosure'},
+    el('summary',{},icon('chevron'),'Edit raw mappings JSON (advanced)'),
+    el('div',{},
+      el('p',{className:'muted'},'Saved mappings are applied automatically. Use vault references such as $SERVICE, never plaintext secrets. New credential mappings require admin.'),
+      field('Credential IDs: source → target (JSON)',credential),
+      field('Secrets: source credential → vault reference (JSON)',secrets),
+      field('Subworkflow IDs: source → target (JSON)',subflows)));
+
+  const chooser=formCard({
+    title:'1. Choose source and target',
+    description:'Preflight compares a fresh snapshot of both instances.',
+    body:[
+      el('div',{className:'form-row'},field('Source instance',source),field('Target instance',target)),
+      workflowPicker.node,
+      mappingBox,
+      rawDisclosureNode
+    ],
+    actions:[preflight]
+  });
+
   chooser.addEventListener('submit',event=>{event.preventDefault();});
   container.append(chooser,messages,previewBox,history);
+
   function runCard(run){
     const context=runContext.get(run.id),targetName=instanceName(run.target_instance_id);
     const [label,tone,sentence]=runStatus(run,targetName);
@@ -230,6 +537,19 @@ export async function render(container){
     card.append(rawDisclosure(run,'Raw run record'));
     return card;
   }
-  async function runs(){try{const result=await api('/api/n8n_promote/runs',{signal:controller.signal});history.replaceChildren(el('h2',{className:'wizard-step'},'3. Deployment history'),button('Refresh runs',runs,'button ghost'),...result.data.map(runCard));if(!result.data.length)history.append(empty('No promotions yet','Your deployment results and recovery actions will appear here.',[button('Start a promotion',()=>{source.scrollIntoView();source.focus({preventScroll:true});},'ghost')]));}catch(error){if(!controller.signal.aborted)notice(history,error);}}
-  invalidate();await Promise.all([source.value?workflows():Promise.resolve(),runs()]);return()=>controller.abort();
+
+  async function runs(){
+    try{
+      const result=await api('/api/n8n_promote/runs',{signal:controller.signal});
+      history.replaceChildren(el('h2',{className:'wizard-step'},'3. Deployment history'),button('Refresh runs',runs,'button ghost'),...result.data.map(runCard));
+      if(!result.data.length)history.append(empty('No promotions yet','Your deployment results and recovery actions will appear here.',[button('Start a promotion',()=>{source.scrollIntoView();source.focus({preventScroll:true});},'ghost')]));
+    }catch(error){
+      if(!controller.signal.aborted)notice(history,error);
+    }
+  }
+
+  invalidate();
+  if(workflowPicker.getId())inspectWorkflow(workflowPicker.getId());
+  await runs();
+  return()=>controller.abort();
 }
