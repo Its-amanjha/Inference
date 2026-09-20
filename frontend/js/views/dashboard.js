@@ -71,10 +71,10 @@ export async function render(container) {
         const rate=metrics.success_rate_percent===null?(metrics.terminal_executions_24h===0?'No completed runs':null):`${metrics.success_rate_percent}%`;
         const incomplete=metrics.data.filter(row=>!row.workflows_complete||!row.executions_complete);
         for(const [index,[label,value,glyph,hint]] of [['Confirmed silent-error spans · 24h',metrics.confirmed_silent_error_spans_24h,'errors','Silent failures confirmed from received telemetry'],['Saved executions · 24h',metrics.executions_24h,'play'],['Success rate · completed runs',rate,'check'],['Total workflows',metrics.workflows,'workflows']].entries()){
-          const unknown=value===null,text=unknown?'Unavailable':String(value),labelId=`metric-label-${index}`;
+          const unknown=value===null,text=unknown?'Unavailable':String(value),labelId=`metric-label-${index}`,valueId=`metric-value-${index}`;
           const detail=unknown?(incomplete.length?'Coverage incomplete':'Not reported'):hint;
-          // The label names the metric; the value is plain text so heading navigation is not a list of bare numbers.
-          stats.append(el('article',{class:`card metric-cell${unknown?' metric-unknown':''}`,'aria-labelledby':labelId},el('div',{class:'metric-label'},icon(glyph),el('p',{class:'muted',id:labelId},label)),el('p',{class:`metric-number${unknown||text.length>12?' metric-text':''}`},text),detail?el('p',{class:'metric-hint'},detail):null));
+          // The label names the metric via an h2 heading; the value is associated with it via aria-describedby.
+          stats.append(el('article',{class:`card metric-cell${unknown?' metric-unknown':''}`,'aria-labelledby':labelId,'aria-describedby':valueId},el('div',{class:'metric-label'},icon(glyph),el('h2',{class:'muted metric-title',id:labelId,'aria-describedby':valueId},label)),el('p',{class:`metric-number${unknown||text.length>12?' metric-text':''}`,id:valueId},text),detail?el('p',{class:'metric-hint'},detail):null));
         }
         coverage.append(el('details',{class:'coverage-details'},el('summary',{},'How these metrics are counted'),el('p',{},`${metrics.scope} Success rate excludes running/waiting executions. Silent-error spans count only received telemetry. Window ends ${new Date(metrics.window_end).toLocaleString()}.`)));
         if(incomplete.length){
