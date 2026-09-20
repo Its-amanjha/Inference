@@ -85,7 +85,7 @@ export function contextOverview(result){
   const error=result?.error;
   if(error)lines.push(el('p',{},error.detail==='withheld'?'Error text is withheld from the AI.':error.detail==='unavailable'?'Error details are unavailable for this execution.'
     :`Error${error.last_node?` in “${error.last_node}”`:''}: ${error.message||error.name||'no message recorded'}`));
-  if(typeof result?.notes==='string')lines.push(el('p',{className:'repair-operator-notes'},el('strong',{},'Operator note sent to the AI: '),result.notes));
+  if(typeof result?.notes==='string')lines.push(el('p',{className:'repair-operator-notes'},el('strong',{},'Operator note for the AI: '),result.notes));
   lines.push(rawDisclosure(result,'Raw context'));
   return lines;
 }
@@ -275,6 +275,7 @@ export function renderProposal(card,view,handlers){
   const feedback=el('div',{className:'proposal-feedback'},view.feedback?.error?el('div',{className:'error',role:'alert'},describeRepairError(view.feedback.error))
     :view.feedback?.text?el('div',{className:'notice',role:'status'},view.feedback.text):null);
   const raw=rawDisclosure(preview,'Raw server preview');
+  if(round2)raw.querySelector('summary')?.setAttribute('aria-label',`Raw server preview: ${targetLine(action)}; proposal ${action.id}`);
   if(rawOpen)raw.open=true;
   card.dataset.status=status;
   card.setAttribute('aria-labelledby',`proposal-${safe}-title`);
