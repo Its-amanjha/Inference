@@ -289,6 +289,12 @@ function onKeyDown(e) {
     }
   }
 
+  if (e.key === '?' || (e.key === '/' && e.shiftKey)) {
+    e.preventDefault();
+    openShortcutsDialog();
+    return;
+  }
+
   const viewMatch = currentViewShortcuts.find(s => matchShortcutKey(s, e.key));
   if (viewMatch) {
     e.preventDefault();
@@ -300,12 +306,6 @@ function onKeyDown(e) {
     e.preventDefault();
     pendingSequence = 'g';
     pendingTimer = setTimeout(() => { pendingSequence = null; }, 1200);
-    return;
-  }
-
-  if (e.key === '?' || (e.key === '/' && e.shiftKey)) {
-    e.preventDefault();
-    openShortcutsDialog();
     return;
   }
 
