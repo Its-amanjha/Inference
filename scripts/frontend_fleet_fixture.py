@@ -588,7 +588,7 @@ def exercise_fleet_search(page, ids, state):
     target.get_by_role('button', name='Deactivate workflow Target searchable on target', exact=True).click()
     page.get_by_role('dialog', name='Deactivate workflow').get_by_role('button', name='Deactivate workflow', exact=True).click()
     target.get_by_role('button', name='Activate workflow Target searchable on target', exact=True).wait_for()
-        target.get_by_role('link', name='Open workflow Target searchable in CodeLab', exact=True).click()
+    target.get_by_role('link', name='Open workflow Target searchable in CodeLab', exact=True).click()
     assert 'instance_id=' + ids['target'] in page.url
     page.get_by_role('button', name='Load workflow', exact=True).click()
     expect(page.get_by_role('textbox', name='Code editor', exact=True)).to_have_value('return [];')
