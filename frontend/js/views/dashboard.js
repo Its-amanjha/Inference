@@ -99,7 +99,7 @@ export async function render(container) {
           // Time and execution are shown only when the record carries them.
           const parts=[el('span',{},`${instanceName(row.instance_id)} · ${row.node_name||'Workflow'} · ${occurrences}`),row.occurred_at?relativeTime(row.occurred_at):null,row.execution_id?el('span',{},`Execution ${row.execution_id}`):null].filter(Boolean);
           findings.append(el('article',{class:'finding-row'},el('div',{class:'finding-title'},el('strong',{},row.workflow_name),severityPill(row.error_type)),
-            el('p',{},row.error_message),el('div',{class:'finding-meta'},parts.flatMap((part,position)=>position?[el('span',{class:'finding-sep','aria-hidden':'true'},'·'),part]:[part]),el('span',{class:'finding-actions'},el('a',{href:explainHref(row)},'Explain with AI'),can('operator')?el('a',{href:repairHref(row)},'Repair with AI'):null))));
+            el('p',{},row.error_message),el('div',{class:'finding-meta'},parts.flatMap((part,position)=>position?[el('span',{class:'finding-sep','aria-hidden':'true'},'·'),part]:[part]),el('span',{class:'finding-actions'},el('a',{href:explainHref(row),'aria-label':`Explain ${row.workflow_name} with AI`},'Explain with AI'),can('operator')?el('a',{href:repairHref(row),'aria-label':`Repair ${row.workflow_name} with AI`},'Repair with AI'):null))));
         }
         if(rows.length)findings.append(el('p',{class:'muted'},'Latest open findings. Review all errors for earlier records.'));
       }

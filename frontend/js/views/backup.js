@@ -29,30 +29,30 @@ export async function render(container){
     // Only runs with a recorded archive hash have a local file; the server rejects the rest.
     const hasFile=Boolean(r.sha256)&&r.status!=='deleted';
     return el('div',{class:'toolbar'},
-      hasFile?button('Download',()=>act(()=>download('/api/backups/runs/'+id+'/download'))):null,
-      button('Inspect',()=>messages.replaceChildren(jsonView(r)),'ghost'),
-      r.sha256&&['uncertain','partial'].includes(r.status)?button('Reconcile',()=>act(async()=>{await api('/api/backups/runs/'+id+'/reconcile',{method:'POST'});await runs();}),'ghost'):null,
+      hasFile?button('Download',()=>act(()=>download('/api/backups/runs/'+id+'/download')),'button',{'aria-label':`Download backup from ${when}`}):null,
+      button('Inspect',()=>messages.replaceChildren(jsonView(r)),'ghost',{'aria-label':`Inspect backup from ${when}`}),
+      r.sha256&&['uncertain','partial'].includes(r.status)?button('Reconcile',()=>act(async()=>{await api('/api/backups/runs/'+id+'/reconcile',{method:'POST'});await runs();}),'ghost',{'aria-label':`Reconcile backup from ${when}`}):null,
       hasFile?button('Delete local file',()=>act(async()=>{
         if(!await confirmAction({title:'Delete local archive',target:[el('strong',{},'Backup from '+when),' (run '+r.id+')'],consequence:'Deletes the archive file stored on this server. The run stays in history and any S3 copy remains.',confirmLabel:'Delete local file',danger:true}))return;
         await api('/api/backups/runs/'+id+'/file',{method:'DELETE'});await runs();
-      }),'danger'):null);
+      }),'danger',{'aria-label':`Delete local file from ${when}`}):null);
   }
   async function runs(append=false){const result=await api('/api/backups/runs?limit='+pageSize()+(append&&next?'&before='+encodeURIComponent(next):''),{signal});next=result.next_cursor;if(!append)history.replaceChildren();history.querySelector('[data-more]')?.remove();if(result.data.length){const page=table(['Created','Status','Remote','Actions'],result.data.map(r=>[new Date(r.created_at*1000).toLocaleString(),runStatus(r),r.remote_status||'—',runActions(r)]));const existing=append?history.querySelector('table'):null;if(existing)existing.querySelector('tbody').append(...page.querySelector('tbody').children);else history.append(page);}if(!result.data.length&&!append){const scheds=await api('/api/backups/schedules',{signal});const runnable=scheds.data.find(s=>s.enabled);history.append(empty('No recorded runs','Scheduled backups and manual schedule runs appear here.',runnable?[button('Run backup now',()=>act(async()=>{await api('/api/backups/schedules/'+encodeURIComponent(runnable.id)+'/run',{method:'POST'});await runs();await load();}),'ghost')]:[button('Add your first schedule',()=>edit())]));}if(next){const more=button('Load older runs',()=>act(()=>runs(true)),'ghost');more.dataset.more='true';history.append(more);}}
   function scheduleCard(s){
     const id=encodeURIComponent(s.id);
     const main=s.enabled
-      ?button('Run now',()=>act(async()=>{const result=await api('/api/backups/schedules/'+id+'/run',{method:'POST'});notice(messages,'Backup outcome: '+result.status);await runs();await load();}))
-      :button('Enable',()=>act(async()=>{await api('/api/backups/schedules/'+id,{method:'PUT',json:{name:s.name,interval_minutes:s.interval_minutes,passphrase_ref:s.passphrase_ref,enabled:true,s3:s.s3?Object.fromEntries(S3_KEYS.map(key=>[key,s.s3[key]||''])):null}});await load();notice(messages,'Schedule '+s.name+' enabled. The next automatic backup runs in '+s.interval_minutes+' minutes.');}));
+      ?button('Run now',()=>act(async()=>{const result=await api('/api/backups/schedules/'+id+'/run',{method:'POST'});notice(messages,'Backup outcome: '+result.status);await runs();await load();}),'button',{'aria-label':`Run backup now: ${s.name}`})
+      :button('Enable',()=>act(async()=>{await api('/api/backups/schedules/'+id,{method:'PUT',json:{name:s.name,interval_minutes:s.interval_minutes,passphrase_ref:s.passphrase_ref,enabled:true,s3:s.s3?Object.fromEntries(S3_KEYS.map(key=>[key,s.s3[key]||''])):null}});await load();notice(messages,'Schedule '+s.name+' enabled. The next automatic backup runs in '+s.interval_minutes+' minutes.');}),'button',{'aria-label':`Enable schedule ${s.name}`});
     const remove=button('Delete schedule',()=>act(async()=>{
       if(!await confirmAction({title:'Delete schedule',target:s.name,consequence:'Automatic backups from this schedule stop. Existing archives remain.',confirmLabel:'Delete schedule',danger:true}))return;
       await api('/api/backups/schedules/'+id,{method:'DELETE'});await load();
-    }),'danger');
+    }),'danger',{'aria-label':`Delete schedule ${s.name}`});
     return el('section',{class:'card stack'},
       el('div',{class:'title-row'},el('h3',{},s.name),stateBadge(s.enabled?'success':'',s.enabled?'Enabled':'Paused')),
       el('p',{},'Every '+s.interval_minutes+' minutes'),
       el('p',{class:'muted'},'Next: '+new Date(s.next_run_at*1000).toLocaleString()),
       s.enabled?null:el('p',{class:'muted'},'Enable this schedule to run a backup.'),
-      el('div',{class:'toolbar'},main,button('Edit',()=>edit(s),'ghost'),actionMenu([remove])));
+      el('div',{class:'toolbar'},main,button('Edit',()=>edit(s),'ghost',{'aria-label':`Edit schedule ${s.name}`}),actionMenu([remove],`More actions for ${s.name}`)));
   }
   async function load(){const result=await api('/api/backups/schedules',{signal});schedules.replaceChildren(...result.data.map(scheduleCard));if(!result.data.length)schedules.append(empty('No automatic backups','Add a schedule using a vault or environment passphrase reference.',[button('Open backup schedules',()=>{document.getElementById('backup-schedules')?.scrollIntoView();},'ghost')]));}
   function edit(s={}){const name=el('input',{value:s.name||'',required:true}),interval=el('input',{type:'number',min:15,max:525600,value:s.interval_minutes||1440,required:true}),ref=el('input',{value:s.passphrase_ref||'',placeholder:'$BACKUP_PASSWORD',required:true,class:'control-mono',autocomplete:'off',spellcheck:'false'}),enabled=el('input',{type:'checkbox',checked:s.enabled??true}),remote=el('input',{type:'checkbox',checked:Boolean(s.s3)}),remoteFields=el('div',{class:'form-subgroup'}),inputs={};for(const [key,label] of [['endpoint','HTTPS endpoint'],['bucket','Bucket'],['region','Region'],['prefix','Object prefix (optional)'],['credentials_ref','Credentials reference']]){inputs[key]=el('input',{value:s.s3?.[key]||'',required:key!=='prefix'});remoteFields.append(field(label,inputs[key]));}function toggle(){remoteFields.hidden=!remote.checked;for(const input of Object.values(inputs))input.disabled=!remote.checked;}remote.addEventListener('change',toggle);toggle();const form=formCard({title:s.id?'Edit schedule':'New schedule',description:'Creates an encrypted backup on a fixed interval.',

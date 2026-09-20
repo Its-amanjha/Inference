@@ -53,7 +53,7 @@ export async function render(container) {
       const cached=cachedProbe(item);let checking=false;
       const paint=result=>health.replaceChildren(reachabilityBadge(result),el('p',{class:'muted',title:result?.checked_at},checkedLine(result)));
       paint(cached);
-      const recheck=button('Re-check connection',()=>check(),'ghost');
+      const recheck=button('Re-check connection',()=>check(),'ghost',{'aria-label':`Re-check connection ${item.name}`});
       async function check(){
         if(checking||signal.aborted||checkSignal.aborted)return;checking=true;recheck.disabled=true;
         feedback.replaceChildren(loadingState(`Checking connection to ${item.name}…`,{rows:2}));
@@ -64,7 +64,7 @@ export async function render(container) {
         finally{checking=false;recheck.disabled=false;}
       }
       if(!cached)pending.push(check);
-      if(can('admin'))actions.append(recheck,button('Edit',()=>edit(item),'ghost'),button('Remove',()=>act(async()=>{if(!await confirmAction({title:'Remove connection',target:item.name,consequence:'Inference stops reading this instance and deletes its saved API key. Workflows and executions in n8n are untouched.',confirmLabel:'Remove connection',danger:true}))return;await api('/api/n8n_proxy/instances/'+encodeURIComponent(item.id),{method:'DELETE'});forgetProbe(item.id);await load();window.dispatchEvent(new Event('instances-changed'));}),'danger'));
+      if(can('admin'))actions.append(recheck,button('Edit',()=>edit(item),'ghost',{'aria-label':`Edit connection ${item.name}`}),button('Remove',()=>act(async()=>{if(!await confirmAction({title:'Remove connection',target:item.name,consequence:'Inference stops reading this instance and deletes its saved API key. Workflows and executions in n8n are untouched.',confirmLabel:'Remove connection',danger:true}))return;await api('/api/n8n_proxy/instances/'+encodeURIComponent(item.id),{method:'DELETE'});forgetProbe(item.id);await load();window.dispatchEvent(new Event('instances-changed'));}),'danger',{'aria-label':`Remove connection ${item.name}`}));
       list.append(el('section',{class:'card stack','aria-label':`Connection ${item.name}`},el('h2',{},item.name),el('p',{class:'muted'},item.url),health,actions,feedback,detail));
     }
     let index=0;

@@ -212,7 +212,7 @@ export async function render(container){
     if(run.status==='rejected')card.append(el('p',{className:'muted'},'Next step: run preflight again to create a fresh preview.'));
     if(recovery.includes('new_preview_with_explicit_mappings'))card.append(el('p',{className:'muted'},'Next step: reconcile, then create a new preview with explicit mappings for any retained credentials.'));
     const controls=el('div',{className:'actions'});
-    for(const action of recovery){if(!['activate','restore','reconcile'].includes(action))continue;const control=button(action==='activate'?'Activate with binding checks':action==='restore'?'Restore previous workflow':'Reconcile actual state',async()=>{
+    for(const action of recovery){if(!['activate','restore','reconcile'].includes(action))continue;const label=action==='activate'?'Activate with binding checks':action==='restore'?'Restore previous workflow':'Reconcile actual state';const control=button(label,async()=>{
       if(action==='activate'&&!await confirmAction({title:'Activate workflow',target:`${context?context.workflowLabel:'The deployed workflow'} on ${targetName}`,
         consequence:'The target snapshot and credential bindings are checked first. Once activated, the workflow runs on its own triggers.',confirmLabel:'Activate workflow'}))return;
       if(action==='restore'&&!await confirmAction({title:'Restore previous workflow',target:targetName,
@@ -225,7 +225,7 @@ export async function render(container){
         body=value?{target_workflow_id:value}:{};
       }
       control.disabled=true;try{const result=await api(`/api/n8n_promote/runs/${encodeURIComponent(run.id)}/${action}`,{method:'POST',...(body?{json:body}:{})});card.replaceWith(runCard(result));}catch(error){notice(card,error);}finally{control.disabled=false;}
-    },'button ghost');controls.append(control);}
+    },'button ghost',{'aria-label':`${label}, run ${run.id}`});controls.append(control);}
     if(controls.childElementCount)card.append(controls);
     card.append(rawDisclosure(run,'Raw run record'));
     return card;

@@ -48,23 +48,23 @@ export async function render(container){
         :{title:'Stop bundle',target:name,consequence:'Stops the n8n and task runner containers. Workflows on this instance do not run until the bundle is started again. The data volume is kept.',confirmLabel:'Stop bundle'});
       if(!ok)return;
       await operate(base+'/'+action,{method:'POST'});
-    }),className);
-    const reconcile=className=>button('Reconcile',()=>act(()=>operate(base+'/reconcile',{method:'POST'})),className);
+    }),className,{'aria-label':`${action==='start'?'Start':'Stop'} bundle ${name}`});
+    const reconcile=className=>button('Reconcile',()=>act(()=>operate(base+'/reconcile',{method:'POST'})),className,{'aria-label':`Reconcile bundle ${name}`});
     const remove=button('Remove',()=>act(async()=>{
       if(!await confirmAction({title:'Remove bundle',target:name,consequence:'Removes this bundle’s containers and network. The n8n data volume is preserved.',confirmLabel:'Remove bundle',danger:true}))return;
       await operate(base,{method:'DELETE'});
-    }),'danger');
+    }),'danger',{'aria-label':`Remove bundle ${name}`});
     const purge=button('Purge data',()=>act(async()=>{
       if(!await confirmAction({title:'Purge bundle data',target:name,consequence:'Removes the containers and network and permanently deletes the owned n8n data volume and everything stored in it. This cannot be undone.',confirmLabel:'Purge data',danger:true,requireText:'PURGE'}))return;
       results.delete(item.id);
       try{await api(base+'?purge_data=true',{method:'DELETE'});}finally{await load().catch(()=>{});}
-    }),'danger');
-    const inspect=button('Inspect',()=>act(async()=>{detail.replaceChildren(jsonView(await api(base)));}),'ghost');
+    }),'danger',{'aria-label':`Purge data of bundle ${name}`});
+    const inspect=button('Inspect',()=>act(async()=>{detail.replaceChildren(jsonView(await api(base)));}),'ghost',{'aria-label':`Inspect bundle ${name}`});
     const primary=[],more=[];
     if(item.status==='ready'){primary.push(lifecycle('stop','button'));more.push(reconcile('ghost'));}
     else if(item.status==='stopped'){primary.push(lifecycle('start','button'));more.push(reconcile('ghost'));}
     else{primary.push(reconcile('button'));more.push(lifecycle('start','ghost'),lifecycle('stop','ghost'));}
-    const actions=el('div',{class:'toolbar'},primary,inspect,actionMenu([...more,remove,purge]));
+    const actions=el('div',{class:'toolbar'},primary,inspect,actionMenu([...more,remove,purge],`More actions for ${name}`));
     list.append(el('section',{class:'card stack'},el('div',{class:'title-row'},el('h2',{},name),bundleBadge(item.status)),item.version?el('p',{class:'muted'},'n8n '+item.version):null,actions,detail));}
     if(!result.data.length)list.append(empty('No owned bundles','Provision a matching n8n and task runner pair. Existing host containers remain outside this inventory.',[button('Provision your first bundle',provision)]));}
   function provision(){
