@@ -180,7 +180,7 @@ function formatKeyNodes(displayStr) {
   const nodes = [];
   parts.forEach((p, idx) => {
     if (idx > 0) nodes.push(document.createTextNode(' '));
-    if (p === '/') {
+    if (p === '/' && parts.length > 1) {
       nodes.push(el('span', {}, '/'));
     } else {
       nodes.push(el('kbd', {}, p));
