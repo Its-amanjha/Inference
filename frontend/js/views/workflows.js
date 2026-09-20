@@ -19,7 +19,7 @@ export async function render(container) {
     const entry={instance,list,detail,messages,stamp,cursor:null,loading:false,loaded:false};
     entry.next=button('Next page',()=>load(entry,entry.cursor),'ghost');
     entry.next.setAttribute('aria-label',`Next workflow page on ${instance.name}`);
-    entry.retry=button('Refresh instance',()=>load(entry),'ghost');
+    entry.retry=button('Refresh instance',()=>load(entry),'ghost',{'aria-label':`Refresh workflows on ${instance.name}`});
     sections.append(el('section',{class:'card stack','aria-label':`Workflows on ${instance.name}`},el('h2',{},instance.name),messages,stamp,list,el('div',{class:'toolbar'},entry.retry,entry.next),detail));
     return entry;
   });
