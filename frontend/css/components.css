@@ -26,6 +26,23 @@
 .markdown-preview hr { border:0; border-top:1px solid var(--border); margin:24px 0; }
 .grid > p { grid-column:1 / -1; }
 .card .empty { box-shadow:none; border:0; }
+/* Note backlinks: a real list so the count is announced; buttons keep their size. */
+.backlinks { list-style:none; margin:12px 0 0; padding:0; display:flex; flex-direction:column; gap:8px; align-items:flex-start; }
+/* Provisioning groups: native fieldsets with unobtrusive legends; layout unchanged. */
+fieldset.form-group { border:0; margin:0; padding:0; min-width:0; display:flex; flex-direction:column; gap:16px; }
+.form-group>legend { font-size:14px; line-height:20px; font-weight:600; padding:0; margin-bottom:4px; }
+/* Settings groups: an in-page nav of section links; sections never hide content. */
+.settings-nav { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 20px; }
+.settings-section { margin:0 0 24px; }
+.settings-group-title { font-size:20px; line-height:28px; letter-spacing:-.01em; margin:0 0 12px; color:var(--color-ink-black); }
+/* Group headings and the Display subheading are skip targets, never Tab stops:
+   native :focus-visible already shows an outline exactly when keyboard modality
+   makes it visible, so no manual suppression. The brief landing flash below is
+   the sighted signal; it is fully disabled under reduced motion. */
+.settings-subhead { font-size:14px; line-height:20px; margin:4px 0 0; }
+.settings-flash { animation:settings-flash 1.2s ease-out; }
+@keyframes settings-flash { from { background:var(--selection-fill); } to { background:transparent; } }
+@media (prefers-reduced-motion:reduce) { .settings-flash { animation:none; } }
 /* Empty-state actions: a centred, wrapping row of the caller's .button/.ghost controls. */
 .empty-actions { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:12px; }
 .empty-actions:empty { display:none; }
