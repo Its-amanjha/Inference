@@ -644,6 +644,7 @@ def exercise_fleet_search(page, ids, state):
     print('PASS: fleet-wide search, independent pagination, same-ID target isolation, CodeLab target links, partial failure and recovery.', flush=True)
     state['pagination'] = False
     page.evaluate("location.hash = 'dashboard'")
+    page.wait_for_function("() => !document.querySelector('#main')?.textContent.includes('Loading ')")
     # Metric values are plain text named by their label, so screen readers hear the label first.
     total = page.get_by_role('article', name='Total workflows', exact=True)
     expect(total.locator('.metric-number')).to_have_text('2')
