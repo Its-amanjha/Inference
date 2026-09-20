@@ -11,6 +11,8 @@ const IDENTIFIER=/^[A-Za-z0-9_-]{1,128}$/;
 const ERROR_ID=/^\d{1,18}$/;
 const KEYS=[['instance_id',IDENTIFIER],['workflow_id',IDENTIFIER],['error_id',ERROR_ID],['execution_id',IDENTIFIER]];
 const LIST_LIMIT=25;
+// Keep aligned with backend/modules/assistant/repair_contract.py: MAX_NOTES_CHARS.
+export const MAX_NOTES_CHARS=2000;
 let sequence=0;
 
 const instanceLabel=id=>state.instances.find(item=>item.id===id)?.name||id;
@@ -37,18 +39,20 @@ export function repairHash(target){
 }
 
 // The RepairTarget body sent with chat requests while a target is pinned.
-export function repairContext(target,sendErrorText){
+export function repairContext(target,sendErrorText,notes=''){
   const context={mode:'repair',instance_id:target.instance_id,send_error_text:Boolean(sendErrorText)};
   for(const key of ['workflow_id','error_id','execution_id'])if(target[key])context[key]=target[key];
+  if(notes)context.notes=notes;
   return context;
 }
 
-export function contextQuery(target,sendErrorText){
+export function contextQuery(target,sendErrorText,notes=''){
   const params=new URLSearchParams({instance_id:target.instance_id});
   if(target.workflow_id)params.set('workflow_id',target.workflow_id);
   if(target.error_id)params.set('error_id',target.error_id);
   else if(target.execution_id)params.set('execution_id',target.execution_id);
   params.set('send_error_text',String(Boolean(sendErrorText)));
+  if(notes)params.set('notes',notes);
   return params;
 }
 

@@ -4,10 +4,12 @@ import {el} from './html.js';
 import {icon,actionIcon} from './icons.js';
 import {rawDisclosure,instanceName,formatTime,plural} from './payload.js';
 
-export const REPAIR_TOOLS=new Set(['propose_workflow_patch','propose_restore_workflow']);
+export const REPAIR_TOOLS=new Set(['propose_workflow_patch','propose_restore_workflow','propose_create_workflow','propose_retry_execution']);
 export const isRepairAction=item=>REPAIR_TOOLS.has(item?.name);
+export const isRound2Action=item=>['workflow_create','execution_retry'].includes(item?.preview?.kind);
 export const RATE_LIMITED_TEXT='Provider rate limited; wait about a minute, then try again.';
 export const INCOMPLETE_TEXT="The model's answer was cut off. Nothing was proposed or applied.";
+export const RETRY_WARNING='Retrying repeats side effects that may already have happened, including writes, emails and payments. Check those effects before confirming.';
 
 const STATUS={pending:['Pending','info','clock'],executing:['Applying','info','refresh'],succeeded:['Applied','success','check'],
   failed:['Not applied','error','blocked'],stale:['Stale','warning','errors'],cancelled:['Cancelled','neutral','close'],
@@ -34,8 +36,10 @@ const ERRORS={
   repair_error_text_disabled:'An administrator turned off error text in repair conversations.',
   repair_webhook_directory_disabled:'An administrator turned off sharing other workflows’ trigger addresses with the AI.',
   invalid_patch:'The change no longer applies cleanly to the workflow. Nothing was written.',
+  self_call_blocked:'This workflow would call its own trigger in a loop. Ask the AI to use the service it should call instead.',
+  execution_not_retryable:'This execution can no longer be retried. Open its latest state in n8n and choose a failed or crashed execution without an existing successful retry.',
 };
-export const statusForError=code=>({context_stale:'stale',approval_stale:'stale',upstream_outcome_unknown:'uncertain'})[code];
+export const statusForError=code=>({context_stale:'stale',approval_stale:'stale',upstream_outcome_unknown:'uncertain',execution_not_retryable:'failed'})[code];
 export const describeRepairError=error=>ERRORS[error?.code]||error?.message||String(error);
 
 export const formatBytes=bytes=>{
@@ -44,7 +48,7 @@ export const formatBytes=bytes=>{
   return value<1024?plural(Math.round(value),'byte'):`${(value/1024).toFixed(value<10240?1:0)} KB`;
 };
 
-const TOOL_LABEL={get_workflow_context:'Workflow context',get_error_context:'Error context',propose_workflow_patch:'Change proposal',propose_restore_workflow:'Restore proposal'};
+const TOOL_LABEL={get_workflow_context:'Workflow context',get_error_context:'Error context',propose_workflow_patch:'Change proposal',propose_restore_workflow:'Restore proposal',propose_create_workflow:'Create proposal',propose_retry_execution:'Retry proposal'};
 const STEP_STATUS={done:['Done','success','check'],rate_limited:['Rate limited','warning','clock'],failed:['Failed','error','blocked']};
 
 // One ordered list per repair turn. The rate-limit sentence is shown once, by the turn footer.
@@ -54,7 +58,7 @@ export function turnSteps(steps){
     const size=formatBytes(step.bytes);
     const text=step.kind==='model_request'?`Asked ${step.provider_id?`model ${step.provider_id}`:'the model'}`
       :step.kind==='context_read'?`Read ${(TOOL_LABEL[step.tool]||step.tool||'context').toLowerCase()}`:String(step.tool||step.kind||'Step');
-    const message=['provider_rate_limited','provider_incomplete'].includes(step.code)||!step.message?null:String(step.message);
+    const message=['self_call_blocked','execution_not_retryable'].includes(step.code)?ERRORS[step.code]:['provider_rate_limited','provider_incomplete'].includes(step.code)||!step.message?null:String(step.message);
     return el('li',{'data-status':String(step.status||'unknown')},
       el('div',{className:'repair-step'},el('span',{className:'repair-step-text'},text,size?el('span',{className:'repair-step-size'},` · ${size}`):null),
         el('span',{className:`badge decision-badge repair-step-status${tone==='neutral'?'':` ${tone}`}`},icon(glyph),label)),
@@ -66,7 +70,8 @@ export function contextSent(log){
   return el('details',{className:'context-sent'},el('summary',{},'Context sent'),el('ul',{},log.filter(item=>item&&typeof item==='object').map(item=>{
     const count=Number(item.redaction_count);
     const redacted=item.redaction_count===null||item.redaction_count===undefined||!Number.isFinite(count)?null:count?`${plural(count,'value')} redacted`:'nothing redacted';
-    return el('li',{},[TOOL_LABEL[item.tool]||item.tool||'Context',formatBytes(item.bytes),redacted].filter(Boolean).join(' · '));
+    return el('li',{},[TOOL_LABEL[item.tool]||item.tool||'Context',formatBytes(item.bytes),redacted].filter(Boolean).join(' · '),
+      typeof item.operator_notes==='string'?el('p',{className:'repair-operator-notes'},el('strong',{},'Operator note sent: '),item.operator_notes):null);
   })));
 }
 
@@ -80,6 +85,7 @@ export function contextOverview(result){
   const error=result?.error;
   if(error)lines.push(el('p',{},error.detail==='withheld'?'Error text is withheld from the AI.':error.detail==='unavailable'?'Error details are unavailable for this execution.'
     :`Error${error.last_node?` in “${error.last_node}”`:''}: ${error.message||error.name||'no message recorded'}`));
+  if(typeof result?.notes==='string')lines.push(el('p',{className:'repair-operator-notes'},el('strong',{},'Operator note for the AI: '),result.notes));
   lines.push(rawDisclosure(result,'Raw context'));
   return lines;
 }
@@ -142,18 +148,64 @@ export {preconditionKey};
 
 function targetLine(action){
   const target=action?.target&&typeof action.target==='object'?action.target:action?.arguments||{};
+  if(action?.preview?.kind==='workflow_create')return `New workflow “${target.workflow_name||'Unnamed workflow'}” on ${target.instance_name||instanceName(target.instance_id)}`;
   const workflow=target.workflow_name?`“${target.workflow_name}” (${target.workflow_id})`:String(target.workflow_id??'unknown');
+  if(action?.preview?.kind==='execution_retry')return `Execution ${target.execution_id||'unknown'} of workflow ${workflow} on ${target.instance_name||instanceName(target.instance_id)}`;
   return `Workflow ${workflow} on ${target.instance_name||instanceName(target.instance_id)}`;
+}
+
+function retryOutcome(view,status,control){
+  const result=view.result;
+  if(status==='pending')return note('Uses the currently saved workflow. Nothing has been retried yet.');
+  if(status==='executing')return el('p',{className:'proposal-state',role:'status'},'Requesting a retry. Wait for verification before doing anything else.');
+  if(status==='succeeded')return el('div',{className:'proposal-result'},
+    el('p',{},result?.verified===true?'Retry accepted and the new execution verified. This does not mean the workflow finished successfully.':'Retry confirmed. Load its saved details to inspect the new execution.'),
+    result?.execution_id?note(`Execution ${result.execution_id} · retry of ${result.retry_of||view.action.target?.execution_id} · recorded status: ${result.execution_status||'unknown'}`):control('Load retry details',view.handlers.reconcile,'ghost'));
+  if(status==='uncertain')return el('div',{className:'proposal-uncertain',role:'status'},icon('errors'),el('div',{},
+    el('p',{className:'proposal-state-title'},'Retry outcome unknown'),
+    el('p',{},'An execution may already be running. Check this instance before requesting another retry. This approval will not run again.'),
+    result?.execution_id?note(`Returned execution ID: ${result.execution_id}. Verification is incomplete.`):null,
+    control('Load saved retry details',view.handlers.reconcile,'ghost')));
+  const text={stale:'Nothing was retried: the workflow or execution changed. Review its latest state before proposing another retry.',
+    failed:'Retry refused or failed. Check the execution in n8n before requesting another proposal.',cancelled:'Retry cancelled. Nothing was retried.',expired:'Retry proposal expired. Nothing was retried.'};
+  return el('p',{className:'proposal-state'},text[status]||`Retry status: ${status}. Check the execution in n8n before taking another action.`);
+}
+
+// Round-2 writes do not have the patch/restore undo snapshot. A lost response never offers Apply again.
+function round2Outcome(view,status,control){
+  if(view.action.preview.kind==='execution_retry')return retryOutcome(view,status,control);
+  const result=view.result,follow=[];
+  if(status==='pending')return note('Will be created inactive. Activation is a separate approval. Nothing has been created yet.');
+  if(status==='executing')return el('p',{className:'proposal-state',role:'status'},'Creating the inactive workflow. Wait for verification.');
+  if(status==='succeeded'){
+    if(view.canOperate&&result?.verified===true&&result.workflow_id&&result.active===false&&!view.activated)follow.push(control('Activate workflow',view.handlers.activate,'ghost'));
+    return el('div',{className:'proposal-result'},
+      el('p',{},result?.verified===true?'Created inactive and verified by reading the workflow back.':'Creation confirmed. Load verification details to see the new workflow ID.'),
+      result?.workflow_id?note(`Workflow ${result.workflow_id}${view.activated?' · Activated by a separate approval':''}`):control('Load creation details',view.handlers.reconcile,'ghost'),
+      ...follow);
+  }
+  if(status==='uncertain')return el('div',{className:'proposal-uncertain',role:'status'},icon('errors'),el('div',{},
+    el('p',{className:'proposal-state-title'},'Creation outcome unknown'),
+    el('p',{},'The workflow may have been created. Check this instance before proposing another creation. This approval will not run again.'),
+    result?.workflow_id?note(`Returned workflow ID: ${result.workflow_id}. Verification is incomplete.`):null,
+    view.reconcile?note('Reconcile on the instance. Loading saved details does not repeat the operation.'):null,
+    control('Load saved creation details',view.handlers.reconcile,'ghost')));
+  const text={stale:'Nothing was created: the instance connection changed. Start a new proposal for the intended instance.',
+    failed:'Creation failed. Review the error before requesting a new proposal.',cancelled:'Creation cancelled. Nothing was created.',
+    expired:'Creation proposal expired. Nothing was created.'};
+  return el('p',{className:'proposal-state'},text[status]||`Creation status: ${status}. Check the instance before taking another action.`);
 }
 
 // Re-renders a card in place; focus returns to the same control when it still exists.
 export function renderProposal(card,view,handlers){
   const {action}=view,preview=action?.preview&&typeof action.preview==='object'?action.preview:null;
+  const round2=isRound2Action(action);
   const status=effectiveStatus(view),safe=String(action?.id||'proposal').replace(/[^A-Za-z0-9_-]/g,'_');
   const focused=card.contains(document.activeElement)?document.activeElement.dataset?.control||'card':null;
   const rawOpen=card.querySelector(':scope > .raw-payload')?.open;
   const control=(label,handler,variant='')=>{
     const node=el('button',{type:'button',className:`button${variant?` ${variant}`:''}`,'data-control':label},actionIcon(label),label);
+    if(round2)node.setAttribute('aria-label',`${label}: ${targetLine(action)}; proposal ${action.id}`);
     node.addEventListener('click',async()=>{
       if(node.disabled||node.getAttribute('aria-busy')==='true')return;
       node.disabled=true;node.setAttribute('aria-busy','true');
@@ -177,7 +229,7 @@ export function renderProposal(card,view,handlers){
     const changes=Array.isArray(preview.changes)?preview.changes.map(changeItem):[];
     const omitted=Number(preview.changes_omitted)||0;
     if(omitted>0)changes.push(el('li',{className:'proposal-change proposal-omitted'},el('div',{className:'proposal-change-head'},icon('info'),el('span',{},`${plural(omitted,'more change')} not shown here.`))));
-    if(!changes.length)changes.push(el('li',{className:'proposal-change'},el('div',{className:'proposal-change-head'},icon('info'),el('span',{},preview.diff?.changed===false?'The server found no differences from the current workflow.':'The server listed no changes.'))));
+    if(!changes.length)changes.push(el('li',{className:'proposal-change'},el('div',{className:'proposal-change-head'},icon('info'),el('span',{},preview.kind==='execution_retry'?'Re-run the execution using the currently saved workflow. The workflow definition is unchanged.':preview.diff?.changed===false?'The server found no differences from the current workflow.':'The server listed no changes.'))));
     sections.push(el('section',{className:'proposal-section'},el('h4',{},'Changes'),el('ul',{className:'proposal-changes'},changes)));
     const risks=Array.isArray(preview.risks)?preview.risks.filter(item=>item&&typeof item==='object'):[];
     if(risks.length)sections.push(el('section',{className:'proposal-section'},el('h4',{},'Risks to review'),el('ul',{className:'proposal-risks'},risks.map(risk=>
@@ -186,7 +238,8 @@ export function renderProposal(card,view,handlers){
   }else sections.push(el('p',{className:'proposal-state'},'The server returned no preview for this proposal, so it cannot be applied here.'));
 
   let state;
-  if(status==='pending')state=el('p',{className:'proposal-state'},'Nothing is written until you apply it.');
+  if(round2)state=round2Outcome({...view,handlers},status,control);
+  else if(status==='pending')state=el('p',{className:'proposal-state'},'Nothing is written until you apply it.');
   else if(status==='executing')state=el('p',{className:'proposal-state',role:'status'},'Applying. Wait for the outcome before doing anything else.');
   else if(status==='stale')state=el('div',{className:'proposal-stale'},el('p',{className:'proposal-state-title'},'Nothing was written'),
     el('p',{},'The workflow changed after this proposal was made, so it can no longer be applied.'),el('div',{className:'proposal-actions'},control('Ask AI to re-read',handlers.reread,'ghost')));
@@ -213,7 +266,7 @@ export function renderProposal(card,view,handlers){
   let footer=null;
   if(status==='pending'){
     const apply=preview?.apply&&typeof preview.apply==='object'?preview.apply:{};
-    const primary=control(apply.label||'Apply change',handlers.apply,apply.danger?'danger':'');
+    const primary=control(preview?.kind==='execution_retry'?'Review execution retry':apply.label||'Apply change',handlers.apply,apply.danger?'danger':'');
     const hint=!view.canOperate?'Only operators and administrators can apply changes.':!preview?'This proposal has no server preview.':blocked?'Finish the steps under Before you apply first.':null;
     primary.disabled=blocked||!view.canOperate;
     if(hint)primary.setAttribute('aria-describedby',`proposal-${safe}-hint`);
@@ -222,13 +275,15 @@ export function renderProposal(card,view,handlers){
   const feedback=el('div',{className:'proposal-feedback'},view.feedback?.error?el('div',{className:'error',role:'alert'},describeRepairError(view.feedback.error))
     :view.feedback?.text?el('div',{className:'notice',role:'status'},view.feedback.text):null);
   const raw=rawDisclosure(preview,'Raw server preview');
+  if(round2)raw.querySelector('summary')?.setAttribute('aria-label',`Raw server preview: ${targetLine(action)}; proposal ${action.id}`);
   if(rawOpen)raw.open=true;
   card.dataset.status=status;
   card.setAttribute('aria-labelledby',`proposal-${safe}-title`);
   card.replaceChildren(
     el('div',{className:'proposal-head'},el('h3',{className:'proposal-title',id:`proposal-${safe}-title`},preview?.summary_text||(action?.name==='propose_restore_workflow'?'Restore an earlier workflow version':'Change a workflow')),statusBadge(status)),
     el('p',{className:'proposal-target'},targetLine(action),status==='pending'&&Number.isFinite(Number(action?.expires_at))?` · Expires ${formatTime(Number(action.expires_at))}`:''),
-    state,...sections,footer,feedback,raw);
+    ...(preview?.kind==='execution_retry'?[el('div',{className:'proposal-uncertain proposal-retry-warning'},icon('errors'),el('div',{},el('p',{className:'proposal-state-title'},'A retry can repeat payments and other effects'),el('p',{},RETRY_WARNING)))]:[]),
+    state,...sections,...(round2&&!footer?[]:[footer]),feedback,raw);
   if(focused){
     const target=focused==='card'?null:[...card.querySelectorAll('[data-control]')].find(node=>node.dataset.control===focused&&!node.disabled);
     (target||card).focus({preventScroll:true});

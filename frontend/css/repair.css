@@ -43,6 +43,18 @@
 .repair-model-notice>.icon { width:16px; height:16px; margin-top:1px; color:var(--color-smoke); }
 .repair-model-notice p { margin:0; max-width:75ch; }
 
+/* Notes and expanded context must not squeeze the proposal or hide the composer. */
+.assistant-chat:has(> .repair-bar:not([hidden]) .repair-notes),
+#studio-chat .assistant-chat:has(> .repair-bar:not([hidden]) .repair-notes) { height:auto; }
+.assistant-chat:has(> .repair-bar:not([hidden]) .repair-notes) .chat-transcript { flex:none; min-height:240px; max-height:none; overflow:visible; }
+.repair-notes { display:grid; gap:6px; min-width:0; }
+.repair-notes .field { margin:0; gap:4px; font-size:12px; }
+.repair-notes textarea { min-height:64px; height:64px; max-height:180px; font-size:13px; }
+.repair-notes p,.repair-notes>span { margin:0; font-size:12px; line-height:1.5; color:var(--color-smoke); }
+.repair-notes>span { font-variant-numeric:tabular-nums; }
+.repair-operator-notes { white-space:pre-wrap; overflow-wrap:anywhere; }
+.proposal-uncertain.proposal-retry-warning { border-style:solid; border-width:2px; }
+
 /* Repair turns inside the conversation. */
 .chat-transcript .chat-event { margin:8px 0; font-size:12px; line-height:1.5; color:var(--color-smoke); text-align:center; overflow-wrap:anywhere; }
 .chat-message .repair-steps,.chat-message .context-sent,.chat-message .repair-turn-footer { white-space:normal; }
@@ -146,6 +158,11 @@
   .proposal-values dd+dt { margin-top:6px; }
 }
 @media(max-width:700px) {
+  .assistant-page :is(button,input,select,textarea,a,summary),
+  .assistant-page .repair-target .repair-target-option,
+  body:has(.assistant-page) .confirm-dialog :is(button,input) { min-height:44px; }
+  .assistant-page summary { box-sizing:border-box; padding-block:12px; }
+  .assistant-page .repair-check input[type=checkbox] { height:44px; min-height:44px; }
   .repair-bar { padding:10px 14px; }
   .repair-target-actions { width:100%; margin-left:0; }
   .repair-target-actions .button { flex:1 1 0; }

@@ -5,9 +5,9 @@ import {el, field, formCard, heading, jsonView, notice} from '../lib/html.js';
 import {icon,actionIcon} from '../lib/icons.js';
 import {rawDisclosure, instanceName, toneBadge, formatTime} from '../lib/payload.js';
 import {confirmAction} from '../lib/confirm.js';
-import {parseRepairTarget, repairHash, repairContext, contextQuery, describeTarget, listWorkflows, targetChip, createIdPicker} from '../lib/repair-target.js';
-import {isRepairAction, proposalShell, renderProposal, effectiveStatus, statusBadge, statusForError, preconditionsOf, preconditionKey,
-  turnSteps, contextSent, contextOverview, RATE_LIMITED_TEXT, INCOMPLETE_TEXT} from '../lib/proposals.js';
+import {parseRepairTarget, repairHash, repairContext, contextQuery, describeTarget, listWorkflows, targetChip, createIdPicker, MAX_NOTES_CHARS} from '../lib/repair-target.js';
+import {isRepairAction, isRound2Action, proposalShell, renderProposal, effectiveStatus, statusBadge, statusForError, preconditionsOf, preconditionKey,
+  turnSteps, contextSent, contextOverview, RATE_LIMITED_TEXT, INCOMPLETE_TEXT, RETRY_WARNING} from '../lib/proposals.js';
 
 // Real approval statuses from the assistant API; unknown values are shown verbatim.
 const APPROVAL_STATUS = {pending: ['Pending', 'info', 'clock'], executing: ['Executing', 'info', 'refresh'], succeeded: ['Succeeded', 'success', 'check'],
@@ -69,12 +69,17 @@ export async function render(container) {
   let repairFeedback = null;
   const sendErrorText = el('input', {type: 'checkbox', checked: true});
   const errorTextNote = el('p', {className: 'repair-admin-note', hidden: true}, ERROR_TEXT_OFF);
+  // Native maxlength counts UTF-16 units; the input handler enforces Python's code-point limit.
+  const operatorNotes = el('textarea', {rows: 2, maxLength: MAX_NOTES_CHARS * 2, 'aria-describedby': 'repair-notes-hint repair-notes-remaining', placeholder: 'What should the AI know about this repair?'});
+  const notesRemaining = el('span', {id: 'repair-notes-remaining'}, `${MAX_NOTES_CHARS} characters remaining`);
+  const notesField = el('div', {className: 'repair-notes'}, field('Operator note (optional)', operatorNotes),
+    el('p', {id: 'repair-notes-hint', className: 'muted'}, 'Sent to the AI with your next message. Review the server-masked text in What the AI sees.'), notesRemaining);
   const contextBody = el('div', {className: 'repair-context-body'});
   const contextDetails = el('details', {className: 'repair-context'}, el('summary', {}, 'What the AI sees'),
     el('div', {className: 'repair-context-panel'}, el('label', {className: 'repair-check'}, sendErrorText, el('span', {}, 'Send scrubbed error text to the AI')), errorTextNote, contextBody));
   const modelNotice = el('div', {className: 'repair-model-notice', role: 'status', hidden: true});
   const chip = targetChip({signal, onChange: next => setTarget(next, true)});
-  const repairBar = el('div', {className: 'repair-bar', hidden: true}, chip.node, contextDetails, modelNotice);
+  const repairBar = el('div', {className: 'repair-bar', hidden: true}, chip.node, notesField, contextDetails, modelNotice);
   const errorTextEnabled = () => errorTextAllowed && sendErrorText.checked;
   const applyErrorTextSetting = enabled => {
     const allowed = enabled !== false;
@@ -92,7 +97,7 @@ export async function render(container) {
   };
   const fetchContext = () => {
     if (!target) return Promise.resolve(null);
-    const query = contextQuery(target, errorTextEnabled()).toString();
+    const query = contextQuery(target, errorTextEnabled(), operatorNotes.value).toString();
     if (query !== contextKey || !contextPromise) {
       contextKey = query; contextResult = null;
       const pending = request(`/repair/context?${query}`);
@@ -125,6 +130,18 @@ export async function render(container) {
   };
   listen(contextDetails, 'toggle', () => { if (contextDetails.open) loadContext(); });
   listen(sendErrorText, 'change', () => loadContext());
+  let notesTimer;
+  listen(operatorNotes, 'input', () => {
+    const characters = Array.from(operatorNotes.value);
+    if (characters.length > MAX_NOTES_CHARS) operatorNotes.value = characters.slice(0, MAX_NOTES_CHARS).join('');
+    notesRemaining.textContent = `${Math.max(0, MAX_NOTES_CHARS - characters.length)} characters remaining`;
+    clearTimeout(notesTimer);
+    resetContext();
+    if (contextDetails.open) {
+      contextBody.append(el('p', {className: 'muted', role: 'status'}, 'Updating the masked note…'));
+      notesTimer = setTimeout(() => loadContext(), 350);
+    }
+  });
 
   const selectedProvider = () => providerRows.find(row => row.id === provider.value);
   const toolBadge = el('span', {className: 'badge tool-calling-badge', hidden: true});
@@ -274,6 +291,9 @@ export async function render(container) {
     try {
       const result = await request(`/approvals/${encodeURIComponent(id)}`);
       const item = result?.pending_action && typeof result.pending_action === 'object' ? result.pending_action : result;
+      if(isRound2Action(item)&&['succeeded','uncertain'].includes(item.status)){
+        try{item.savedResult=(await request(`/repair/${encodeURIComponent(id)}/reconcile`))?.result??null;}catch{/* Keep the confirmed status even if saved details are unavailable. */}
+      }
       return item && typeof item === 'object' && item.id ? item : null;
     } catch { return null; }
   };
@@ -290,24 +310,26 @@ export async function render(container) {
     else { model = {action: item, status: item.status || 'pending', result: null, reconcile: null, feedback: null, deactivated: new Set(), forceActive: false, activated: false, card: proposalShell(item.id)}; proposals.set(item.id, model); }
     if (anchor) anchor.after(model.card); else if (!model.card.isConnected) transcript.append(model.card);
     paintProposal(model);
+    if(item.savedResult){model.result=item.savedResult;paintProposal(model);}
     return model;
   };
   const applyProposal = async model => {
     const id = model.action.id, apply = model.action.preview?.apply || {};
+    const executionRetry = model.action.preview?.kind === 'execution_retry';
     if (acting.has(id)) return;
-    if (apply.danger || apply.typed_confirmation) {
-      const ok = await confirmAction({title: apply.label || 'Apply change', target: targetNodes(targetOf(model)), consequence: model.action.preview?.summary_text || 'This writes the change to the workflow.',
-        confirmLabel: apply.label || 'Apply change', danger: Boolean(apply.danger), requireText: apply.typed_confirmation || undefined});
+    if (executionRetry || apply.danger || apply.typed_confirmation) {
+      const ok = await confirmAction({title: executionRetry ? 'Review execution retry' : apply.label || 'Apply change', target: executionRetry ? [`Execution ${targetOf(model).execution_id} of `, ...targetNodes(targetOf(model))] : targetNodes(targetOf(model)), consequence: executionRetry ? RETRY_WARNING : model.action.preview?.summary_text || 'This writes the change to the workflow.',
+        confirmLabel: executionRetry ? 'Retry execution' : apply.label || 'Apply change', danger: executionRetry || Boolean(apply.danger), requireText: executionRetry ? 'RETRY' : apply.typed_confirmation || undefined});
       if (!ok || signal.aborted) return;
     }
     acting.add(id); model.feedback = null; paintProposal(model);
     try {
       const outcome = await confirmTool(id);
       if (signal.aborted) return;
-      model.status = outcome?.status || 'succeeded'; model.result = outcome?.result ?? null; model.forceActive = false;
+      model.status = outcome?.status || (isRound2Action(model.action) ? 'uncertain' : 'succeeded'); model.result = outcome?.result ?? null; model.forceActive = false;
     } catch (error) {
       if (signal.aborted) return;
-      model.status = statusForError(error.code) || model.status;
+      model.status = statusForError(error.code) || (isRound2Action(model.action) ? (error.status ? 'failed' : 'uncertain') : model.status);
       if (error.code === 'workflow_active') { model.forceActive = true; model.deactivated.clear(); }
       model.feedback = {error};
     } finally {
@@ -358,6 +380,7 @@ export async function render(container) {
     const result = await request(`/repair/${encodeURIComponent(model.action.id)}/reconcile`);
     if (signal.aborted) return;
     model.reconcile = typeof result?.state === 'string' ? result.state : 'unknown'; model.feedback = null;
+    if(isRound2Action(model.action)&&result?.result)model.result=result.result;
     paintProposal(model);
   };
   const undoRepair = async model => {
@@ -399,6 +422,7 @@ export async function render(container) {
 
   const railItem = (row, status) => {
     const link = el('a', {className: 'repair-rail-link', href: location.hash || '#assistant'}, 'Show in conversation');
+    if (['propose_create_workflow','propose_retry_execution'].includes(row.name)) link.setAttribute('aria-label', `Show proposal ${row.id} in conversation`);
     listen(link, 'click', event => { event.preventDefault(); showInConversation(row).catch(error => { if (!signal.aborted) notice(messages, error); }); });
     const title = typeof row.preview_summary === 'string' && row.preview_summary ? row.preview_summary : summarize(row);
     return el('article', {className: 'repair-rail-item', 'data-action-id': row.id}, el('div', {className: 'repair-rail-head'}, el('h3', {}, title), statusBadge(status)),
@@ -468,14 +492,14 @@ export async function render(container) {
   // Chat turns. Each human action sends one request; nothing continues or retries on its own.
   const actionIds = meta => (Array.isArray(meta?.action_ids) ? meta.action_ids : Array.isArray(meta?.pending_actions) ? meta.pending_actions.map(item => item?.id) : [])
     .filter(id => typeof id === 'string' && id);
-  const retryButton = turn => action('Try again', () => sendTurn(turn.continueTurn ? {continueTurn: true, message: turn.message} : {message: turn.message, retry: true}));
+  const retryButton = turn => action('Try again', () => sendTurn({...turn, retry: !turn.continueTurn}));
   const turnFooter = (meta, turnMessage) => {
     const parts = [];
     const steps = Array.isArray(meta.steps) ? meta.steps : [];
     if (steps.some(step => step?.status === 'rate_limited' || step?.code === 'provider_rate_limited')) parts.push(el('p', {className: 'repair-turn-note'}, RATE_LIMITED_TEXT));
     if (meta.code === 'provider_incomplete' || steps.some(step => step?.code === 'provider_incomplete')) parts.push(el('p', {className: 'repair-turn-note'}, INCOMPLETE_TEXT));
-    if (meta.status === 'awaiting_continue') parts.push(el('p', {className: 'repair-turn-note'}, 'The AI is waiting for you. Continue sends its next request.'), action('Continue', () => sendTurn({continueTurn: true, message: turnMessage}), true));
-    else if (meta.status === 'interrupted') parts.push(el('p', {className: 'repair-turn-note'}, 'This turn stopped before it finished. Nothing was applied.'), retryButton({message: turnMessage}));
+    if (meta.status === 'awaiting_continue') parts.push(el('p', {className: 'repair-turn-note'}, 'The AI is waiting for you. Continue sends its next request.'), action('Continue', () => sendTurn({continueTurn: true, message: turnMessage, repairSnapshot: meta.repairSnapshot}), true));
+    else if (meta.status === 'interrupted') parts.push(el('p', {className: 'repair-turn-note'}, 'This turn stopped before it finished. Nothing was applied.'), retryButton({message: turnMessage, repairSnapshot: meta.repairSnapshot}));
     return parts.length ? el('div', {className: 'repair-turn-footer'}, parts) : null;
   };
   const appendMessage = (role, text, meta = null, turnMessage = '') => {
@@ -490,6 +514,7 @@ export async function render(container) {
       const footer = turnFooter(meta, turnMessage);
       if (footer) node.append(footer);
     }
+    if (role !== 'assistant' && Array.isArray(meta?.context_log) && meta.context_log.length) node.append(contextSent(meta.context_log));
     transcript.append(node);
     transcript.scrollTop=transcript.scrollHeight;
     return node;
@@ -521,12 +546,14 @@ export async function render(container) {
     }
     notice(messages, error); messages.append(el('p', {}, 'No automatic retry was sent. Refresh proposals before trying again; the provider may have created a pending action.'));
   };
-  const sendTurn = async ({message = '', continueTurn = false, retry = false} = {}) => {
+  const sendTurn = async ({message = '', continueTurn = false, retry = false, repairSnapshot} = {}) => {
     if (busy || !provider.value || (!continueTurn && !message.trim())) return false;
     busy = true; send.disabled = true; provider.disabled = true;
     messages.replaceChildren();
     if (!continueTurn && !retry) appendMessage('user', message);
-    const body = {provider_id: provider.value, ...(chatId ? {chat_id: chatId} : {}), ...(target ? {context: repairContext(target, errorTextEnabled())} : {})};
+    // Continue uses the context of the paused turn, even if the next-message note has been edited.
+    const sentContext = repairSnapshot === undefined ? (target ? repairContext(target, errorTextEnabled(), operatorNotes.value) : null) : repairSnapshot;
+    const body = {provider_id: provider.value, ...(chatId ? {chat_id: chatId} : {}), ...(sentContext ? {context: sentContext} : {})};
     if (continueTurn) body.continue_turn = true; else body.message = message;
     try {
       const result = await request('/chat', {method: 'POST', json: body});
@@ -536,12 +563,12 @@ export async function render(container) {
       resumeId.value = chatId || '';
       if (!continueTurn) lastMessage = message;
       if (input.value === message) input.value = '';
-      const node = appendMessage('assistant', result?.content ?? '', result && typeof result === 'object' ? result : {}, message || lastMessage);
+      const node = appendMessage('assistant', result?.content ?? '', {...(result && typeof result === 'object' ? result : {}), repairSnapshot: sentContext}, message || lastMessage);
       await placeProposals(node, result);
       await refreshApprovals().catch(error => { if (!signal.aborted) notice(messages, error); });
       return true;
     } catch (error) {
-      if (!signal.aborted) chatFailure(error, {message: message || lastMessage, continueTurn});
+      if (!signal.aborted) chatFailure(error, {message: message || lastMessage, continueTurn, repairSnapshot: sentContext});
       return false;
     } finally { busy = false; if (!signal.aborted) { send.disabled = !modelsAvailable; provider.disabled = !modelsAvailable; } }
   };
@@ -587,7 +614,7 @@ export async function render(container) {
     chatId = result.id; resumeId.value = chatId; transcript.replaceChildren(); messages.replaceChildren();
     let turnMessage = '';
     for (const item of Array.isArray(result.data) ? result.data : []) {
-      if (item?.role === 'user') { turnMessage = item.content; appendMessage('user', item.content); continue; }
+      if (item?.role === 'user') { turnMessage = item.content; appendMessage('user', item.content, item); continue; }
       const node = appendMessage('assistant', item?.content ?? '', item && typeof item === 'object' ? item : {}, turnMessage);
       await placeProposals(node, item);
       if (signal.aborted) return;
@@ -614,10 +641,22 @@ export async function render(container) {
     model.card.focus({preventScroll: true});
   };
   const scopeName=state.instances.find(row=>row.id===state.instanceId)?.name||'All instances';
+  const creationInstance=el('select',{},el('option',{value:''},'Choose an instance'),state.instances.map(row=>el('option',{value:row.id},row.name||row.id)));
+  const startCreation=action('Start creation plan',()=>{
+    if(busy)return;
+    if(!creationInstance.value){creationInstance.focus();return;}
+    setTarget({mode:'repair',instance_id:creationInstance.value},true);
+    input.value='Propose a new inactive workflow for this instance. ';input.focus();
+  });
+  startCreation.disabled=!state.instances.length;
+  const creationEntry=can('operator')?el('details',{className:'assistant-disclosure repair-create-entry'},el('summary',{},'Create workflow with AI'),
+    el('div',{className:'stack'},field('Instance for a new workflow',creationInstance),
+      el('p',{},'Describe the workflow in your message. Review its proposal before anything is created.'),startCreation)):null;
   const chat=el('section',{className:'assistant-chat','aria-label':'Chat workspace'},
     el('div',{className:'assistant-chat-toolbar'},field('Model',provider),el('div',{className:'tool-calling'},toolBadge,toolCheck),newChat),
     repairBar,transcript,messages,form);
   const rail=el('aside',{className:'assistant-rail','aria-label':'Actions and conversation tools'},
+    creationEntry,
     el('section',{className:'assistant-approval-panel'},el('div',{className:'assistant-rail-heading'},el('h2',{},'Action review'),action('Refresh proposals',refreshApprovals)),approvals),
     el('details',{className:'assistant-disclosure'},el('summary',{},'Open a saved conversation'),el('div',{className:'stack'},recentPicker.node,field('Conversation ID',resumeId),resume)),
     el('details',{className:'assistant-disclosure'},el('summary',{},'Context and privacy'),el('div',{},
@@ -632,7 +671,7 @@ export async function render(container) {
   const context = new URLSearchParams(location.hash.split('?')[1] || '');
   const errorId = context.get('error_id');
   const repairPrompt = !target ? '' : target.error_id ? `Find the cause of error ${target.error_id} in the pinned workflow and propose a fix I can review.`
-    : target.execution_id ? `Find why execution ${target.execution_id} failed and propose a fix I can review.` : 'Check the pinned workflow for problems and propose a fix I can review.';
+    : target.execution_id ? `Find why execution ${target.execution_id} failed and propose a fix I can review.` : target.workflow_id ? 'Check the pinned workflow for problems and propose a fix I can review.' : 'Propose a new inactive workflow for this instance. ';
   const explain = context.get('explain') || repairPrompt || (errorId ? `Help me investigate error ${errorId.slice(0,128)} for instance ${(context.get('instance_id') || state.instanceId).slice(0,128)}. Use available metadata and suggest next steps.` : '');
   if (explain) input.value = explain.slice(0, 16000);
 
@@ -739,5 +778,5 @@ export async function render(container) {
     // Repaint a card only when its visible status changes, so focus and open disclosures stay put.
     for (const model of proposals.values()) if (model.card.isConnected && model.painted !== effectiveStatus({...model, acting: acting.has(model.action.id)})) paintProposal(model);
   }, 15000);
-  return () => { controller.abort(); clearInterval(timer); };
+  return () => { controller.abort(); clearInterval(timer); clearTimeout(notesTimer); };
 }
