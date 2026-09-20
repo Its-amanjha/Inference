@@ -127,9 +127,10 @@ export function createIdPicker({label,placeholder='',hint=null,load,emptyText=''
     if(activeIndex>=count)activeIndex=count-1;
     syncActive();
     if(open&&items!==null){
-      if(count===0)announcer.textContent='No matching options.';
-      else if(count===1)announcer.textContent='1 match found.';
-      else announcer.textContent=`${count} matches found.`;
+      const matchCount=rows.length;
+      if(matchCount===0)announcer.textContent='No matching options.';
+      else if(matchCount===1)announcer.textContent='1 match found.';
+      else announcer.textContent=`${matchCount} matches found.`;
     }else if(!open){
       announcer.textContent='';
     }
