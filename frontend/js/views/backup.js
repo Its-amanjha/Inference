@@ -47,10 +47,6 @@ export async function render(container){
       if(!await confirmAction({title:'Delete schedule',target:s.name,consequence:'Automatic backups from this schedule stop. Existing archives remain.',confirmLabel:'Delete schedule',danger:true}))return;
       await api('/api/backups/schedules/'+id,{method:'DELETE'});await load();
     }),'danger',{'aria-label':`Delete schedule ${s.name}`});
-    const remove=button('Delete schedule',()=>act(async()=>{
-      if(!await confirmAction({title:'Delete schedule',target:s.name,consequence:'Automatic backups from this schedule stop. Existing archives remain.',confirmLabel:'Delete schedule',danger:true}))return;
-      await api('/api/backups/schedules/'+id,{method:'DELETE'});await load();
-    }),'danger');
     return el('section',{class:'card stack'},
       el('div',{class:'title-row'},el('h3',{},s.name),stateBadge(s.enabled?'success':'',s.enabled?'Enabled':'Paused')),
       el('p',{},'Every '+s.interval_minutes+' minutes'),
