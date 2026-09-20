@@ -464,7 +464,10 @@ def exercise_fleet(page, fixture_url, state):
         page.evaluate("location.hash = 'promote'")
         page.get_by_label('Source instance', exact=True).select_option(ids['source'])
         page.get_by_label('Target instance', exact=True).select_option(ids['target'])
-        page.get_by_label('Source workflow', exact=True).select_option('source-wf')
+        source_wf = page.get_by_label('Source workflow', exact=True)
+        source_wf.focus()
+        source_wf.fill('source-wf')
+        page.get_by_role('listbox').get_by_role('option').filter(has_text='source-wf').click()
         page.get_by_role('button', name='Review preflight', exact=True).click()
         page.get_by_text('Ready for deployment', exact=True).wait_for()
         count = len(state['writes'])
@@ -641,6 +644,7 @@ def exercise_fleet_search(page, ids, state):
     print('PASS: fleet-wide search, independent pagination, same-ID target isolation, CodeLab target links, partial failure and recovery.', flush=True)
     state['pagination'] = False
     page.evaluate("location.hash = 'dashboard'")
+    page.wait_for_function("() => !document.querySelector('#main')?.textContent.includes('Loading ')")
     # Metric values are plain text named by their label, so screen readers hear the label first.
     total = page.get_by_role('article', name='Total workflows', exact=True)
     expect(total.locator('.metric-number')).to_have_text('2')
