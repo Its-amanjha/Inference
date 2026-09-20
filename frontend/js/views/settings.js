@@ -105,6 +105,10 @@ export async function render(container){
     section.append(el('div',{class:'form-card-head card-head-row'},el('h2',{},'Users'),button('Add user',()=>userEditor(null,host,refresh),'ghost')),el('div',{class:'form-card-body is-wide'},host,rows));await refresh();return section;}
   async function loadAudit(){const section=el('section',{class:'card form-card'},el('div',{class:'form-card-head'},el('h2',{},'Audit history'))),rows=el('div'),body=el('div',{class:'form-card-body is-wide'});let cursor=null,first=true;async function more(){const result=await api('/api/admin/audit?limit='+pageSize()+(cursor?'&before='+encodeURIComponent(cursor):''),{signal});cursor=result.next_cursor;const page=table(['Time','Actor','Action','Target','Outcome'],result.data.map(r=>[r.occurred_at||r.created_at||'—',r.actor,el('span',{title:String(r.action??'')},actionLabel(r.action)),r.target,outcomeBadge(r.outcome)]));if(first)rows.append(page);else{const tbody=rows.querySelector('table tbody');if(tbody)tbody.append(...page.querySelector('tbody').children);else rows.append(page);}first=false;load.disabled=!cursor;}const load=button('Load older events',()=>act(more),'ghost');body.append(rows,load);section.append(body);await more();return section;}
   async function loadAdmin(){
+    // Groups persist across reloads (nav anchors point at them), so clear each
+    // group's card before appending a fresh one; otherwise every save duplicates
+    // the deployment, users and audit cards and their headings.
+    for(const key of ['deployment','users','audit'])for(const node of [...groups[key].children])if(!node.matches('h2.settings-group-title'))node.remove();
     groups.security.append(factor);
     const [policy,users,audit]=await Promise.all([loadPolicy(),loadUsers(),loadAudit()]);
     groups.deployment.append(policy);groups.users.append(users);groups.audit.append(audit);
