@@ -152,12 +152,41 @@ export async function render(container) {
     }
   }
 
+  let returnFocusEl = null;
+  let returnFallbackEl = null;
+
+  function closeInspection() {
+    detail.hidden = true;
+    inspection?.abort();
+    if (returnFocusEl?.isConnected) {
+      returnFocusEl.focus();
+    } else if (returnFallbackEl?.isConnected) {
+      if (!returnFallbackEl.hasAttribute('tabindex')) returnFallbackEl.setAttribute('tabindex', '-1');
+      returnFallbackEl.focus();
+    }
+  }
+
+  detail.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !detail.hidden) {
+      event.stopPropagation();
+      closeInspection();
+    }
+  });
+
   async function inspect(row, after = null) {
     inspection?.abort();
     const current = new AbortController();
     inspection = current;
+
+    const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (!after && active) {
+      returnFocusEl = active;
+      returnFallbackEl = active.closest('main, [role="main"], #app, .view-content, .content, section') || active.parentElement || list || null;
+    }
+
     detail.hidden = false;
-    detail.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+    detail.scrollIntoView({behavior: reducedMotion ? 'auto' : 'smooth', block: 'nearest'});
 
     detailMessages.replaceChildren(loadingState(`Loading trace ${row.trace_id}…`));
     try {
@@ -170,14 +199,12 @@ export async function render(container) {
       detailMessages.replaceChildren();
       detailStamp.replaceChildren(asOf());
 
-      const closeBtn = button('Close inspection', () => {
-        detail.hidden = true;
-        inspection?.abort();
-      }, 'ghost');
+      const closeBtn = button('Close inspection', closeInspection, 'ghost');
+      const panelHeading = el('h2', {tabindex: '-1'}, `Trace ${row.trace_id}`);
 
       const headerRow = el('div', {class: 'observe-waterfall-head'},
         el('div', {class: 'observe-waterfall-title'},
-          el('h2', {}, `Trace ${row.trace_id}`),
+          panelHeading,
           el('p', {class: 'muted'}, `Instance: ${instanceName(row.instance_id)} · ${result.data.length} span(s) on this page`)
         ),
         closeBtn
@@ -201,6 +228,9 @@ export async function render(container) {
       const provenanceNote = el('p', {className: 'muted'}, 'Costs and tokens below cover this returned page; estimates retain their original pricing provenance.');
 
       detailContent.replaceChildren(headerRow, aiCostStrip, provenanceNote);
+      if (!after) {
+        panelHeading.focus();
+      }
 
       if (!result.data.length) {
         detailContent.append(empty('No further spans', 'This trace has no spans on this page.'));
