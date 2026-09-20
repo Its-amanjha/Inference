@@ -6,7 +6,7 @@ import {icon,actionIcon} from '../lib/icons.js';
 import {rawDisclosure, instanceName, toneBadge, formatTime} from '../lib/payload.js';
 import {confirmAction} from '../lib/confirm.js';
 import {parseRepairTarget, repairHash, repairContext, contextQuery, describeTarget, listWorkflows, targetChip, createIdPicker, MAX_NOTES_CHARS} from '../lib/repair-target.js';
-import {isRepairAction, isRound2Action, proposalShell, renderProposal, effectiveStatus, statusBadge, statusForError, preconditionsOf, preconditionKey,
+import {isRepairAction, isRound2Action, proposalShell, renderProposal, effectiveStatus, statusBadge, statusForError, describeRepairError, preconditionsOf, preconditionKey,
   turnSteps, contextSent, contextOverview, RATE_LIMITED_TEXT, INCOMPLETE_TEXT, RETRY_WARNING} from '../lib/proposals.js';
 
 // Real approval statuses from the assistant API; unknown values are shown verbatim.
@@ -37,10 +37,18 @@ export async function render(container) {
     });
     return node;
   };
-  const messages = el('div', {className:'assistant-notices','aria-live': 'polite'});
+  // Announce complete events, not transcript mutations or shared-renderer redraws.
+  const polite = el('div', {className: 'sr-only assistant-announcement', role: 'status', 'aria-atomic': 'true'});
+  const urgent = el('div', {className: 'sr-only assistant-announcement', role: 'alert', 'aria-atomic': 'true'});
+  const announce = (text, interrupt = false) => {
+    if (signal.aborted) return;
+    (interrupt ? polite : urgent).textContent = '';
+    (interrupt ? urgent : polite).textContent = text;
+  };
+  const messages = el('div', {className:'assistant-notices'});
   const provider = el('select', {required: true, disabled:true, 'aria-label': 'Assistant provider'},el('option',{value:''},'Loading models…'));
-  const transcript = el('div', {className: 'chat-transcript', role: 'log', 'aria-label': 'Conversation', 'aria-live': 'polite'});
-  const input = el('textarea', {rows: 3, maxLength: 16000, required: true, disabled:true, placeholder: 'Ask about an execution or workflow…'});
+  const transcript = el('div', {className: 'chat-transcript', role: 'region', 'aria-label': 'Conversation'});
+  const input = el('textarea', {rows: 1, maxLength: 16000, required: true, disabled:true, placeholder: 'Ask about an execution or workflow…'});
   const approvals = el('div', {className: 'stack'});
   let chatId = null;
   let busy = false;
@@ -54,6 +62,22 @@ export async function render(container) {
   const proposals = new Map();
   const loadingActions = new Set();
   const workflowNames = new Map();
+  const announcedStates = new Map(), proposalOperations = new Map();
+  const announceProposal = (row, status) => {
+    const previous = announcedStates.get(row.id);
+    announcedStates.set(row.id, status);
+    // Loading history is silent, and a rail/card repaint is not a new state change.
+    if (previous === undefined || previous === status) return;
+    const target = row.target || row.arguments || {};
+    const subject = target.workflow_name || target.workflow_id || row.name || 'action';
+    const where = target.instance_id ? ` on ${target.instance_name || instanceName(target.instance_id)}` : '';
+    const execution = target.execution_id ? `, execution ${target.execution_id}` : '';
+    const label = {executing: proposalOperations.get(row.id) === 'cancel' ? 'Cancelling' : 'Applying', succeeded: 'Applied',
+      failed: 'Failed', uncertain: 'Outcome unknown', stale: 'Stale', cancelled: 'Cancelled', expired: 'Expired', pending: 'Ready for review'}[status] || status;
+    const next = status === 'uncertain' ? ' It may have run. Check n8n before taking another action.'
+      : status === 'failed' ? ' Review the error before requesting another proposal.' : '';
+    announce(`${label}: proposal for ${subject}${where}${execution}.${next}`, status === 'uncertain');
+  };
   const showWelcome = () => {
     const welcome=el('div',{className:'assistant-welcome'},icon('assistant'),el('h2',{},modelsAvailable?'What would you like to investigate?':'Connect a model to get started'),
       el('p',{},modelsAvailable?'Ask about a failed execution, inspect a workflow, or review the next action.':can('admin')?'Choose a local or hosted model in Assistant settings.':'Ask your administrator to connect a model.'));
@@ -303,7 +327,19 @@ export async function render(container) {
     return value && typeof value === 'object' ? value : {};
   };
   const targetNodes = value => [el('strong', {}, value.workflow_name || value.workflow_id || 'this workflow'), ' on ', el('strong', {}, value.instance_name || instanceName(value.instance_id))];
-  const paintProposal = model => { model.painted = renderProposal(model.card, {...model, canOperate: can('operator'), acting: acting.has(model.action.id)}, handlersFor(model)); };
+  const paintProposal = model => {
+    const previous = model.painted;
+    model.painted = renderProposal(model.card, {...model, canOperate: can('operator'), acting: acting.has(model.action.id)}, handlersFor(model));
+    // Keep the shared card's visible text, but let this view announce each change once.
+    model.card.querySelectorAll('[role="status"],[role="alert"],[aria-live]').forEach(node => {
+      node.removeAttribute('role'); node.removeAttribute('aria-live');
+    });
+    announceProposal(model.action, model.painted);
+    if (previous === model.painted && model.feedback && model.feedback !== model.announcedFeedback) {
+      announce(model.feedback.error ? describeRepairError(model.feedback.error) : model.feedback.text);
+    }
+    model.announcedFeedback = model.feedback;
+  };
   const mountProposal = (item, anchor = null) => {
     let model = proposals.get(item.id);
     if (model) { model.action = {...model.action, ...item}; if (item.status && !acting.has(item.id)) model.status = item.status; }
@@ -322,7 +358,7 @@ export async function render(container) {
         confirmLabel: executionRetry ? 'Retry execution' : apply.label || 'Apply change', danger: executionRetry || Boolean(apply.danger), requireText: executionRetry ? 'RETRY' : apply.typed_confirmation || undefined});
       if (!ok || signal.aborted) return;
     }
-    acting.add(id); model.feedback = null; paintProposal(model);
+    proposalOperations.set(id, 'apply'); acting.add(id); model.feedback = null; paintProposal(model);
     try {
       const outcome = await confirmTool(id);
       if (signal.aborted) return;
@@ -340,7 +376,7 @@ export async function render(container) {
   const cancelProposal = async model => {
     const id = model.action.id;
     if (acting.has(id)) return;
-    acting.add(id); model.feedback = null; paintProposal(model);
+    proposalOperations.set(id, 'cancel'); acting.add(id); model.feedback = null; paintProposal(model);
     try { const outcome = await request('/tools/cancel', {method: 'POST', json: {action_id: id}}); if (!signal.aborted) model.status = outcome?.status || 'cancelled'; }
     finally { acting.delete(id); if (!signal.aborted) { await refreshApprovals().catch(() => {}); paintProposal(model); } }
   };
@@ -382,6 +418,7 @@ export async function render(container) {
     model.reconcile = typeof result?.state === 'string' ? result.state : 'unknown'; model.feedback = null;
     if(isRound2Action(model.action)&&result?.result)model.result=result.result;
     paintProposal(model);
+    announce(model.card.querySelector('.proposal-reconcile')?.textContent || 'Saved proposal details loaded. The action was not repeated.');
   };
   const undoRepair = async model => {
     const value = targetOf(model), result = model.result && typeof model.result === 'object' ? model.result : {};
@@ -438,6 +475,7 @@ export async function render(container) {
     for (const row of rows) {
       const expired = Number(row.expires_at) * 1000 <= Date.now();
       const status = acting.has(row.id) ? 'executing' : row.status === 'pending' && expired ? 'expired' : row.status;
+      announceProposal(proposals.get(row.id)?.action || row, status);
       if (isRepairAction(row)) { approvals.append(railItem(row, status)); continue; }
       const [label, tone, glyph] = APPROVAL_STATUS[status] || [String(status), 'neutral', 'unknown'];
       const card = el('article', {className: 'card approval-card'},
@@ -451,6 +489,8 @@ export async function render(container) {
       if (status === 'pending' && can('operator')) {
         const perform = async verb => {
           if (acting.has(row.id)) return;
+          proposalOperations.set(row.id, verb);
+          announceProposal(row, 'executing');
           acting.add(row.id);
           confirm.disabled = cancel.disabled = true;
           try {
@@ -549,6 +589,7 @@ export async function render(container) {
   const sendTurn = async ({message = '', continueTurn = false, retry = false, repairSnapshot} = {}) => {
     if (busy || !provider.value || (!continueTurn && !message.trim())) return false;
     busy = true; send.disabled = true; provider.disabled = true;
+    announce(continueTurn ? 'Continuing the turn. Waiting for the assistant.' : 'Message sent. Waiting for the assistant.');
     messages.replaceChildren();
     if (!continueTurn && !retry) appendMessage('user', message);
     // Continue uses the context of the paused turn, even if the next-message note has been edited.
@@ -562,10 +603,19 @@ export async function render(container) {
       rememberChat(chatId, message || lastMessage);
       resumeId.value = chatId || '';
       if (!continueTurn) lastMessage = message;
-      if (input.value === message) input.value = '';
+      if (input.value === message) { input.value = ''; scheduleComposerSize(); }
       const node = appendMessage('assistant', result?.content ?? '', {...(result && typeof result === 'object' ? result : {}), repairSnapshot: sentContext}, message || lastMessage);
       await placeProposals(node, result);
       await refreshApprovals().catch(error => { if (!signal.aborted) notice(messages, error); });
+      const answer = typeof result?.content === 'string' ? result.content.trim().replace(/\s+/g, ' ') : '';
+      const steps = Array.isArray(result?.steps) ? result.steps : [];
+      const done = steps.filter(step => step.status === 'done').length;
+      const failed = steps.filter(step => ['failed','rate_limited'].includes(step.status)).length;
+      const pending = Array.isArray(result?.pending_actions) ? result.pending_actions.filter(item => item.status === 'pending').length : 0;
+      announce([answer ? `Assistant: ${answer.slice(0, 200)}${answer.length > 200 ? '… Full response in the conversation.' : ''}` : 'Assistant turn complete.',
+        done ? `${done} step${done === 1 ? '' : 's'} completed.` : '', failed ? `${failed} step${failed === 1 ? '' : 's'} did not complete.` : '',
+        pending ? `${pending} proposal${pending === 1 ? '' : 's'} awaiting your review. Nothing was applied.` : '',
+        result?.status === 'awaiting_continue' ? 'Continue when you are ready.' : result?.status === 'interrupted' ? 'The turn stopped before it finished.' : ''].filter(Boolean).join(' '));
       return true;
     } catch (error) {
       if (!signal.aborted) chatFailure(error, {message: message || lastMessage, continueTurn, repairSnapshot: sentContext});
@@ -574,13 +624,42 @@ export async function render(container) {
   };
   const send = el('button', {type: 'submit', className: 'button button-primary',disabled:true}, 'Send message',icon('arrow'));
   const form = el('form', {className: 'assistant-composer'}, field('Your message', input), el('div',{className:'composer-foot'},el('span',{className:'muted'},'Changes require your approval.'),send));
+  // iOS keeps its layout viewport when the keyboard opens. Size and reveal the whole
+  // composer against the visual viewport, leaving at least 65% for the conversation.
+  let composerFrame = 0;
+  const resizeComposer = () => {
+    composerFrame = 0;
+    if (signal.aborted) return;
+    if (!matchMedia('(max-width:700px)').matches) { input.style.removeProperty('height'); input.style.removeProperty('overflow-y'); return; }
+    const viewport = window.visualViewport;
+    const visibleHeight = viewport?.height || document.documentElement.clientHeight;
+    input.style.height = '44px';
+    const border = input.offsetHeight - input.clientHeight;
+    const chrome = form.getBoundingClientRect().height - input.getBoundingClientRect().height;
+    const limit = Math.max(44, Math.min(144, visibleHeight * .35 - chrome));
+    const height = Math.max(44, Math.min(input.scrollHeight + border, limit));
+    input.style.height = `${height}px`;
+    input.style.overflowY = input.scrollHeight + border > height ? 'auto' : 'hidden';
+    if (document.activeElement !== input || (viewport && viewport.scale !== 1)) return;
+    const top = viewport?.offsetTop || 0, rect = form.getBoundingClientRect();
+    const delta = rect.bottom > top + visibleHeight - 8 ? rect.bottom - (top + visibleHeight - 8) : rect.top < top + 8 ? rect.top - top - 8 : 0;
+    if (Math.abs(delta) > 1) window.scrollBy({top: delta, behavior: 'instant'});
+  };
+  const scheduleComposerSize = () => { if (!composerFrame) composerFrame = requestAnimationFrame(resizeComposer); };
+  listen(input, 'input', scheduleComposerSize);
+  listen(input, 'focus', scheduleComposerSize);
+  listen(window, 'resize', scheduleComposerSize);
+  if (window.visualViewport) {
+    listen(window.visualViewport, 'resize', scheduleComposerSize);
+    listen(window.visualViewport, 'scroll', scheduleComposerSize);
+  }
   listen(form, 'submit', async event => {
     event.preventDefault();
     if (busy || !input.value.trim() || !provider.value) return;
     await sendTurn({message: input.value});
   });
   listen(provider, 'change', () => { chatId = null; resumeId.value=''; showWelcome(); paintToolSupport(); });
-  const newChat = action('New conversation', () => { if (busy) return; chatId = null; input.value = ''; resumeId.value = ''; showWelcome(); });
+  const newChat = action('New conversation', () => { if (busy) return; chatId = null; input.value = ''; scheduleComposerSize(); resumeId.value = ''; showWelcome(); });
   const resumeId = el('input', {type: 'text', maxLength: 64, placeholder: 'Conversation ID', 'aria-label': 'Conversation ID'});
   // Recently opened conversations in this browser (ids only; transcripts stay server side).
   // There is no list endpoint, so this covers what this browser has seen; pasting an ID still works.
@@ -664,7 +743,7 @@ export async function render(container) {
       el('p',{},state.instanceId?`For instance-specific requests, include this ID: ${state.instanceId}`:'Include the instance ID when asking about a specific workflow or execution.'),
       el('p',{},'Messages go to the selected model provider. Built-in tools share metadata; execution inputs, outputs and stored secrets are not sent automatically.'),
       el('p',{},'With a repair target pinned, the workflow and a scrubbed error summary are also sent, with secret values masked. Open What the AI sees to review them.'))));
-  container.replaceChildren(el('div',{className:'page-heading-row'},heading('AI copilot','Investigate executions. Review changes. Stay in control.'),can('admin')?action('Assistant settings',openSettings):null),el('div',{className:'assistant-layout'},chat,rail));
+  container.replaceChildren(polite,urgent,el('div',{className:'page-heading-row'},heading('AI copilot','Investigate executions. Review changes. Stay in control.'),can('admin')?action('Assistant settings',openSettings):null),el('div',{className:'assistant-layout'},chat,rail));
   transcript.append(el('p',{className:'muted',role:'status'},'Loading assistant…'));
   paintTarget();
   if (parsed.rejected.length) notice(messages, `This repair link had invalid values, which were ignored: ${parsed.rejected.join(', ')}.`);
@@ -674,6 +753,7 @@ export async function render(container) {
     : target.execution_id ? `Find why execution ${target.execution_id} failed and propose a fix I can review.` : target.workflow_id ? 'Check the pinned workflow for problems and propose a fix I can review.' : 'Propose a new inactive workflow for this instance. ';
   const explain = context.get('explain') || repairPrompt || (errorId ? `Help me investigate error ${errorId.slice(0,128)} for instance ${(context.get('instance_id') || state.instanceId).slice(0,128)}. Use available metadata and suggest next steps.` : '');
   if (explain) input.value = explain.slice(0, 16000);
+  scheduleComposerSize();
 
   let repairSettingsReady = false, repairSettingsError = null, directoryAllowed = true, shareDirectory = null;
   const loadRepairSettings = async () => {
@@ -778,5 +858,5 @@ export async function render(container) {
     // Repaint a card only when its visible status changes, so focus and open disclosures stay put.
     for (const model of proposals.values()) if (model.card.isConnected && model.painted !== effectiveStatus({...model, acting: acting.has(model.action.id)})) paintProposal(model);
   }, 15000);
-  return () => { controller.abort(); clearInterval(timer); clearTimeout(notesTimer); };
+  return () => { controller.abort(); clearInterval(timer); clearTimeout(notesTimer); cancelAnimationFrame(composerFrame); };
 }
