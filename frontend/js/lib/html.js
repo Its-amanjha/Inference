@@ -154,18 +154,23 @@ export function table(headers, rows, options = {}) {
     currentSortCol = colIndex;
     currentSortDir = dir;
 
-    renderedRows.sort((a, b) => {
-      const valA = parseSortValue(getRowCells(a.row)[colIndex], type);
-      const valB = parseSortValue(getRowCells(b.row)[colIndex], type);
+    // Parse each cell once; the comparator below only compares cached keys, so a
+    // sort costs O(n) parses instead of O(n log n). Order is unchanged: ties keep
+    // insertion order and only the comparison flips with direction.
+    const collator = type === 'text' ? new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' }) : null;
+    const decorated = renderedRows.map(entry => ({ entry, key: parseSortValue(getRowCells(entry.row)[colIndex], type) }));
+    decorated.sort((a, b) => {
       let cmp = 0;
       if (type === 'number' || type === 'date') {
-        cmp = valA < valB ? -1 : (valA > valB ? 1 : 0);
+        cmp = a.key < b.key ? -1 : (a.key > b.key ? 1 : 0);
       } else {
-        cmp = String(valA).localeCompare(String(valB), undefined, { numeric: true, sensitivity: 'base' });
+        cmp = collator.compare(a.key, b.key);
       }
-      if (cmp === 0) return a.origIndex - b.origIndex;
+      if (cmp === 0) return a.entry.origIndex - b.entry.origIndex;
       return dir === 'asc' ? cmp : -cmp;
     });
+    renderedRows.length = 0;
+    for (const item of decorated) renderedRows.push(item.entry);
 
     tbody.replaceChildren(...renderedRows.map(r => r.tr));
 

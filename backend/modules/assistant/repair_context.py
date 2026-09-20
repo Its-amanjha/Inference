@@ -328,7 +328,7 @@ def scrub_error(execution: dict | None, error_row: dict | None, saved_workflow: 
 
 
 def build_context(instance_id: str, *, workflow: dict | None, execution: dict | None, error_row: dict | None,
-                  send_error_text: bool, focus_nodes: list[str] | tuple = ()) -> dict:
+                  send_error_text: bool, focus_nodes: list[str] | tuple = (), notes: str = '') -> dict:
     """A ``RepairContextResponse`` dict whose ``bytes`` equals the length of its own compact JSON encoding."""
     error, masks = (None, 0)
     if execution is not None or error_row is not None:
@@ -340,6 +340,14 @@ def build_context(instance_id: str, *, workflow: dict | None, execution: dict | 
     response = {'contract': CONTRACT_VERSION, 'trust': UNTRUSTED, 'instance_id': instance_id, 'bytes': 0,
                 'workflow': context, 'error': error,
                 'redaction': {'applied': context is not None or error is not None, 'count': masks}}
+    if notes:
+        from .repair_contract import MAX_NOTES_CHARS
+        if not isinstance(notes, str) or len(notes) > MAX_NOTES_CHARS:
+            raise ValueError('Repair notes exceed the length limit.')
+        response['notes'], count = mask_text(notes)
+        response['notes'] = response['notes'][:MAX_NOTES_CHARS]
+        response['redaction']['count'] += count
+        response['redaction']['applied'] = True
     for _ in range(8):  # the byte count is part of the document it measures; converges in a few steps
         size = len(canonical_bytes(response))
         if size == response['bytes']:
