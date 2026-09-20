@@ -67,7 +67,8 @@ export function heading(title, description = '') { const route=location.hash.sli
 // row below the body. Omitting it renders exactly the historic two-argument output.
 export function empty(title, body = '', actions = []) {
   const node = el('section',{class:'card empty'},el('h2',{},title),el('p',{},body));
-  if (actions && actions.length) node.append(el('div',{class:'empty-actions'},...actions));
+  const list = Array.isArray(actions) ? actions : (actions instanceof Node ? [actions] : []);
+  if (list.length) node.append(el('div',{class:'empty-actions'},...list));
   return node;
 }
 // options.numeric lists zero-based column indexes that hold numbers (right-aligned, tabular numerals).
