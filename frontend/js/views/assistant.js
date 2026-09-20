@@ -268,46 +268,76 @@ export async function render(container) {
   // payload stays behind a disclosure, and long output is capped inline.
   const MCP_INLINE_LIMIT = 1200;
   const mcpBlockText = block => (block && typeof block === 'object' && block.type === 'text' && typeof block.text === 'string' ? block.text : null);
-  const capInline = text => (text.length > MCP_INLINE_LIMIT ? `${text.slice(0, MCP_INLINE_LIMIT)}… (truncated to ${MCP_INLINE_LIMIT} characters; the full output is in Raw MCP result.)` : text);
+  const mcpTextValue = text => {
+    // JSON objects often arrive in text blocks, even when structuredContent is absent.
+    if (text.length <= 100000 && /^[\s]*[\[{]/.test(text)) {
+      try { return JSON.parse(text); } catch { /* Ordinary text remains literal. */ }
+    }
+    return text;
+  };
   const renderMcpResult = (row, result) => {
     const args = row.arguments && typeof row.arguments === 'object' ? row.arguments : {};
     const head = `Tool “${args.tool_name || 'unknown tool'}” on MCP server ${args.server_id || 'unknown server'}`;
     const section = el('section', {className: 'mcp-result', 'aria-label': 'MCP tool result'});
-    const done = (sentence, preview = null, note = null) => {
+    let remaining = MCP_INLINE_LIMIT, entries = 60, shortened = false;
+    const valueNode = (value, depth = 0) => {
+      if (entries-- <= 0 || remaining <= 0) { shortened = true; return null; }
+      if (value !== null && typeof value === 'object') {
+        if (depth >= 4) { shortened = true; return el('p', {className: 'muted'}, 'Nested content is available in Raw MCP result.'); }
+        const array = Array.isArray(value), keys = Object.keys(value);
+        if (!keys.length) return el('p', {className: 'muted'}, array ? 'No items.' : 'No fields.');
+        const list = el(array ? 'ol' : 'dl', {className: array ? 'mcp-result-list' : 'mcp-result-fields'});
+        for (const key of keys) {
+          const child = valueNode(value[key], depth + 1);
+          if (!child) break;
+          if (array) list.append(el('li', {}, child));
+          else {
+            const label = key.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ').replace(/^./, c => c.toUpperCase());
+            if (label.length > 120) shortened = true;
+            list.append(el('dt', {}, label.length > 120 ? `${label.slice(0, 120)}…` : label), el('dd', {}, child));
+          }
+        }
+        return list;
+      }
+      const text = value === null ? 'Not provided.' : value === true ? 'Yes' : value === false ? 'No' : value === '' ? 'Empty text.' : String(value);
+      const shown = text.slice(0, remaining);
+      remaining -= shown.length;
+      if (shown.length < text.length) shortened = true;
+      return el('p', {className: 'mcp-result-text'}, shown + (shown.length < text.length ? '…' : ''));
+    };
+    const done = (sentence, values = []) => {
       section.append(el('p', {className: 'mcp-result-head'}, sentence));
-      if (preview !== null) section.append(el('p', {className: 'mcp-result-text'}, preview));
-      if (note !== null) section.append(el('p', {className: 'muted'}, note));
+      const preview = el('div', {className: 'mcp-result-preview', tabIndex: 0, 'aria-label': 'Tool output'});
+      for (const value of values) { const node = valueNode(value); if (!node) break; preview.append(node); }
+      if (preview.childNodes.length) section.append(preview);
+      if (shortened) section.append(el('p', {className: 'muted'}, 'Preview shortened. Open Raw MCP result for the complete output.'));
       section.append(rawDisclosure(result, 'Raw MCP result'));
       return section;
     };
     if (result === null || result === undefined) return done(`${head} returned no content.`);
-    if (typeof result !== 'object' || Array.isArray(result)) return done(`${head} returned an unrecognized result shape. The full payload is below.`);
-    const blocks = Array.isArray(result.content) ? result.content : null;
+    if (typeof result !== 'object' || Array.isArray(result)) return done(`${head} returned an unrecognized result shape.`, [result]);
+    const blocks = Array.isArray(result.content) ? result.content : [];
+    const structured = result.structuredContent !== undefined;
+    const values = structured ? [result.structuredContent] : [];
+    const kinds = new Map();
+    const structuredText = structured ? JSON.stringify(result.structuredContent) : null;
+    for (const block of blocks) {
+      const text = mcpBlockText(block);
+      if (text !== null) {
+        if (text.trim() && text.trim() !== structuredText) values.push(mcpTextValue(text));
+      } else {
+        const kind = block && typeof block.type === 'string' ? block.type : 'unknown';
+        kinds.set(kind, (kinds.get(kind) || 0) + 1);
+      }
+    }
     if (result.isError === true) {
-      const message = blocks ? blocks.map(mcpBlockText).find(text => text !== null && text !== '') : null;
-      const text = typeof result.message === 'string' && result.message ? result.message : (message || 'The tool reported an error without a message.');
-      const short = text.length > 300 ? `${text.slice(0, 300)}… (truncated; the full message is in Raw MCP result.)` : text;
-      return done(`${head} reported an error: ${short}`);
+      if (typeof result.message === 'string' && result.message) values.unshift(mcpTextValue(result.message));
+      return done(`${head} reported an error.`, values.length ? values : ['The tool reported an error without a message.']);
     }
-    if (blocks) {
-      const texts = blocks.map(mcpBlockText).filter(text => text !== null);
-      const kinds = {};
-      for (const block of blocks) { if (mcpBlockText(block) === null) { const kind = block && typeof block.type === 'string' ? block.type : 'unknown'; kinds[kind] = (kinds[kind] || 0) + 1; } }
-      const attachments = Object.entries(kinds).map(([kind, count]) => `${count} ${kind} attachment${count === 1 ? '' : 's'} (listed, not shown)`);
-      if (!blocks.length && result.structuredContent === undefined) return done(`${head} returned no content.`);
-      const first = texts.find(text => text !== '') || '';
-      const shown = first ? capInline(first) : '';
-      const extra = attachments.length ? ` Also returned: ${attachments.join(', ')}.` : '';
-      const structured = result.structuredContent !== undefined && !blocks.length && !first ? ` Structured content is in the raw payload below.` : '';
-      if (!first && !attachments.length && result.structuredContent === undefined) return done(`${head} returned no content.`);
-      const count = blocks.length + (result.structuredContent !== undefined && !blocks.length ? 1 : 0);
-      return done(`${head} returned ${count} item${count === 1 ? '' : 's'}.${extra}${structured}`, shown || null);
-    }
-    if (result.structuredContent !== undefined) {
-      const keys = result.structuredContent && typeof result.structuredContent === 'object' ? Object.keys(result.structuredContent).length : 0;
-      return done(`${head} returned structured content with ${keys} field${keys === 1 ? '' : 's'}.`, capInline(JSON.stringify(result.structuredContent)));
-    }
-    return done(`${head} returned an unrecognized result shape. The full payload is below.`);
+    const attachments = [...kinds].map(([kind, count]) => `${count} ${kind} attachment${count === 1 ? '' : 's'} (listed, not shown)`);
+    const count = values.length + [...kinds.values()].reduce((sum, count) => sum + count, 0);
+    if (!count) return done(`${head} returned ${Array.isArray(result.content) ? 'no content' : 'an unrecognized result shape'}.`);
+    return done(`${head} returned ${count} item${count === 1 ? '' : 's'}.${attachments.length ? ` Also returned: ${attachments.join(', ')}.` : ''}`, values);
   };
 
   // Inline repair proposals: one card per action, painted in place wherever it sits in the conversation.
@@ -495,7 +525,15 @@ export async function render(container) {
           confirm.disabled = cancel.disabled = true;
           try {
             const result = await request(`/tools/${verb}`, {method: 'POST', json: {action_id: row.id}});
-            if (!signal.aborted) { row.status = result.status; if (result.result !== undefined) messages.append(row.name === 'mcp_call' ? renderMcpResult(row, result.result) : jsonView(result.result)); }
+            if (!signal.aborted) {
+              row.status = result.status;
+              if (result.result !== undefined) {
+                if (row.name === 'mcp_call') {
+                  transcript.querySelector('.assistant-welcome')?.remove();
+                  transcript.append(renderMcpResult(row, result.result));
+                } else messages.append(jsonView(result.result));
+              }
+            }
           } finally { try { if (!signal.aborted) await refreshApprovals(); } finally { acting.delete(row.id); if (!signal.aborted) paintApprovals(); } }
         };
         const confirm = action('Confirm exact action', () => perform('confirm'), true);

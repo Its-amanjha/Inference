@@ -138,6 +138,16 @@
 .mcp-result { display:flex; flex-direction:column; gap:8px; min-width:0; margin:12px 0; padding:12px 14px; border:1px solid var(--border); border-radius:12px; background:var(--surface-card-surface); }
 .mcp-result-head { margin:0; font-weight:600; color:var(--color-ink-black); overflow-wrap:anywhere; }
 .mcp-result-text { margin:0; max-height:240px; overflow:auto; padding:10px 12px; border-radius:8px; background:var(--color-ash-mist); white-space:pre-wrap; overflow-wrap:anywhere; font-size:13px; line-height:1.55; }
+.mcp-result-preview { display:grid; gap:10px; max-height:320px; overflow:auto; min-width:0; }
+.mcp-result-fields { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,2fr); gap:8px 12px; margin:0; font-size:13px; }
+.mcp-result-fields dt { font-weight:600; overflow-wrap:anywhere; }
+.mcp-result-fields dd { margin:0; min-width:0; }
+.mcp-result-list { margin:0; padding-left:20px; }
+.mcp-result-list li+li { margin-top:10px; }
+.mcp-result-fields .mcp-result-fields { grid-template-columns:minmax(0,1fr); gap:4px; }
+.mcp-result-fields .mcp-result-fields dd+dt { margin-top:4px; }
+.mcp-result-preview .mcp-result-text { max-height:none; overflow:visible; padding:0; background:none; }
+.mcp-result-preview .muted { margin:0; }
 .mcp-result>.muted { margin:0; }
 
 /* Rail: compact repair status with a way back to the card. */
