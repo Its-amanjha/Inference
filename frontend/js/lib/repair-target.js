@@ -195,6 +195,7 @@ export function createIdPicker({label,placeholder='',hint=null,load,emptyText=''
     pendingResolve=false;paintPicked();paint();
   }
   search.addEventListener('focus',()=>setOpen(true),{signal});
+  search.addEventListener('click',()=>{if(!open)setOpen(true);},{signal});
   search.addEventListener('input',()=>{activeIndex=-1;if(selectedId&&search.value.trim()!==selectedId){selectedId='';picked.hidden=true;}setOpen(true);},{signal});
   search.addEventListener('blur',()=>setOpen(false),{signal});
   search.addEventListener('keydown',event=>{
