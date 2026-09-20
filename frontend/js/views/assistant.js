@@ -6,7 +6,7 @@ import {icon,actionIcon} from '../lib/icons.js';
 import {rawDisclosure, instanceName, toneBadge, formatTime} from '../lib/payload.js';
 import {confirmAction} from '../lib/confirm.js';
 import {parseRepairTarget, repairHash, repairContext, contextQuery, describeTarget, listWorkflows, targetChip, createIdPicker} from '../lib/repair-target.js';
-import {isRepairAction, proposalShell, renderProposal, effectiveStatus, statusBadge, statusForError, preconditionsOf, preconditionKey,
+import {isRepairAction, isRound2Action, proposalShell, renderProposal, effectiveStatus, statusBadge, statusForError, preconditionsOf, preconditionKey,
   turnSteps, contextSent, contextOverview, RATE_LIMITED_TEXT, INCOMPLETE_TEXT} from '../lib/proposals.js';
 
 // Real approval statuses from the assistant API; unknown values are shown verbatim.
@@ -274,6 +274,9 @@ export async function render(container) {
     try {
       const result = await request(`/approvals/${encodeURIComponent(id)}`);
       const item = result?.pending_action && typeof result.pending_action === 'object' ? result.pending_action : result;
+      if(isRound2Action(item)&&['succeeded','uncertain'].includes(item.status)){
+        try{item.savedResult=(await request(`/repair/${encodeURIComponent(id)}/reconcile`))?.result??null;}catch{/* Keep the confirmed status even if saved details are unavailable. */}
+      }
       return item && typeof item === 'object' && item.id ? item : null;
     } catch { return null; }
   };
@@ -290,6 +293,7 @@ export async function render(container) {
     else { model = {action: item, status: item.status || 'pending', result: null, reconcile: null, feedback: null, deactivated: new Set(), forceActive: false, activated: false, card: proposalShell(item.id)}; proposals.set(item.id, model); }
     if (anchor) anchor.after(model.card); else if (!model.card.isConnected) transcript.append(model.card);
     paintProposal(model);
+    if(item.savedResult){model.result=item.savedResult;paintProposal(model);}
     return model;
   };
   const applyProposal = async model => {
@@ -304,10 +308,10 @@ export async function render(container) {
     try {
       const outcome = await confirmTool(id);
       if (signal.aborted) return;
-      model.status = outcome?.status || 'succeeded'; model.result = outcome?.result ?? null; model.forceActive = false;
+      model.status = outcome?.status || (isRound2Action(model.action) ? 'uncertain' : 'succeeded'); model.result = outcome?.result ?? null; model.forceActive = false;
     } catch (error) {
       if (signal.aborted) return;
-      model.status = statusForError(error.code) || model.status;
+      model.status = statusForError(error.code) || (isRound2Action(model.action) ? (error.status ? 'failed' : 'uncertain') : model.status);
       if (error.code === 'workflow_active') { model.forceActive = true; model.deactivated.clear(); }
       model.feedback = {error};
     } finally {
@@ -358,6 +362,7 @@ export async function render(container) {
     const result = await request(`/repair/${encodeURIComponent(model.action.id)}/reconcile`);
     if (signal.aborted) return;
     model.reconcile = typeof result?.state === 'string' ? result.state : 'unknown'; model.feedback = null;
+    if(isRound2Action(model.action)&&result?.result)model.result=result.result;
     paintProposal(model);
   };
   const undoRepair = async model => {
@@ -399,6 +404,7 @@ export async function render(container) {
 
   const railItem = (row, status) => {
     const link = el('a', {className: 'repair-rail-link', href: location.hash || '#assistant'}, 'Show in conversation');
+    if (['propose_create_workflow','propose_retry_execution'].includes(row.name)) link.setAttribute('aria-label', `Show proposal ${row.id} in conversation`);
     listen(link, 'click', event => { event.preventDefault(); showInConversation(row).catch(error => { if (!signal.aborted) notice(messages, error); }); });
     const title = typeof row.preview_summary === 'string' && row.preview_summary ? row.preview_summary : summarize(row);
     return el('article', {className: 'repair-rail-item', 'data-action-id': row.id}, el('div', {className: 'repair-rail-head'}, el('h3', {}, title), statusBadge(status)),
@@ -614,10 +620,22 @@ export async function render(container) {
     model.card.focus({preventScroll: true});
   };
   const scopeName=state.instances.find(row=>row.id===state.instanceId)?.name||'All instances';
+  const creationInstance=el('select',{},el('option',{value:''},'Choose an instance'),state.instances.map(row=>el('option',{value:row.id},row.name||row.id)));
+  const startCreation=action('Start creation plan',()=>{
+    if(busy)return;
+    if(!creationInstance.value){creationInstance.focus();return;}
+    setTarget({mode:'repair',instance_id:creationInstance.value},true);
+    input.value='Propose a new inactive workflow for this instance. ';input.focus();
+  });
+  startCreation.disabled=!state.instances.length;
+  const creationEntry=can('operator')?el('details',{className:'assistant-disclosure repair-create-entry'},el('summary',{},'Create workflow with AI'),
+    el('div',{className:'stack'},field('Instance for a new workflow',creationInstance),
+      el('p',{},'Describe the workflow in your message. Review its proposal before anything is created.'),startCreation)):null;
   const chat=el('section',{className:'assistant-chat','aria-label':'Chat workspace'},
     el('div',{className:'assistant-chat-toolbar'},field('Model',provider),el('div',{className:'tool-calling'},toolBadge,toolCheck),newChat),
     repairBar,transcript,messages,form);
   const rail=el('aside',{className:'assistant-rail','aria-label':'Actions and conversation tools'},
+    creationEntry,
     el('section',{className:'assistant-approval-panel'},el('div',{className:'assistant-rail-heading'},el('h2',{},'Action review'),action('Refresh proposals',refreshApprovals)),approvals),
     el('details',{className:'assistant-disclosure'},el('summary',{},'Open a saved conversation'),el('div',{className:'stack'},recentPicker.node,field('Conversation ID',resumeId),resume)),
     el('details',{className:'assistant-disclosure'},el('summary',{},'Context and privacy'),el('div',{},
@@ -632,7 +650,7 @@ export async function render(container) {
   const context = new URLSearchParams(location.hash.split('?')[1] || '');
   const errorId = context.get('error_id');
   const repairPrompt = !target ? '' : target.error_id ? `Find the cause of error ${target.error_id} in the pinned workflow and propose a fix I can review.`
-    : target.execution_id ? `Find why execution ${target.execution_id} failed and propose a fix I can review.` : 'Check the pinned workflow for problems and propose a fix I can review.';
+    : target.execution_id ? `Find why execution ${target.execution_id} failed and propose a fix I can review.` : target.workflow_id ? 'Check the pinned workflow for problems and propose a fix I can review.' : 'Propose a new inactive workflow for this instance. ';
   const explain = context.get('explain') || repairPrompt || (errorId ? `Help me investigate error ${errorId.slice(0,128)} for instance ${(context.get('instance_id') || state.instanceId).slice(0,128)}. Use available metadata and suggest next steps.` : '');
   if (explain) input.value = explain.slice(0, 16000);
 

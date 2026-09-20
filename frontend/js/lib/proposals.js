@@ -4,8 +4,9 @@ import {el} from './html.js';
 import {icon,actionIcon} from './icons.js';
 import {rawDisclosure,instanceName,formatTime,plural} from './payload.js';
 
-export const REPAIR_TOOLS=new Set(['propose_workflow_patch','propose_restore_workflow']);
+export const REPAIR_TOOLS=new Set(['propose_workflow_patch','propose_restore_workflow','propose_create_workflow']);
 export const isRepairAction=item=>REPAIR_TOOLS.has(item?.name);
+export const isRound2Action=item=>['workflow_create','execution_retry'].includes(item?.preview?.kind);
 export const RATE_LIMITED_TEXT='Provider rate limited; wait about a minute, then try again.';
 export const INCOMPLETE_TEXT="The model's answer was cut off. Nothing was proposed or applied.";
 
@@ -34,6 +35,7 @@ const ERRORS={
   repair_error_text_disabled:'An administrator turned off error text in repair conversations.',
   repair_webhook_directory_disabled:'An administrator turned off sharing other workflows’ trigger addresses with the AI.',
   invalid_patch:'The change no longer applies cleanly to the workflow. Nothing was written.',
+  self_call_blocked:'This workflow would call its own trigger in a loop. Ask the AI to use the service it should call instead.',
 };
 export const statusForError=code=>({context_stale:'stale',approval_stale:'stale',upstream_outcome_unknown:'uncertain'})[code];
 export const describeRepairError=error=>ERRORS[error?.code]||error?.message||String(error);
@@ -44,7 +46,7 @@ export const formatBytes=bytes=>{
   return value<1024?plural(Math.round(value),'byte'):`${(value/1024).toFixed(value<10240?1:0)} KB`;
 };
 
-const TOOL_LABEL={get_workflow_context:'Workflow context',get_error_context:'Error context',propose_workflow_patch:'Change proposal',propose_restore_workflow:'Restore proposal'};
+const TOOL_LABEL={get_workflow_context:'Workflow context',get_error_context:'Error context',propose_workflow_patch:'Change proposal',propose_restore_workflow:'Restore proposal',propose_create_workflow:'Create proposal'};
 const STEP_STATUS={done:['Done','success','check'],rate_limited:['Rate limited','warning','clock'],failed:['Failed','error','blocked']};
 
 // One ordered list per repair turn. The rate-limit sentence is shown once, by the turn footer.
@@ -142,18 +144,45 @@ export {preconditionKey};
 
 function targetLine(action){
   const target=action?.target&&typeof action.target==='object'?action.target:action?.arguments||{};
+  if(action?.preview?.kind==='workflow_create')return `New workflow “${target.workflow_name||'Unnamed workflow'}” on ${target.instance_name||instanceName(target.instance_id)}`;
   const workflow=target.workflow_name?`“${target.workflow_name}” (${target.workflow_id})`:String(target.workflow_id??'unknown');
   return `Workflow ${workflow} on ${target.instance_name||instanceName(target.instance_id)}`;
+}
+
+// Round-2 writes do not have the patch/restore undo snapshot. A lost response never offers Apply again.
+function round2Outcome(view,status,control){
+  const result=view.result,follow=[];
+  if(status==='pending')return note('Will be created inactive. Activation is a separate approval. Nothing has been created yet.');
+  if(status==='executing')return el('p',{className:'proposal-state',role:'status'},'Creating the inactive workflow. Wait for verification.');
+  if(status==='succeeded'){
+    if(view.canOperate&&result?.verified===true&&result.workflow_id&&result.active===false&&!view.activated)follow.push(control('Activate workflow',view.handlers.activate,'ghost'));
+    return el('div',{className:'proposal-result'},
+      el('p',{},result?.verified===true?'Created inactive and verified by reading the workflow back.':'Creation confirmed. Load verification details to see the new workflow ID.'),
+      result?.workflow_id?note(`Workflow ${result.workflow_id}${view.activated?' · Activated by a separate approval':''}`):control('Load creation details',view.handlers.reconcile,'ghost'),
+      ...follow);
+  }
+  if(status==='uncertain')return el('div',{className:'proposal-uncertain',role:'status'},icon('errors'),el('div',{},
+    el('p',{className:'proposal-state-title'},'Creation outcome unknown'),
+    el('p',{},'The workflow may have been created. Check this instance before proposing another creation. This approval will not run again.'),
+    result?.workflow_id?note(`Returned workflow ID: ${result.workflow_id}. Verification is incomplete.`):null,
+    view.reconcile?note('Reconcile on the instance. Loading saved details does not repeat the operation.'):null,
+    control('Load saved creation details',view.handlers.reconcile,'ghost')));
+  const text={stale:'Nothing was created: the instance connection changed. Start a new proposal for the intended instance.',
+    failed:'Creation failed. Review the error before requesting a new proposal.',cancelled:'Creation cancelled. Nothing was created.',
+    expired:'Creation proposal expired. Nothing was created.'};
+  return el('p',{className:'proposal-state'},text[status]||`Creation status: ${status}. Check the instance before taking another action.`);
 }
 
 // Re-renders a card in place; focus returns to the same control when it still exists.
 export function renderProposal(card,view,handlers){
   const {action}=view,preview=action?.preview&&typeof action.preview==='object'?action.preview:null;
+  const round2=isRound2Action(action);
   const status=effectiveStatus(view),safe=String(action?.id||'proposal').replace(/[^A-Za-z0-9_-]/g,'_');
   const focused=card.contains(document.activeElement)?document.activeElement.dataset?.control||'card':null;
   const rawOpen=card.querySelector(':scope > .raw-payload')?.open;
   const control=(label,handler,variant='')=>{
     const node=el('button',{type:'button',className:`button${variant?` ${variant}`:''}`,'data-control':label},actionIcon(label),label);
+    if(round2)node.setAttribute('aria-label',`${label}: ${targetLine(action)}; proposal ${action.id}`);
     node.addEventListener('click',async()=>{
       if(node.disabled||node.getAttribute('aria-busy')==='true')return;
       node.disabled=true;node.setAttribute('aria-busy','true');
@@ -186,7 +215,8 @@ export function renderProposal(card,view,handlers){
   }else sections.push(el('p',{className:'proposal-state'},'The server returned no preview for this proposal, so it cannot be applied here.'));
 
   let state;
-  if(status==='pending')state=el('p',{className:'proposal-state'},'Nothing is written until you apply it.');
+  if(round2)state=round2Outcome({...view,handlers},status,control);
+  else if(status==='pending')state=el('p',{className:'proposal-state'},'Nothing is written until you apply it.');
   else if(status==='executing')state=el('p',{className:'proposal-state',role:'status'},'Applying. Wait for the outcome before doing anything else.');
   else if(status==='stale')state=el('div',{className:'proposal-stale'},el('p',{className:'proposal-state-title'},'Nothing was written'),
     el('p',{},'The workflow changed after this proposal was made, so it can no longer be applied.'),el('div',{className:'proposal-actions'},control('Ask AI to re-read',handlers.reread,'ghost')));
