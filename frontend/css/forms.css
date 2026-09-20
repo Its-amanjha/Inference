@@ -41,6 +41,7 @@
 .picker-list[hidden] { display:none; }
 .picker-option { display:flex; align-items:baseline; gap:8px; min-height:36px; padding:8px 12px; border-radius:6px; cursor:pointer; font-size:14px; }
 .picker-option[aria-selected=true] { background:var(--selection-fill); color:var(--selection-text); }
+.picker-option:focus-visible { outline:2px solid var(--focus); outline-offset:-2px; }
 .picker-name { font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .picker-id { margin-left:auto; flex:none; max-width:45%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:var(--font-mono); font-size:12px; color:var(--color-smoke); }
 .picker-option[aria-selected=true] .picker-id { color:inherit; }
@@ -58,8 +59,15 @@
 .mapping-box:empty { display:none; }
 .mapping-box>h3 { font-size:14px; margin:8px 0 0; }
 .mapping-box>p { margin:0; }
+.mapping-box-head { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-top:8px; }
+.mapping-box-head>h3 { font-size:14px; margin:0; }
 .mapping-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.4fr); gap:16px; align-items:start; padding:12px; border:1px solid var(--border); border-radius:12px; }
 .mapping-source { font-size:13px; line-height:1.6; overflow-wrap:anywhere; }
+.mapping-target { display:flex; flex-direction:column; gap:8px; min-width:0; }
+.mapping-target>.picker { width:100%; }
+.mapping-vault-note { font-size:12px; color:var(--color-smoke); margin:2px 0 0; }
+.mapping-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:4px; }
+.raw-json-disclosure { margin-top:8px; border-top:1px solid var(--border); padding-top:12px; }
 
 /* Native select with a drawn chevron (no image URLs: the CSP blocks data: images). */
 :where(select) {

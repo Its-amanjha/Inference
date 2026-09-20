@@ -80,26 +80,37 @@ export async function loadInstanceWorkflows(instanceId,signal){
     .map(row=>({id:String(row.id),name:typeof row.name==='string'&&row.name.trim()?row.name:String(row.id),detail:typeof row.active==='boolean'?(row.active?'Active':'Inactive'):''}));
 }
 
+// Credentials on a target instance through the credentials API.
+export async function loadTargetCredentials(instanceId,signal){
+  const result=await api('/api/n8n_credentials?'+new URLSearchParams({instance_id:instanceId}),{signal});
+  if(result&&result.supported===false)throw new Error(Array.isArray(result.diagnostics)&&result.diagnostics[0]?.message||'Credential discovery is unavailable for this target.');
+  const rows=Array.isArray(result?.data)?result.data:[];
+  return rows.filter(row=>row&&typeof row.id==='string').map(row=>({id:String(row.id),name:String(row.name||row.id),detail:String(row.type||'')}));
+}
+
 // One searchable ID picker for CodeLab, Promote mappings and saved conversations.
 // Human labels with the id as secondary text, filter-as-you-type, arrow/Enter/Escape
 // keyboard support, pasted unknown ids kept as "not in this list", lazy per-scope loading
 // with an empty state and a Retry on failure. The search box always keeps the raw text,
 // so pasting an id never loses anything.
-export function createIdPicker({label,placeholder='',hint=null,load,emptyText='',emptyActions=[],clearLabel='Clear',clearable=true,onPick,signal}){
+export function createIdPicker({label,placeholder='',hint=null,load,emptyText='',emptyActions=[],clearLabel='Clear',clearAriaLabel=null,clearable=true,disabled=false,onPick,signal}){
   const listId=`id-picker-list-${++sequence}`;
   const search=el('input',{type:'search',maxLength:256,placeholder,autocomplete:'off',spellcheck:'false',role:'combobox','aria-expanded':'false','aria-controls':listId,'aria-autocomplete':'list'});
+  if(disabled)search.disabled=true;
   const list=el('ul',{className:'picker-list',id:listId,role:'listbox',hidden:true});
   const status=el('p',{className:'picker-status muted',role:'status'});
+  const announcer=el('span',{className:'sr-only',role:'status','aria-live':'polite'});
   const pickedName=el('strong',{}),pickedId=el('span',{className:'picker-id'});
   const picked=el('p',{className:'picker-picked',hidden:true},'Selected: ',pickedName,' ',pickedId,' ');
-  const clearPicked=el('button',{type:'button',className:'button ghost picker-clear'},clearLabel);
+  const effectiveClearAria=clearAriaLabel||(clearLabel!=='Clear'?clearLabel:`Clear ${label} selection`);
+  const clearPicked=el('button',{type:'button',className:'button ghost picker-clear','aria-label':effectiveClearAria},clearLabel);
   if(clearable)picked.append(clearPicked);
-  const node=el('div',{className:'picker'},field(label,search,hint?{hint}:{}),status,list,picked);
+  const node=el('div',{className:'picker'},field(label,search,hint?{hint}:{}),status,list,picked,announcer);
   let items=null,loadError=null,loading=null,open=false,activeIndex=-1,selectedId='',selectedKnown=false,pendingResolve=false;
 
   function visibleRows(){
     const needle=search.value.trim().toLowerCase();
-    const rows=!needle?(items||[]):items.filter(row=>(row.name+' '+row.id+' '+(row.detail||'')).toLowerCase().includes(needle));
+    const rows=!needle?(items||[]):(items||[]).filter(row=>(row.name+' '+row.id+' '+(row.detail||'')).toLowerCase().includes(needle));
     return rows.slice(0,50);
   }
   function unknownOption(){
@@ -115,6 +126,14 @@ export function createIdPicker({label,placeholder='',hint=null,load,emptyText=''
     search.setAttribute('aria-expanded',String(open&&!list.hidden));
     if(activeIndex>=count)activeIndex=count-1;
     syncActive();
+    if(open&&items!==null){
+      const matchCount=rows.length;
+      if(matchCount===0)announcer.textContent='No matching options.';
+      else if(matchCount===1)announcer.textContent='1 match found.';
+      else announcer.textContent=`${matchCount} matches found.`;
+    }else if(!open){
+      announcer.textContent='';
+    }
   }
   function optionNode(row,index,unknown=false){
     const item=el('li',{className:'picker-option'+(unknown?' picker-unknown':''),id:`${listId}-${index}`,role:'option','aria-selected':String(index===activeIndex)});
@@ -135,7 +154,7 @@ export function createIdPicker({label,placeholder='',hint=null,load,emptyText=''
     if(!row)return;
     selectedId=row.id;selectedKnown=!row.unknown;
     search.value=row.id;setOpen(false);paintPicked();
-    onPick(row.id,!row.unknown,row);
+    if(onPick)onPick(row.id,!row.unknown,row);
   }
   function paintPicked(){
     if(!selectedId){picked.hidden=true;return;}
@@ -163,8 +182,9 @@ export function createIdPicker({label,placeholder='',hint=null,load,emptyText=''
       }catch(error){
         if(signal.aborted)return;
         loadError=error;items=null;
-        status.replaceChildren(`Could not load the list. ${error?.message||error} `,el('button',{type:'button',className:'button ghost picker-retry'},'Retry'));
-        status.querySelector('button').addEventListener('click',()=>{loading=null;ensureLoaded();paint();});
+        const retryBtn=el('button',{type:'button',className:'button ghost picker-retry','aria-label':`Retry loading ${label}`},'Retry');
+        retryBtn.addEventListener('click',()=>{loading=null;ensureLoaded();paint();});
+        status.replaceChildren(`Could not load the list. ${error?.message||error} `,retryBtn);
       }finally{loading=null;}
       paint();
     })();
@@ -175,6 +195,7 @@ export function createIdPicker({label,placeholder='',hint=null,load,emptyText=''
     pendingResolve=false;paintPicked();paint();
   }
   search.addEventListener('focus',()=>setOpen(true),{signal});
+  search.addEventListener('click',()=>{if(!open)setOpen(true);},{signal});
   search.addEventListener('input',()=>{activeIndex=-1;if(selectedId&&search.value.trim()!==selectedId){selectedId='';picked.hidden=true;}setOpen(true);},{signal});
   search.addEventListener('blur',()=>setOpen(false),{signal});
   search.addEventListener('keydown',event=>{
@@ -189,17 +210,31 @@ export function createIdPicker({label,placeholder='',hint=null,load,emptyText=''
       if(open&&activeIndex>=0){event.preventDefault();choose(activeIndex);}
       else if(open&&unknownOption()){event.preventDefault();choose(visibleRows().length);}
       else if(open&&visibleRows().length===1){event.preventDefault();choose(0);}
-    }else if(event.key==='Escape'){setOpen(false);}
+    }else if(event.key==='Escape'){
+      if(open){event.preventDefault();event.stopPropagation();setOpen(false);search.focus();}
+    }
   },{signal});
-  clearPicked.addEventListener('click',()=>{selectedId='';search.value='';picked.hidden=true;search.focus();onPick('',false);},{signal});
+  clearPicked.addEventListener('click',()=>{selectedId='';search.value='';picked.hidden=true;search.focus();if(onPick)onPick('',false);},{signal});
   return {node,input:search,
     get(){return search.value.trim();},
+    getId(){return selectedId||search.value.trim();},
+    getName(){if(!selectedId)return'';const row=(items||[]).find(r=>r.id===selectedId);return row?row.name:pickedName.textContent||selectedId;},
+    isKnown(){return selectedKnown;},
+    clear(){selectedId='';selectedKnown=false;search.value='';picked.hidden=true;activeIndex=-1;setOpen(false);if(onPick)onPick('',false);},
     set(id,name=null){
       search.value=id||'';selectedId=id||'';
       if(!selectedId){picked.hidden=true;return;}
       if(items!==null){selectedKnown=(items||[]).some(row=>row.id===selectedId);paintPicked();}
       else{pendingResolve=true;selectedKnown=Boolean(name);picked.hidden=false;pickedName.textContent=name||selectedId;pickedId.textContent=name?selectedId:'(id not in this list)';ensureLoaded();}
     },
+    setScope(newLoad){
+      load=newLoad;items=null;loadError=null;loading=null;selectedId='';selectedKnown=false;search.value='';picked.hidden=true;activeIndex=-1;setOpen(false);
+    },
+    setDisabled(val){
+      search.disabled=Boolean(val);clearPicked.disabled=Boolean(val);if(val)setOpen(false);
+    },
+    get disabled(){return search.disabled;},
+    set disabled(val){search.disabled=Boolean(val);clearPicked.disabled=Boolean(val);if(val)setOpen(false);},
     reload(){items=null;loadError=null;setOpen(true);},
     focus(){search.focus();}};
 }
