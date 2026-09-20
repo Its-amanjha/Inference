@@ -223,7 +223,7 @@ export function createIdPicker({label,placeholder='',hint=null,load,emptyText=''
     clear(){selectedId='';selectedKnown=false;search.value='';picked.hidden=true;activeIndex=-1;setOpen(false);if(onPick)onPick('',false);},
     set(id,name=null){
       search.value=id||'';selectedId=id||'';
-      if(!selectedId){picked.hidden=true;return;}
+      if(!selectedId){selectedKnown=false;picked.hidden=true;return;}
       if(items!==null){selectedKnown=(items||[]).some(row=>row.id===selectedId);paintPicked();}
       else{pendingResolve=true;selectedKnown=Boolean(name);picked.hidden=false;pickedName.textContent=name||selectedId;pickedId.textContent=name?selectedId:'(id not in this list)';ensureLoaded();}
     },
