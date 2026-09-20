@@ -126,7 +126,22 @@ export function table(headers, rows, options = {}) {
 
   const getRowCells = r => Array.isArray(r) ? (r.cells || r) : (r?.cells || []);
 
-  const renderedRows = rows.map((row, origIndex) => {
+  let nextOrigIndex = 0;
+
+  function createRowEntry(row, origIndex) {
+    if (row instanceof HTMLTableRowElement) {
+      if (row._tableRowEntry) {
+        return { row: row._tableRowEntry.row, tr: row, origIndex };
+      }
+      const cells = Array.from(row.children).map(td => ({
+        sortValue: td.dataset?.sortValue ?? td.textContent,
+        content: td
+      }));
+      const entry = { row: cells, tr: row, origIndex };
+      row._tableRowEntry = entry;
+      return entry;
+    }
+
     const rowCells = getRowCells(row);
     const rowClass = row?.className || (row?.selected ? 'is-selected' : '');
     const tr = el('tr', { class: rowClass || undefined }, rowCells.map((cell, index) => {
@@ -140,19 +155,48 @@ export function table(headers, rows, options = {}) {
       }
       return el('td', attrs, ...(Array.isArray(target) ? target : [target]));
     }));
-    return { row, tr, origIndex };
-  });
+    const entry = { row, tr, origIndex };
+    tr._tableRowEntry = entry;
+    return entry;
+  }
 
+  const renderedRows = rows.map(row => createRowEntry(row, nextOrigIndex++));
   const tbody = el('tbody', {}, renderedRows.map(r => r.tr));
   const announcer = el('div', { class: 'sr-only', role: 'status', 'aria-live': 'polite' });
   const thElements = [];
   let mobileSelect = null;
+  let internalMutating = false;
+
+  function syncRenderedRowsFromDOM() {
+    const currentTrs = new Set(Array.from(tbody.children));
+    for (let i = renderedRows.length - 1; i >= 0; i--) {
+      if (!currentTrs.has(renderedRows[i].tr)) {
+        renderedRows.splice(i, 1);
+      }
+    }
+    const knownTrs = new Set(renderedRows.map(r => r.tr));
+    for (const child of tbody.children) {
+      if (child instanceof HTMLTableRowElement && !knownTrs.has(child)) {
+        renderedRows.push(createRowEntry(child, nextOrigIndex++));
+      }
+    }
+  }
+
+  if (typeof MutationObserver === 'function') {
+    const observer = new MutationObserver(() => {
+      if (internalMutating) return;
+      syncRenderedRowsFromDOM();
+    });
+    observer.observe(tbody, { childList: true });
+  }
 
   function applySort(colIndex, dir, announce = true) {
     if (!sortable || !(colIndex in sortable)) return;
     const type = sortable[colIndex] || 'text';
     currentSortCol = colIndex;
     currentSortDir = dir;
+
+    syncRenderedRowsFromDOM();
 
     // Parse each cell once; the comparator below only compares cached keys, so a
     // sort costs O(n) parses instead of O(n log n). Order is unchanged: ties keep
@@ -172,7 +216,12 @@ export function table(headers, rows, options = {}) {
     renderedRows.length = 0;
     for (const item of decorated) renderedRows.push(item.entry);
 
-    tbody.replaceChildren(...renderedRows.map(r => r.tr));
+    internalMutating = true;
+    try {
+      tbody.replaceChildren(...renderedRows.map(r => r.tr));
+    } finally {
+      internalMutating = false;
+    }
 
     thElements.forEach((item, idx) => {
       if (!item.sortBtn) return;
@@ -296,11 +345,97 @@ export function table(headers, rows, options = {}) {
 
   const tableEl = el('table', { class: tableClasses, 'data-stack': stack ? 'true' : 'false' }, thead, tbody);
 
-  return el('div', {
+  const wrap = el('div', {
     class: wrapClasses,
     tabindex: 0,
     role: 'region',
     'aria-label': options?.ariaLabel || (headers.filter(h => typeof h === 'string' && h.trim()).join(', ') + ' table')
   }, announcer, mobileSortControl, tableEl);
+
+  function appendRows(newRows) {
+    if (!newRows) return wrap;
+    let items = [];
+    if (newRows instanceof Node) {
+      const pageTbody = newRows.querySelector?.('tbody') || (newRows.tagName === 'TBODY' ? newRows : null);
+      if (pageTbody) items = Array.from(pageTbody.children);
+      else if (newRows instanceof HTMLTableRowElement) items = [newRows];
+      else items = [newRows];
+    } else if (Array.isArray(newRows)) {
+      items = newRows;
+    } else {
+      items = [newRows];
+    }
+
+    syncRenderedRowsFromDOM();
+    const entries = items.map(r => createRowEntry(r, nextOrigIndex++));
+    for (const entry of entries) {
+      renderedRows.push(entry);
+    }
+    internalMutating = true;
+    try {
+      tbody.append(...entries.map(e => e.tr));
+    } finally {
+      internalMutating = false;
+    }
+
+    if (sortable && currentSortCol !== null && currentSortCol in sortable) {
+      applySort(currentSortCol, currentSortDir, false);
+    }
+    return wrap;
+  }
+
+  function removeRow(target) {
+    syncRenderedRowsFromDOM();
+    let index = -1;
+    if (typeof target === 'number') {
+      index = target;
+    } else if (target instanceof HTMLTableRowElement) {
+      index = renderedRows.findIndex(r => r.tr === target);
+    } else if (typeof target === 'function') {
+      index = renderedRows.findIndex(r => target(r.row, r.tr));
+    }
+    if (index >= 0 && index < renderedRows.length) {
+      const [entry] = renderedRows.splice(index, 1);
+      internalMutating = true;
+      try {
+        entry.tr.remove();
+      } finally {
+        internalMutating = false;
+      }
+      return entry.tr;
+    }
+    return null;
+  }
+
+  function setRows(newRows) {
+    internalMutating = true;
+    try {
+      tbody.replaceChildren();
+    } finally {
+      internalMutating = false;
+    }
+    renderedRows.length = 0;
+    nextOrigIndex = 0;
+    return appendRows(newRows);
+  }
+
+  wrap.appendRows = appendRows;
+  wrap.removeRow = removeRow;
+  wrap.setRows = setRows;
+  wrap.sync = syncRenderedRowsFromDOM;
+  wrap.table = tableEl;
+  wrap.tbody = tbody;
+
+  tableEl.appendRows = appendRows;
+  tableEl.removeRow = removeRow;
+  tableEl.setRows = setRows;
+  tableEl.sync = syncRenderedRowsFromDOM;
+
+  tbody.appendRows = appendRows;
+  tbody.removeRow = removeRow;
+  tbody.setRows = setRows;
+  tbody.sync = syncRenderedRowsFromDOM;
+
+  return wrap;
 }
 export function jsonView(value) { return el('pre',{},JSON.stringify(value,null,2)); }
