@@ -40,8 +40,8 @@ export async function render(container) {
         const actions=el('div',{class:'toolbar'},button('Inspect',async()=>{
           const item=await api(`/api/n8n_proxy/workflows/${id}${query}`,{signal});
           detail.hidden=false;detail.replaceChildren(el('h3',{},row.name),jsonView(item));
-        },'ghost'),el('a',{class:'button ghost',href:'#promote?'+new URLSearchParams({workflow_id:row.id,source_instance_id:instance.id})},'Promote'),el('a',{class:'button ghost',href:'#codelab?'+new URLSearchParams({workflow_id:row.id,instance_id:instance.id})},'CodeLab'),
-          can('operator')?el('a',{class:'button ghost',href:repairHref({instance_id:instance.id,workflow_id:row.id})},'Repair with AI'):null);
+        },'ghost',{'aria-label':`Inspect workflow ${name}`}),el('a',{class:'button ghost',href:'#promote?'+new URLSearchParams({workflow_id:row.id,source_instance_id:instance.id}),'aria-label':`Promote workflow ${name}`},'Promote'),el('a',{class:'button ghost',href:'#codelab?'+new URLSearchParams({workflow_id:row.id,instance_id:instance.id}),'aria-label':`Open workflow ${name} in CodeLab`},'CodeLab'),
+          can('operator')?el('a',{class:'button ghost',href:repairHref({instance_id:instance.id,workflow_id:row.id}),'aria-label':`Repair workflow ${name} with AI`},'Repair with AI'):null);
         const badge=typeof row.active==='boolean'?stateBadge(row.active?'success':'',row.active?'Active':'Inactive'):stateBadge('warning','Unknown',String(row.active));
         const toggle=button(row.active?'Deactivate':'Activate',async()=>{
           const target=[el('strong',{},name),' on ',el('strong',{},instance.name)];
@@ -53,7 +53,7 @@ export async function render(container) {
           try {await api(`/api/n8n_proxy/workflows/${id}/${row.active?'deactivate':'activate'}${query}`,{method:'POST'});await load(entry);}
           catch(error){notice(entry.messages,error);}
           finally{toggle.disabled=!can('operator');}
-        },'ghost');toggle.disabled=!can('operator');
+        },'ghost',{'aria-label':`${row.active?'Deactivate':'Activate'} workflow ${name} on ${instance.name}`});toggle.disabled=!can('operator');
         return [
           { sortValue: row.name ?? row.id, content: name },
           (row.tags??[]).map(tag=>tag.name).join(', ')||'—',

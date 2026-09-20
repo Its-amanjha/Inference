@@ -45,7 +45,7 @@ export async function render(container){
           {sortValue:instName,content:instName},
           {sortValue:row.span_count,content:String(row.span_count)},
           {sortValue:row.error_spans,content:String(row.error_spans)},
-          button('View waterfall',()=>inspect(row),'button ghost')
+          button('View waterfall',()=>inspect(row),'button ghost',{'aria-label':`View waterfall for trace ${row.trace_id}`})
         ];
       }),{
         numeric:[2,3],
