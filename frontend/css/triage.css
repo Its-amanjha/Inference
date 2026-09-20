@@ -9,6 +9,7 @@
 
 /* Dashboard metrics: the value is a paragraph and the label is an h2 heading with aria-describedby pointing to the value. */
 .metric-label>h2,
+.metric-label>h3,
 .metric-label .metric-title { font-family:var(--font-body); font-size:13px; font-weight:500; line-height:1.35; margin:0; color:var(--color-smoke); letter-spacing:0; text-wrap:balance; }
 .metric-cell p.metric-number { font-family:var(--font-display); font-weight:600; color:var(--color-ink-black); font-size:30px; line-height:1.2; margin:14px 0 0; letter-spacing:-.035em; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
 .metric-cell p.metric-number.metric-text { font-size:18px; line-height:1.4; }
