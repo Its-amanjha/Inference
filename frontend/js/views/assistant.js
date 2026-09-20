@@ -215,7 +215,7 @@ export async function render(container) {
     if (announce && transcript.querySelector('.chat-message')) {
       const pinned = target;
       const note = el('p', {className: 'chat-event'}, pinned ? `Repair target changed to ${describeTarget(pinned)}.` : 'Repair target cleared. New messages no longer include repair context.');
-      transcript.append(note); transcript.scrollTop = transcript.scrollHeight;
+      transcript.append(note);
       if (pinned) fetchContext().then(result => { const name = result?.workflow?.name; if (name && !signal.aborted && pinned === target) note.textContent = `Repair target changed to ${describeTarget(pinned, name)}.`; }, () => {});
     }
     if (!target && hadFocus && !input.disabled) input.focus();
@@ -556,7 +556,6 @@ export async function render(container) {
     }
     if (role !== 'assistant' && Array.isArray(meta?.context_log) && meta.context_log.length) node.append(contextSent(meta.context_log));
     transcript.append(node);
-    transcript.scrollTop=transcript.scrollHeight;
     return node;
   };
   const placeProposals = async (node, meta) => {
@@ -624,13 +623,43 @@ export async function render(container) {
   };
   const send = el('button', {type: 'submit', className: 'button button-primary',disabled:true}, 'Send message',icon('arrow'));
   const form = el('form', {className: 'assistant-composer'}, field('Your message', input), el('div',{className:'composer-foot'},el('span',{className:'muted'},'Changes require your approval.'),send));
+  // Follow chat's end, not the document's end: the action rail follows the chat.
+  // Detect the overflow owner so expanded repair layouts use the same policy as
+  // desktop. Instant scrolling also respects prefers-reduced-motion.
+  let following = false, revealingComposer = false;
+  const scrollGeometry = () => {
+    const nested = /auto|scroll/.test(getComputedStyle(transcript).overflowY);
+    const viewport = window.visualViewport;
+    const owner = nested ? transcript : window;
+    const remaining = nested ? transcript.scrollHeight - transcript.clientHeight - transcript.scrollTop
+      : form.getBoundingClientRect().bottom - ((viewport?.offsetTop || 0) + (viewport?.height || document.documentElement.clientHeight) - 8);
+    return {owner, remaining};
+  };
+  const followConversation = () => {
+    if (!following || signal.aborted || !form.isConnected || (window.visualViewport?.scale || 1) !== 1) return;
+    const {owner, remaining} = scrollGeometry();
+    if (Math.abs(remaining) > 1) owner.scrollBy({top: remaining, behavior: 'instant'});
+  };
+  const trackScroll = () => {
+    // Focus can scroll before the queued keyboard/composer resize has settled.
+    if (revealingComposer) return;
+    following = Math.abs(scrollGeometry().remaining) <= 32;
+  };
+  listen(window, 'scroll', trackScroll);
+  listen(transcript, 'scroll', trackScroll);
+  // Mutation delivery precedes scroll events. Include async proposal insertion
+  // without confusing content growth with the operator scrolling into history.
+  const conversationObserver = new MutationObserver(followConversation);
+  conversationObserver.observe(transcript, {childList: true, subtree: true, characterData: true});
+  conversationObserver.observe(messages, {childList: true, subtree: true, characterData: true});
   // iOS keeps its layout viewport when the keyboard opens. Size and reveal the whole
   // composer against the visual viewport, leaving at least 65% for the conversation.
   let composerFrame = 0;
   const resizeComposer = () => {
     composerFrame = 0;
+    revealingComposer = false;
     if (signal.aborted) return;
-    if (!matchMedia('(max-width:700px)').matches) { input.style.removeProperty('height'); input.style.removeProperty('overflow-y'); return; }
+    if (!matchMedia('(max-width:700px)').matches) { input.style.removeProperty('height'); input.style.removeProperty('overflow-y'); followConversation(); return; }
     const viewport = window.visualViewport;
     const visibleHeight = viewport?.height || document.documentElement.clientHeight;
     input.style.height = '44px';
@@ -640,14 +669,18 @@ export async function render(container) {
     const height = Math.max(44, Math.min(input.scrollHeight + border, limit));
     input.style.height = `${height}px`;
     input.style.overflowY = input.scrollHeight + border > height ? 'auto' : 'hidden';
-    if (document.activeElement !== input || (viewport && viewport.scale !== 1)) return;
-    const top = viewport?.offsetTop || 0, rect = form.getBoundingClientRect();
-    const delta = rect.bottom > top + visibleHeight - 8 ? rect.bottom - (top + visibleHeight - 8) : rect.top < top + 8 ? rect.top - top - 8 : 0;
-    if (Math.abs(delta) > 1) window.scrollBy({top: delta, behavior: 'instant'});
+    followConversation();
   };
   const scheduleComposerSize = () => { if (!composerFrame) composerFrame = requestAnimationFrame(resizeComposer); };
   listen(input, 'input', scheduleComposerSize);
-  listen(input, 'focus', scheduleComposerSize);
+  listen(input, 'focus', () => {
+    const {owner, remaining} = scrollGeometry();
+    // Focusing the page's composer explicitly returns to it; on desktop the
+    // composer is already visible, so keep the transcript's history position.
+    following = owner === window || remaining <= 32;
+    revealingComposer = true;
+    scheduleComposerSize();
+  });
   listen(window, 'resize', scheduleComposerSize);
   if (window.visualViewport) {
     listen(window.visualViewport, 'resize', scheduleComposerSize);
@@ -858,5 +891,5 @@ export async function render(container) {
     // Repaint a card only when its visible status changes, so focus and open disclosures stay put.
     for (const model of proposals.values()) if (model.card.isConnected && model.painted !== effectiveStatus({...model, acting: acting.has(model.action.id)})) paintProposal(model);
   }, 15000);
-  return () => { controller.abort(); clearInterval(timer); clearTimeout(notesTimer); cancelAnimationFrame(composerFrame); };
+  return () => { controller.abort(); clearInterval(timer); clearTimeout(notesTimer); cancelAnimationFrame(composerFrame); conversationObserver.disconnect(); };
 }
