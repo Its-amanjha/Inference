@@ -43,7 +43,7 @@ export async function render(container){
   let rows=[],cursor=null,busy=false,queued=false,filter=initialFilter,loadedStatus=status.value;
   const selectedIds = new Set();
   const feedback=el('div',{class:'triage-feedback'}),content=el('div',{class:'triage-results',tabindex:-1});
-  const count=el('p',{class:'triage-count','aria-live':'polite'}),announcer=el('p',{class:'triage-announce',role:'status'});
+  const count=el('p',{class:'triage-count','aria-live':'polite'}),announcer=el('p',{class:'triage-announce',role:'status','aria-live':'polite'});
   const chips=TRIAGE_FILTERS.map(([key,label])=>el('button',{type:'button',class:'button ghost triage-chip','aria-pressed':String(key===filter),onclick:()=>setFilter(key)},label));
   const next=button('Older errors',()=>load(cursor),'button ghost');next.disabled=true;
   const savedViewsContainer = el('details', { class: 'triage-saved-dropdown triage-saved-bar', role: 'group', 'aria-label': 'Saved filter views' });
@@ -431,6 +431,7 @@ export async function render(container){
   }
 
   function draw(){
+    if (announceTimer) { clearTimeout(announceTimer); announceTimer = null; }
     updateCount();
     const shown=visibleRows();
     if(!rows.length){
@@ -546,10 +547,14 @@ export async function render(container){
       );
     }
 
+    const severityLabel = severityOf(row.error_type).label;
+    const subjectCell = cell('Workflow / node','triage-subject',el('div',{class:'triage-subject-body'},el('div',{class:'triage-title'},el('strong',{},workflow),el('span',{class:'triage-node'},node)),message(row.error_message)));
+    subjectCell._rowMeta = { workflow, node, severity: severityLabel };
+
     cells.push(
-      {sortValue:severityOf(row.error_type).label,content:cell('Severity','triage-severity',severityPill(row.error_type))},
+      {sortValue:severityLabel,content:cell('Severity','triage-severity',severityPill(row.error_type))},
       {sortValue:row.occurred_at?new Date(row.occurred_at).getTime():0,content:cell('When','triage-when',relativeTime(row.occurred_at))},
-      {sortValue:`${workflow} · ${node}`,content:cell('Workflow / node','triage-subject',el('div',{class:'triage-subject-body'},el('div',{class:'triage-title'},el('strong',{},workflow),el('span',{class:'triage-node'},node)),message(row.error_message)))},
+      {sortValue:`${workflow} · ${node}`,content:subjectCell},
       {sortValue:instanceName(row.instance_id),content:cell('Instance','triage-instance',instanceName(row.instance_id))},
       {sortValue:row.count??0,content:cell('Count','triage-num',row.count===null||row.count===undefined?el('span',{class:'triage-missing'},'Unavailable'):String(row.count))},
       {sortValue:row.execution_id?String(row.execution_id):'',content:cell('Execution','triage-execution',row.execution_id?String(row.execution_id):el('span',{class:'triage-missing'},'Unavailable'))},
@@ -613,10 +618,22 @@ export async function render(container){
     return Array.from(content.querySelectorAll('tbody tr'));
   }
 
+  let announceTimer = null;
+
+  function getRowMeta(tr) {
+    const meta = tr.querySelector('.triage-subject')?._rowMeta;
+    if (meta) return meta;
+    const workflow = tr.querySelector('.triage-title strong')?.textContent?.trim() || 'Workflow';
+    const node = tr.querySelector('.triage-node')?.textContent?.trim() || 'Workflow';
+    const severity = tr.querySelector('.triage-severity')?.textContent?.trim() || 'Error';
+    return { workflow, node, severity };
+  }
+
   function focusRow(index) {
     const trList = getRowElements();
     if (!trList.length) return;
     const clamped = Math.max(0, Math.min(index, trList.length - 1));
+    let focusedTr = null;
     trList.forEach((tr, i) => {
       const isCurrent = i === clamped;
       tr.classList.toggle('is-focused', isCurrent);
@@ -624,8 +641,20 @@ export async function render(container){
         tr.setAttribute('tabindex', '-1');
         tr.focus();
         tr.scrollIntoView({ block: 'nearest' });
+        focusedTr = tr;
       }
     });
+    if (focusedTr) {
+      if (announceTimer) clearTimeout(announceTimer);
+      announceTimer = setTimeout(() => {
+        const meta = getRowMeta(focusedTr);
+        const text = `Row ${clamped + 1} of ${trList.length}: ${meta.workflow}, ${meta.node}, ${meta.severity}`;
+        if (announcer.textContent === text) {
+          announcer.textContent = '';
+        }
+        announcer.textContent = text;
+      }, 150);
+    }
   }
 
   function getFocusedRowIndex() {
@@ -638,6 +667,7 @@ export async function render(container){
 
   await load();
   return () => {
+    if (announceTimer) clearTimeout(announceTimer);
     unregisterShortcuts();
     controller.abort();
   };
