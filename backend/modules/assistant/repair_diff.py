@@ -10,7 +10,7 @@ from copy import deepcopy
 import difflib
 import re
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -486,7 +486,24 @@ def _risks(old: dict, new: dict) -> list[dict]:
 
 
 # n8n serves trigger nodes under these route prefixes; a workflow calling one of its own routes re-triggers itself.
-_TRIGGER_ROUTE = re.compile(r'/(webhook|webhook-test|webhook-waiting|form|form-test|form-waiting)/([A-Za-z0-9_\-.~:%/]+)')
+# Express matches routes case-insensitively and on the decoded path by default, so the guard
+# normalizes both before comparing: an uppercase prefix or %6Frders reaches /webhook/orders.
+_TRIGGER_ROUTE = re.compile(r'/(webhook|webhook-test|webhook-waiting|form|form-test|form-waiting)/([A-Za-z0-9_\-.~:%/]+)',
+                            re.IGNORECASE)
+
+
+def _decoded(text: str) -> str:
+    """Percent-decoded text for trigger-route comparison (repeated: %256F is %6F is 'o'). Display keeps the original."""
+    decoded = text
+    for _ in range(3):
+        try:
+            nxt = unquote(decoded)
+        except Exception:
+            break
+        if nxt == decoded:
+            break
+        decoded = nxt
+    return decoded
 
 
 def _trigger_tokens(document: dict) -> set[str]:
@@ -498,7 +515,7 @@ def _trigger_tokens(document: dict) -> set[str]:
         parameters = node.get('parameters') if isinstance(node.get('parameters'), dict) else {}
         for value in (parameters.get('path'), node.get('webhookId')):
             if isinstance(value, str) and value.strip('/'):
-                tokens.add(value.strip('/').lower())
+                tokens.add(_decoded(value).strip('/').lower())
     return tokens
 
 
@@ -516,7 +533,7 @@ def _self_calls(document: dict) -> set[tuple[str, str]]:
         if is_webhook_type(node.get('type')):
             continue
         for text in _strings(node.get('parameters')):
-            for match in _TRIGGER_ROUTE.finditer(text):
+            for match in _TRIGGER_ROUTE.finditer(_decoded(text)):
                 route = match.group(2).strip('/').lower()
                 if any(route == token or route.startswith(token + '/') for token in tokens):
                     found.add((node['name'], f"/{match.group(1)}/{match.group(2).strip('/')}"))
