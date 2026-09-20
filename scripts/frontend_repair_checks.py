@@ -769,13 +769,13 @@ def exercise_links(page, ids, error_id):
     section = page.get_by_role('region', name='Workflows on source', exact=True)
     workflow_row = section.get_by_role('row').filter(has=page.get_by_role('cell', name='Order synchronization', exact=True))
     expect(workflow_row).to_have_count(1)
-    assert_repair_href(workflow_row.get_by_role('link', name=UI['repair_link'], exact=True), target)
+    assert_repair_href(workflow_row.get_by_role('link', name='Repair workflow Order synchronization with AI', exact=True), target)
     page.route('**/api/n8n_proxy/dashboard*', lambda route: route.fulfill(json=DASHBOARD_FIXTURE))
     try:
         page.evaluate("location.hash = 'dashboard'")
         finding = page.locator('.finding-row').filter(has_text='Order synchronization')
         expect(finding).to_have_count(1)
-        assert_repair_href(finding.get_by_role('link', name=UI['repair_link'], exact=True), with_error)
+        assert_repair_href(finding.get_by_role('link', name='Repair workflow Order synchronization with AI', exact=True), with_error)
         # Leave before unrouting so the overview's 30-second refresh cannot spend a real metrics request.
         page.evaluate("location.hash = 'errors'")
         page.get_by_role('region', name='Errors table').wait_for()
