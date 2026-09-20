@@ -40,7 +40,7 @@ export async function render(container) {
   const messages = el('div', {className:'assistant-notices','aria-live': 'polite'});
   const provider = el('select', {required: true, disabled:true, 'aria-label': 'Assistant provider'},el('option',{value:''},'Loading models…'));
   const transcript = el('div', {className: 'chat-transcript', role: 'log', 'aria-label': 'Conversation', 'aria-live': 'polite'});
-  const input = el('textarea', {rows: 3, maxLength: 16000, required: true, disabled:true, placeholder: 'Ask about an execution or workflow…'});
+  const input = el('textarea', {rows: 1, maxLength: 16000, required: true, disabled:true, placeholder: 'Ask about an execution or workflow…'});
   const approvals = el('div', {className: 'stack'});
   let chatId = null;
   let busy = false;
@@ -562,7 +562,7 @@ export async function render(container) {
       rememberChat(chatId, message || lastMessage);
       resumeId.value = chatId || '';
       if (!continueTurn) lastMessage = message;
-      if (input.value === message) input.value = '';
+      if (input.value === message) { input.value = ''; scheduleComposerSize(); }
       const node = appendMessage('assistant', result?.content ?? '', {...(result && typeof result === 'object' ? result : {}), repairSnapshot: sentContext}, message || lastMessage);
       await placeProposals(node, result);
       await refreshApprovals().catch(error => { if (!signal.aborted) notice(messages, error); });
@@ -574,13 +574,42 @@ export async function render(container) {
   };
   const send = el('button', {type: 'submit', className: 'button button-primary',disabled:true}, 'Send message',icon('arrow'));
   const form = el('form', {className: 'assistant-composer'}, field('Your message', input), el('div',{className:'composer-foot'},el('span',{className:'muted'},'Changes require your approval.'),send));
+  // iOS keeps its layout viewport when the keyboard opens. Size and reveal the whole
+  // composer against the visual viewport, leaving at least 65% for the conversation.
+  let composerFrame = 0;
+  const resizeComposer = () => {
+    composerFrame = 0;
+    if (signal.aborted) return;
+    if (!matchMedia('(max-width:700px)').matches) { input.style.removeProperty('height'); input.style.removeProperty('overflow-y'); return; }
+    const viewport = window.visualViewport;
+    const visibleHeight = viewport?.height || document.documentElement.clientHeight;
+    input.style.height = '44px';
+    const border = input.offsetHeight - input.clientHeight;
+    const chrome = form.getBoundingClientRect().height - input.getBoundingClientRect().height;
+    const limit = Math.max(44, Math.min(144, visibleHeight * .35 - chrome));
+    const height = Math.max(44, Math.min(input.scrollHeight + border, limit));
+    input.style.height = `${height}px`;
+    input.style.overflowY = input.scrollHeight + border > height ? 'auto' : 'hidden';
+    if (document.activeElement !== input || (viewport && viewport.scale !== 1)) return;
+    const top = viewport?.offsetTop || 0, rect = form.getBoundingClientRect();
+    const delta = rect.bottom > top + visibleHeight - 8 ? rect.bottom - (top + visibleHeight - 8) : rect.top < top + 8 ? rect.top - top - 8 : 0;
+    if (Math.abs(delta) > 1) window.scrollBy({top: delta, behavior: 'instant'});
+  };
+  const scheduleComposerSize = () => { if (!composerFrame) composerFrame = requestAnimationFrame(resizeComposer); };
+  listen(input, 'input', scheduleComposerSize);
+  listen(input, 'focus', scheduleComposerSize);
+  listen(window, 'resize', scheduleComposerSize);
+  if (window.visualViewport) {
+    listen(window.visualViewport, 'resize', scheduleComposerSize);
+    listen(window.visualViewport, 'scroll', scheduleComposerSize);
+  }
   listen(form, 'submit', async event => {
     event.preventDefault();
     if (busy || !input.value.trim() || !provider.value) return;
     await sendTurn({message: input.value});
   });
   listen(provider, 'change', () => { chatId = null; resumeId.value=''; showWelcome(); paintToolSupport(); });
-  const newChat = action('New conversation', () => { if (busy) return; chatId = null; input.value = ''; resumeId.value = ''; showWelcome(); });
+  const newChat = action('New conversation', () => { if (busy) return; chatId = null; input.value = ''; scheduleComposerSize(); resumeId.value = ''; showWelcome(); });
   const resumeId = el('input', {type: 'text', maxLength: 64, placeholder: 'Conversation ID', 'aria-label': 'Conversation ID'});
   // Recently opened conversations in this browser (ids only; transcripts stay server side).
   // There is no list endpoint, so this covers what this browser has seen; pasting an ID still works.
@@ -674,6 +703,7 @@ export async function render(container) {
     : target.execution_id ? `Find why execution ${target.execution_id} failed and propose a fix I can review.` : target.workflow_id ? 'Check the pinned workflow for problems and propose a fix I can review.' : 'Propose a new inactive workflow for this instance. ';
   const explain = context.get('explain') || repairPrompt || (errorId ? `Help me investigate error ${errorId.slice(0,128)} for instance ${(context.get('instance_id') || state.instanceId).slice(0,128)}. Use available metadata and suggest next steps.` : '');
   if (explain) input.value = explain.slice(0, 16000);
+  scheduleComposerSize();
 
   let repairSettingsReady = false, repairSettingsError = null, directoryAllowed = true, shareDirectory = null;
   const loadRepairSettings = async () => {
@@ -778,5 +808,5 @@ export async function render(container) {
     // Repaint a card only when its visible status changes, so focus and open disclosures stay put.
     for (const model of proposals.values()) if (model.card.isConnected && model.painted !== effectiveStatus({...model, acting: acting.has(model.action.id)})) paintProposal(model);
   }, 15000);
-  return () => { controller.abort(); clearInterval(timer); clearTimeout(notesTimer); };
+  return () => { controller.abort(); clearInterval(timer); clearTimeout(notesTimer); cancelAnimationFrame(composerFrame); };
 }
