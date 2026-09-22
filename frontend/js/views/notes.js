@@ -46,6 +46,6 @@ export async function render(container){
     el('div',{class:'form-card-head card-head-row'},el('h3',{},'Markdown preview'),button('Preview Markdown',()=>{renderMarkdown(preview,content.value);},'ghost')),
     el('div',{class:'form-card-body'},preview,links));
   editor.append(editorCard,previewCard);
-  container.append(heading('Notes','Runbooks and linked Markdown notes for your fleet.'),messages,el('div',{class:'toolbar'},search,button('Search',()=>act(load),'ghost')),el('div',{class:'grid notes-layout'},el('aside',{class:'card'},list),editor));
+  container.append(heading('Notes','Runbooks and linked Markdown notes for your fleet.'),messages,el('div',{class:'toolbar'},search,button('Search',()=>act(load),'ghost')),el('div',{class:'grid notes-layout'},el('aside',{class:'card','aria-label':'Notes library'},el('h2',{},'Your notes'),list),editor));
   search.addEventListener('keydown',e=>{if(e.key==='Enter')act(load);});await act(load);return()=>{selection++;controller.abort();};
 }

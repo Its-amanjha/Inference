@@ -18,6 +18,11 @@ def exercise_design(page: Page, artifacts: Path) -> None:
         'data': [{'instance_id': 'source', 'name': 'Source',
                   'workflows_complete': False, 'executions_complete': False}],
     }
+    instances = page.evaluate("async () => (await import('/js/state.js')).state.instances")
+    if len(instances) > 1:
+        metrics['data'].append({'instance_id': instances[1]['id'], 'name': instances[1]['name'],
+                                'workflows_complete': True, 'executions_complete': True,
+                                'observed_workflows': 23, 'observed_executions_24h': 0})
     # Same shape as SQLite datetime('now'): UTC without a zone designator.
     recent = (datetime.now(timezone.utc) - timedelta(minutes=12)).strftime('%Y-%m-%d %H:%M:%S')
     findings = {'data': [{
@@ -46,6 +51,8 @@ def exercise_design(page: Page, artifacts: Path) -> None:
         expect(page.locator('.metric-cell h2')).to_have_count(0)
         expect(page.locator('.metric-cell .metric-number')).to_have_count(4)
         expect(page.get_by_role('article', name='Total workflows')).to_contain_text('Unavailable')
+        if len(instances) > 1:
+            expect(page.locator('.instance-counts')).to_have_text('23 workflows · 0 saved executions in 24h')
         expect(page.locator('.dashboard .panel-head h2 > svg')).to_have_count(3)
         expect(page.locator('.dashboard .panel-head a > svg')).to_have_count(3)
         expect(page.locator('.dashboard .panel-head svg[aria-hidden="true"]')).to_have_count(6)
@@ -136,6 +143,34 @@ def exercise_design(page: Page, artifacts: Path) -> None:
             expect(page.locator('#main [role=alert]')).to_contain_text('Confirmed status failure.')
         finally:
             page.unroute('**/api/docker_mgr/status', docker_status)
+        # Closed workspace sections must not add invisible scrollable content.
+        page.evaluate("location.hash = 'assistant'")
+        page.get_by_text('Providers and remote tools', exact=True).wait_for()
+        # Mobile deliberately reserves room beneath the last controls for visible
+        # notifications. Dismiss those before checking for unexplained blank space.
+        while page.get_by_role('button', name='Dismiss notification', exact=True).count():
+            page.get_by_role('button', name='Dismiss notification', exact=True).first.click()
+        for width in (1440, 390):
+            page.set_viewport_size({'width': width, 'height': 900})
+            for label in ('Open a saved conversation', 'Context and privacy', 'Providers and remote tools'):
+                summary = page.get_by_text(label, exact=True)
+                summary.click()
+                summary.click()
+            geometry = page.evaluate("""() => {
+                const end = document.querySelector('.assistant-settings').getBoundingClientRect().bottom + scrollY;
+                return {end, height:document.documentElement.scrollHeight, viewport:innerHeight,
+                    body:document.body.getBoundingClientRect().height,
+                    overflow:[...document.querySelectorAll('body *')].map(n=>({tag:n.tagName,cls:String(n.className),id:n.id,bottom:n.getBoundingClientRect().bottom+scrollY,height:n.getBoundingClientRect().height})).filter(n=>n.height>0&&n.bottom>end+50).sort((a,b)=>b.bottom-a.bottom).slice(0,12)};
+            }""")
+            assert geometry['height']-max(geometry['viewport'],geometry['end'])<=50, geometry
+        page.evaluate("location.hash = 'notes'")
+        page.get_by_role('heading', name='Your notes', exact=True).wait_for()
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+        page.set_viewport_size({'width': 1440, 'height': 900})
+        assert page.locator('.notes-layout').evaluate("""n => {
+            const [library, editor] = [...n.children].map(x => x.getBoundingClientRect());
+            return Math.abs(library.top-editor.top)<1 && Math.abs(library.bottom-editor.bottom)<1;
+        }"""), 'Notes panes must share one aligned workspace'
         print('PASS: Inference desktop/mobile navigation, anomaly queue, inert error text, explicit assistant target, partial coverage, dark theme, isolated API failure and error triage table.', flush=True)
     finally:
         page.unroute('**/api/n8n_proxy/dashboard*')

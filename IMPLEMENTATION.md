@@ -454,3 +454,24 @@ Repair prompt previously directed the model to propose a complete change even wh
 ## 2026-09-22 — Verified local activation
 
 User explicitly approved restarting Inference. Verified the old port-3000 PID command line, stopped only that process and restarted scripts/run_local.py hidden. New server PID 4648 completed startup, /healthz returned 200 and the live app serves the updated workflow suggestions, proposal errors and CSS. Backend archive guards and question-oriented prompts are now loaded. No n8n workflow was changed. All work remains committed on work/ui-consistency; nothing pushed.
+
+
+## 2026-09-22 — Workspace spacing and partial fleet visibility
+
+The saved local n8n connection at 127.0.0.1:5681 does not respond to a read-only
+socket probe. Its incomplete history correctly prevents claiming complete fleet
+totals. Show counts separately for each resource whose instance scan completed,
+including true zero, while keeping fleet totals unavailable when incomplete.
+No connection was deleted and no remote workflow was changed.
+
+Notes now uses one library/editor workspace with aligned panes, a bounded editor
+and a shared preview section; mobile stacks the panes. Closed assistant details
+explicitly remove their non-summary descendants from layout. Before hardening,
+closed descendants still had off-page bounding boxes, although the reported large
+blank gap was not reproduced in the clean isolated session. After hardening,
+Edge and Chrome both measure a 40px desktop / 31.94px mobile end gap after chat and
+repeated disclosure toggles. Mobile notification space remains intentional.
+Focused browser checks and changed-module syntax checks pass. Full-suite outcome
+is recorded below after the final run. No backend code changed in this unit.
+
+Final browser verification: 18 PASS, exit 0; notes persistence, disclosure toggles, mobile layouts, partial counts and existing repair flows pass. All changed frontend files deployed to the running repository after checking for concurrent edits. No restart required.

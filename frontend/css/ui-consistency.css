@@ -7,10 +7,15 @@
 .empty>.icon { width:28px; height:28px; color:var(--color-smoke); margin-bottom:12px; }
 .button>.icon,summary>.icon { width:16px; height:16px; }
 #main>.stack>div:empty { display:none; }
-.notes-layout { align-items:start; grid-template-columns:minmax(240px,.85fr) minmax(0,1.35fr); }
-.notes-layout>aside { padding:20px; }
+.notes-layout { align-items:stretch; grid-template-columns:minmax(220px,280px) minmax(0,1fr); gap:0; border:1px solid var(--border); border-radius:16px; background:var(--surface-card-surface); overflow:hidden; }
+.notes-layout>aside { padding:24px; border:0; border-right:1px solid var(--border); border-radius:0; }
+.notes-layout>aside>h2 { margin:0 0 16px; font-size:16px; }
+.notes-layout>div { gap:0; }
+.notes-layout .form-card { border:0; border-radius:0; }
+.notes-layout .form-card+.form-card { border-top:1px solid var(--border); }
+.notes-layout .form-card-body { max-width:none; }
 .notes-layout>aside .empty { padding:28px 0; }
-.notes-layout textarea { min-height:240px; height:clamp(240px,36dvh,400px); }
+.notes-layout textarea { min-height:240px; height:clamp(240px,30dvh,360px); }
 .settings-nav { margin-bottom:0; }
 .assistant-chat-toolbar { flex-wrap:wrap; row-gap:12px; }
 .assistant-rail-heading { flex-wrap:wrap; }
@@ -20,6 +25,8 @@
 .assistant-settings>summary::-webkit-details-marker,.assistant-disclosure>summary::-webkit-details-marker { display:none; }
 .assistant-settings>summary::after,.assistant-disclosure>summary::after { content:''; width:7px; height:7px; border-right:1.5px solid currentColor; border-bottom:1.5px solid currentColor; transform:rotate(-45deg); margin-left:auto; flex:none; transition:transform .16s ease-out; }
 .assistant-settings[open]>summary::after,.assistant-disclosure[open]>summary::after { transform:rotate(45deg); }
+/* Closed disclosure descendants must not retain off-page layout boxes. */
+.assistant-page details:not([open])>:not(summary) { display:none; }
 .docker-unavailable { display:flex; align-items:flex-start; gap:14px; }
 .docker-unavailable>.icon { width:24px; height:24px; color:var(--color-smoke); }
 .docker-unavailable h2 { margin:0 0 8px; font-size:16px; }
@@ -52,6 +59,7 @@
 }
 @media(max-width:700px) {
   .notes-layout { grid-template-columns:minmax(0,1fr); }
+  .notes-layout>aside { border-right:0; border-bottom:1px solid var(--border); }
   .notes-layout textarea { height:260px; }
   .assistant-disclosure>summary { min-height:44px; }
   select option { min-height:44px; }

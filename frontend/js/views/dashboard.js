@@ -45,6 +45,12 @@ export async function render(container) {
       const evidence=metrics?.data?.find(item=>item.instance_id===row.id||item.id===row.id);
       const complete=evidence?.workflows_complete&&evidence?.executions_complete;
       fleet.append(el('article',{class:'instance-row'},el('a',{href:'#instances'},icon('overview-server'),row.name),el('p',{},row.url),el('span',{class:`badge ${evidence?(complete?'info':'warning'):''}`},icon(evidence?(complete?'overview-retrieved':'overview-partial'):'overview-server'),evidence?(complete?'History retrieved':'Partial coverage'):'Connection saved')));
+      if(evidence){
+        const counts=[];
+        if(evidence.workflows_complete&&Number.isFinite(evidence.observed_workflows))counts.push(`${evidence.observed_workflows} workflows`);
+        if(evidence.executions_complete&&Number.isFinite(evidence.observed_executions_24h))counts.push(`${evidence.observed_executions_24h} saved executions in 24h`);
+        if(counts.length)fleet.lastElementChild.append(el('p',{class:'instance-counts'},counts.join(' · ')));
+      }
     }
   }
   function emptyExecutions(){return state.instances.length?empty('Choose an instance','Pick an instance in the switcher at the top of the page to see its recent executions.',[el('a',{class:'button ghost',href:'#instances'},'Open instances')]):empty('No instances connected',can('admin')?'Connect an n8n instance in Instances, then pick it in the switcher at the top of the page to see its recent executions.':'An administrator needs to connect an n8n instance before recent executions can appear.',can('admin')?[el('a',{class:'button ghost',href:'#instances'},'Open instances')]:[]);}
