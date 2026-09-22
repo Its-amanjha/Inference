@@ -1,14 +1,20 @@
 import {api as request} from '../api.js';
-import {el,button,field,formCard,notice,empty,heading} from '../lib/html.js';
+import {el,button,notice,empty,heading} from '../lib/html.js';
 import {can} from '../state.js';
 import {renderMarkdown} from '../lib/markdown.js';
 import {confirmAction} from '../lib/confirm.js';
 
+// One workspace: the library on the left, the open note on the right with its editor and a live
+// preview side by side. Paths name notes, so the path is the note's title.
 export async function render(container){
   const controller=new AbortController(),signal=controller.signal;
-  const messages=el('div'),list=el('div',{class:'stack'}),editor=el('div',{class:'stack'}),search=el('input',{type:'search',placeholder:'Search literal text', 'aria-label':'Search notes'});
-  let revision=null,loadedPath=null,selection=0;
-  const path=el('input',{placeholder:'Runbooks/Deploy.md',required:true}),content=el('textarea',{rows:20,'aria-label':'Markdown content'}),links=el('div'),preview=el('div',{class:'markdown-preview',role:'region','aria-label':'Markdown preview'});
+  const messages=el('div'),list=el('ul',{class:'notes-list'});
+  const search=el('input',{type:'search',placeholder:'Search notes','aria-label':'Search notes'});
+  let revision=null,loadedPath=null,selection=0,previewTimer=0;
+  const path=el('input',{id:'note-path',class:'notes-title',placeholder:'Runbooks/Deploy.md',required:true,autocomplete:'off',spellcheck:'false'});
+  const content=el('textarea',{id:'note-content',class:'notes-editor',placeholder:'Write Markdown…'});
+  const preview=el('div',{class:'markdown-preview notes-preview',role:'region','aria-label':'Markdown preview'});
+  const links=el('div',{class:'notes-links'});
   content.readOnly=!can('operator');path.readOnly=!can('operator');
   let writing=false;
   const api=async(path,options={})=>{
@@ -19,15 +25,30 @@ export async function render(container){
     try{return await request(path,options);}finally{if(write)writing=false;}
   };
   const act=async fn=>{try{await fn();}catch(e){if(!signal.aborted)notice(messages,e);}};
-  async function open(notePath){const token=++selection;const note=await api('/api/notes/note?path='+encodeURIComponent(notePath),{signal});if(token!==selection)return;loadedPath=note.path;path.value=note.path;path.readOnly=true;revision=note.revision;content.value=note.content;renderMarkdown(preview,note.content);
-    const backlinks=await api('/api/notes/backlinks?path='+encodeURIComponent(notePath),{signal});if(token!==selection)return;links.replaceChildren(el('h3',{},'Linked from'),backlinks.data.length?el('ul',{class:'backlinks'},...backlinks.data.map(n=>el('li',{},button(n.path,()=>act(()=>open(n.path)),'ghost')))):el('p',{class:'muted'},'No backlinks yet.'));
+  const showPreview=()=>{renderMarkdown(preview,content.value);if(!content.value.trim())preview.replaceChildren(el('p',{class:'notes-preview-empty'},'The preview appears here as you write.'));};
+  content.addEventListener('input',()=>{clearTimeout(previewTimer);previewTimer=setTimeout(showPreview,250);},{signal});
+  const markActive=()=>{for(const item of list.querySelectorAll('.notes-item'))item.toggleAttribute('aria-current',item.dataset.path===loadedPath);};
+  const split=notePath=>{const parts=String(notePath).split('/');const file=parts.pop();return {name:file.replace(/\.md$/i,''),folder:parts.join('/')};};
+
+  async function open(notePath){const token=++selection;const note=await api('/api/notes/note?path='+encodeURIComponent(notePath),{signal});if(token!==selection)return;
+    loadedPath=note.path;path.value=note.path;path.readOnly=true;revision=note.revision;content.value=note.content;showPreview();markActive();
+    const backlinks=await api('/api/notes/backlinks?path='+encodeURIComponent(notePath),{signal});if(token!==selection)return;
+    links.replaceChildren(backlinks.data.length?el('div',{},el('h3',{},'Linked from'),el('ul',{class:'backlinks'},...backlinks.data.map(n=>el('li',{},button(n.path,()=>act(()=>open(n.path)),'ghost'))))):'');
   }
-  async function load(){const data=await api(search.value?'/api/notes/search?q='+encodeURIComponent(search.value):'/api/notes',{signal});list.replaceChildren(...data.data.map(n=>el('div',{},button(n.path,()=>act(()=>open(n.path)),'ghost'),n.excerpt?el('p',{class:'muted'},n.excerpt):null)));if(!data.data.length)list.append(empty('No matching notes','Create a Markdown note or change your search.',search.value?[button('Clear search',()=>{search.value='';act(load);},'ghost')]:can('operator')?[button('Create your first note',startNote)]:[]));}
-  const startNote=()=>{selection++;loadedPath=null;revision=null;path.value='';path.readOnly=false;content.value='';preview.textContent='';links.replaceChildren();path.focus();};
+  async function load(){const data=await api(search.value?'/api/notes/search?q='+encodeURIComponent(search.value):'/api/notes',{signal});
+    list.replaceChildren(...data.data.map(n=>{const {name,folder}=split(n.path);
+      const item=el('li',{class:'notes-item','data-path':n.path},el('button',{type:'button',class:'notes-item-button','aria-label':n.path},
+        el('span',{class:'notes-item-name'},name),folder?el('span',{class:'notes-item-folder'},folder):null,n.excerpt?el('span',{class:'notes-item-excerpt'},n.excerpt):null));
+      item.firstChild.addEventListener('click',()=>act(()=>open(n.path)));return item;}));
+    if(!data.data.length)list.append(el('li',{class:'notes-list-empty'},empty(search.value?'No matching notes':'No notes yet',search.value?'Try another search.':'Runbooks and fleet notes live here.',
+      search.value?[button('Clear search',()=>{search.value='';act(load);},'ghost')]:can('operator')?[button('Create your first note',startNote)]:[])));
+    markActive();
+  }
+  const startNote=()=>{selection++;loadedPath=null;revision=null;path.value='';path.readOnly=false;content.value='';showPreview();links.replaceChildren();markActive();path.focus();};
   const saveNote=()=>act(async()=>{
     if(!path.reportValidity())return;
     const result=await api('/api/notes/note',{method:'PUT',json:{path:path.value,content:content.value,expected_revision:revision}});
-    revision=result.revision;loadedPath=result.path;path.readOnly=true;renderMarkdown(preview,result.content);notice(messages,'Note saved.');await load();
+    revision=result.revision;loadedPath=result.path;path.readOnly=true;content.value=result.content;showPreview();notice(messages,'Note saved.');await load();
   });
   const deleteNote=()=>act(async()=>{
     if(!loadedPath||!revision){notice(messages,'Open a note before deleting it.');return;}
@@ -35,17 +56,25 @@ export async function render(container){
     if(!await confirmAction({title:'Delete note',target:notePath,consequence:'The Markdown file is permanently deleted from the notes folder.',confirmLabel:'Delete note',danger:true}))return;
     if(loadedPath!==notePath||revision!==noteRevision)throw new Error('The open note changed. Review it before deleting.');
     await api('/api/notes/note?path='+encodeURIComponent(notePath)+'&expected_revision='+encodeURIComponent(noteRevision),{method:'DELETE'});
-    selection++;revision=null;loadedPath=null;path.value='';path.readOnly=false;content.value='';preview.textContent='';links.replaceChildren();await load();
+    selection++;revision=null;loadedPath=null;path.value='';path.readOnly=false;content.value='';showPreview();links.replaceChildren();await load();
   });
-  const editorCard=formCard({title:'Note editor',description:'Markdown files live in the notes folder on this server.',
-    body:[field('Markdown path',path,{hint:'Folders are created as needed, for example Runbooks/Deploy.md.'}),field('Markdown content',content)],
-    actions:can('operator')?[button('New note',startNote,'ghost'),button('Delete note',deleteNote,'danger'),button('Save note',saveNote)]:[]});
-  // Enter in the path field saves instead of reloading the page.
-  editorCard.addEventListener('submit',event=>{event.preventDefault();if(can('operator'))saveNote();});
-  const previewCard=el('section',{class:'card form-card'},
-    el('div',{class:'form-card-head card-head-row'},el('h3',{},'Markdown preview'),button('Preview Markdown',()=>{renderMarkdown(preview,content.value);},'ghost')),
-    el('div',{class:'form-card-body'},preview,links));
-  editor.append(editorCard,previewCard);
-  container.append(heading('Notes','Runbooks and linked Markdown notes for your fleet.'),messages,el('div',{class:'toolbar'},search,button('Search',()=>act(load),'ghost')),el('div',{class:'grid notes-layout'},el('aside',{class:'card','aria-label':'Notes library'},el('h2',{},'Your notes'),list),editor));
-  search.addEventListener('keydown',e=>{if(e.key==='Enter')act(load);});await act(load);return()=>{selection++;controller.abort();};
+
+  const searchForm=el('form',{class:'notes-search',role:'search'},search,button('Search',()=>act(load),'ghost'));
+  searchForm.addEventListener('submit',event=>{event.preventDefault();act(load);});
+  const library=el('aside',{class:'notes-library','aria-label':'Notes library'},
+    el('div',{class:'notes-library-head'},el('h2',{},'Your notes'),can('operator')?button('New note',startNote,'ghost',{'aria-label':'New note'}):null),
+    searchForm,list);
+  // Enter in the title saves instead of reloading the page.
+  const head=el('form',{class:'notes-head'},
+    el('label',{class:'sr-only',for:'note-path'},'Markdown path'),path,
+    can('operator')?el('div',{class:'notes-actions'},button('Delete note',deleteNote,'danger'),button('Save note',saveNote)):null);
+  head.addEventListener('submit',event=>{event.preventDefault();if(can('operator'))saveNote();});
+  const workspace=el('section',{class:'notes-main','aria-label':'Open note'},head,
+    el('div',{class:'notes-split'},
+      el('div',{class:'notes-pane'},el('label',{class:'notes-pane-label',for:'note-content'},'Markdown content'),content),
+      el('div',{class:'notes-pane'},el('span',{class:'notes-pane-label','aria-hidden':'true'},'Preview'),preview)),
+    links);
+  container.append(heading('Notes','Runbooks and linked notes for your fleet.'),messages,el('div',{class:'notes-shell'},library,workspace));
+  showPreview();
+  await act(load);return()=>{selection++;clearTimeout(previewTimer);controller.abort();};
 }
