@@ -429,3 +429,8 @@ state and dashboard loading pass. See docs/ui-audit-2026-09-22.md for scope,
 remaining limits and verification. Backend: 897 passed, 11 skipped, 1 warning.
 Browser: 18 PASS, exit 0. All 30 modules parse. Delayed API checks show independent
 dashboard rendering and retained successful content after transient errors.
+
+
+## 2026-09-22 — Archived repair rejection
+
+Read-only VPS checks found the failed target archived (last updated before both failures). Both saved desired documents validate against that server's published PUT schema. Block repair proposal creation and confirmation when archived, with an explicit unarchive instruction; never unarchive automatically. Two regressions prove zero remote writes, including archiving after proposal. Full verification: 899 passed, 11 skipped, 1 warning; 18 browser PASS. Backend activation awaits the user's restart choice.

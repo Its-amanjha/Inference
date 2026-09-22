@@ -114,6 +114,28 @@ async def test_self_calling_patch_is_blocked_before_any_approval(repair):
     assert not remote_writes(repair)
 
 
+async def test_archived_workflow_cannot_create_a_repair_proposal(repair):
+    repair.workflow['isArchived'] = True
+    digest = (await read_context(repair))['workflow']['content_hash']
+    response = await run(repair, 'propose_workflow_patch', patch_arguments(repair, digest))
+    assert response.status_code == 409
+    assert response.json()['code'] == 'workflow_archived'
+    assert 'Unarchive it in n8n' in response.json()['detail']
+    assert (await repair.app.state.db.fetchone('SELECT COUNT(*) AS n FROM approval_actions'))['n'] == 0
+    assert not remote_writes(repair)
+
+
+async def test_archived_after_proposal_is_rejected_before_remote_write(repair):
+    proposal = await propose_patch(repair)
+    action = proposal['pending_action']
+    repair.workflow['isArchived'] = True
+    response = await confirm(repair, action['id'])
+    assert response.status_code == 409
+    assert response.json()['code'] == 'workflow_archived'
+    assert await status(repair, action['id']) == 'failed'
+    assert not remote_writes(repair)
+
+
 async def test_context_lists_other_active_workflow_triggers_only(repair):
     service = {'id': 'svc', 'name': 'Order service', 'active': True, 'connections': {}, 'settings': {}, 'nodes': [
         {'id': 's1', 'name': 'Webhook', 'type': 'n8n-nodes-base.webhook', 'typeVersion': 2, 'position': [0, 0],
