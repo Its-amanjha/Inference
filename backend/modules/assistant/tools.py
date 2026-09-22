@@ -129,13 +129,18 @@ def role(name: str) -> str:
     return 'operator' if name in MUTATIONS else 'viewer'
 
 
-def declarations(user_role: str, *, scope: Literal['all', 'standard', 'repair'] = 'all') -> list[dict[str, Any]]:
+def declarations(user_role: str, *, scope: Literal['all', 'standard', 'repair'] = 'all',
+                 allow_changes: bool = True) -> list[dict[str, Any]]:
     """Role-filtered, provider-portable (flattened) declarations.
 
     `standard` conversations do not see repair tools; `repair` conversations see only
-    repair tools and the activation switches used by linked proposals.
+    repair tools and the activation switches used by linked proposals. Without
+    `allow_changes` no tool that could create an approval is offered at all, so a model
+    that ignores its instructions still cannot turn a question into a proposal.
     """
     def visible(name: str) -> bool:
+        if not allow_changes and name in MUTATIONS:
+            return False
         if scope == 'standard':
             return name not in REPAIR_TOOLS
         if scope == 'repair':
