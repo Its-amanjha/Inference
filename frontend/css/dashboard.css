@@ -1,0 +1,28 @@
+/* Dashboard refinement: keep section feedback inside the same content gutters. */
+.dashboard .dashboard-columns { align-items:stretch; }
+.dashboard .dashboard-columns>.panel { display:flex; flex-direction:column; min-width:0; }
+.dashboard .dashboard-columns .panel-body { padding:20px 24px; flex:1; }
+.dashboard .dashboard-investigation { display:flex; flex-direction:column; gap:8px; }
+.dashboard .dashboard-investigation>div:empty { display:none; }
+.dashboard .dashboard-investigation .load-as-of,
+.dashboard .dashboard-investigation .load-progress { margin:0; }
+.dashboard .dashboard-findings { display:flex; flex-direction:column; flex:1; min-width:0; }
+.dashboard .dashboard-findings>.empty { flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; padding:24px 0; }
+.dashboard .dashboard-findings>.empty p { margin:10px 0 16px; }
+.dashboard .panel-head a { display:inline-flex; align-items:center; gap:6px; }
+.dashboard .panel-head a>.icon { width:14px; height:14px; flex:none; }
+.dashboard .instance-row:first-child { padding-top:0; }
+.dashboard .instance-row:last-child { padding-bottom:0; }
+.dashboard .instance-row>a { display:inline-flex; align-items:center; gap:10px; }
+.dashboard .instance-row>a>.icon { width:18px; height:18px; flex:none; color:var(--selection-text); }
+.dashboard .instance-row .badge { display:inline-flex; align-items:center; gap:6px; }
+.dashboard .instance-row .badge>.icon { width:14px; height:14px; flex:none; }
+.dashboard .panel .empty .empty-actions .icon { width:16px; height:16px; margin:0; color:currentColor; }
+.dashboard .dashboard-section:not(.dashboard-investigation)>div:not(:empty):not(.telemetry-strip)>.load-as-of,
+.dashboard .dashboard-section:not(.dashboard-investigation)>div>.load-progress { margin:12px 24px; }
+@media(max-width:700px) {
+  .dashboard .dashboard-columns .panel-head { padding:16px; flex-wrap:wrap; gap:8px; }
+  .dashboard .dashboard-columns .panel-body { padding:16px; }
+  .dashboard .panel-head a { min-height:44px; }
+  .dashboard .dashboard-findings>.empty { padding:20px 0; }
+}

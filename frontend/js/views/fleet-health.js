@@ -253,15 +253,17 @@ export async function render(container) {
       currentResult: cached
     };
 
-    if (cached) {
-      updateEntryUI(entry, cached);
-    } else {
+    if (!cached) {
       feedback.append(loadingState(`Checking connections on ${instance.name}…`));
     }
 
     return entry;
   });
 
+  // Cached cards update fleet totals and filters, which need the complete list.
+  for (const entry of entries) {
+    if (entry.currentResult) updateEntryUI(entry, entry.currentResult);
+  }
   updateRollup();
 
   function start(selected = entries) {

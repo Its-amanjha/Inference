@@ -312,6 +312,8 @@ async def prepare(request: Request, name: str, arguments: dict[str, Any], *, lin
     instance_id, workflow_id = args.instance_id, args.workflow_id
     async with instance_guard(request, instance_id):
         document = await fetch_workflow(request, instance_id, workflow_id)
+        if document.get('isArchived') is True:
+            fail(409, 'workflow_archived', 'This workflow is archived in n8n. Unarchive it in n8n, then ask for a new proposal. Nothing was written.')
         connection = await instance_row(request, instance_id)
         before = writable_document(document)
         _bounded(before)
@@ -378,6 +380,8 @@ async def execute(request: Request, action_id: str, name: str, state: dict[str, 
     client = N8nClient(request)
     async with instance_guard(request, instance_id):
         document = await fetch_workflow(request, instance_id, workflow_id)
+        if document.get('isArchived') is True:
+            fail(409, 'workflow_archived', 'This workflow is archived in n8n. Unarchive it in n8n, then ask for a new proposal. Nothing was written.')
         connection = await instance_row(request, instance_id)
         digest = content_hash(document)
         if binding(connection, workflow_id, name, digest) != state['fingerprint']:

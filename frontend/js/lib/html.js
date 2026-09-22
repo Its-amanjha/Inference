@@ -11,6 +11,9 @@ export function el(tag, attrs = {}, ...children) {
     else if (['value','checked','selected','disabled','hidden','textContent'].includes(name)) node[name] = value;
     else if (!name.toLowerCase().startsWith('on') && name !== 'innerHTML') node.setAttribute(name, value === true ? '' : String(value));
   }
+  if ((tag==='button'||tag==='summary'||(tag==='a'&&node.classList.contains('button'))) && !node.querySelector('svg')) {
+    const glyph=actionIcon(node.textContent.trim());if(glyph)node.prepend(glyph);
+  }
   return node;
 }
 export function button(label, callback, className = 'button', extra = {}) {
@@ -49,7 +52,7 @@ function secretControl(input, label) {
 }
 // Settings card: heading and description, fields, then a footer with an optional note and the actions (primary last).
 export function formCard({title, description, body = [], note, actions = [], className = '', heading = 'h2', flat = false} = {}) {
-  const head = title || description ? el('div',{class:'form-card-head'}, typeof title === 'string' ? el(heading,{},title) : title, description ? el('p',{},description) : null) : null;
+  const head = title || description ? el('div',{class:'form-card-head'}, typeof title === 'string' ? el(heading,{class:'form-card-title'},icon(location.hash.startsWith('#assistant')?'settings':(location.hash.slice(1).split('?')[0]||'settings')),title) : title, description ? el('p',{},description) : null) : null;
   const foot = note || actions.length ? el('div',{class:'form-card-foot'}, note ? el('p',{class:'form-card-note'},note) : null, el('div',{class:'form-actions'},actions)) : null;
   return el('form',{class:['card form-card',flat?'is-flat':'',className].filter(Boolean).join(' ')}, head, el('div',{class:'form-card-body'},body), foot);
 }
@@ -66,7 +69,7 @@ export function heading(title, description = '') { const route=location.hash.sli
 // options.actions (array of Nodes: links, buttons or both) renders a centred action
 // row below the body. Omitting it renders exactly the historic two-argument output.
 export function empty(title, body = '', actions = []) {
-  const node = el('section',{class:'card empty'},el('h2',{},title),el('p',{},body));
+  const node = el('section',{class:'card empty'},icon('inbox'),el('h2',{},title),el('p',{},body));
   const list = Array.isArray(actions) ? actions : (actions instanceof Node ? [actions] : []);
   if (list.length) node.append(el('div',{class:'empty-actions'},...list));
   return node;

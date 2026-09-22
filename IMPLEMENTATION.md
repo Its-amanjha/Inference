@@ -403,3 +403,75 @@ Update this ledger with actual code and check results after each unit. Do not co
 - Compared all 86 files under the vendored skill directories, including assets, against upstream commit `19cd793f4789e3ef9c657ccf26e097f641a77df0`. With line endings normalized, 43 match their upstream paths and 43 differ. This is not a completed provenance verification.
 - The Apache-derived hooks named in the retained upstream notice are absent, but the included router skill is also mentioned as borrowing document structure. Added this qualification to `backend/skills/README.md`; do not claim that no Apache-derived material is included.
 - Remaining: identify the imported upstream revision and review differences before closing the license check. Design review rerun is still pending; no frontend changes were made during this check.
+
+## 2026-09-22 — Dashboard alignment and semantic icons
+
+Moved investigation refresh feedback and its timestamp into the panel content
+padding, aligned the two summary panels on desktop, and kept their mobile stack.
+Added locally embedded Lucide paths for the queue, servers, retrieved/partial
+coverage and empty inbox, with text labels and the upstream license retained.
+Navigation links use the existing arrow glyph. All styling is scoped in the new
+frontend/css/dashboard.css; existing shared CSS and icon helpers are untouched.
+
+Verification: headless Edge on a temporary loopback static server with simulated
+API results. Light, Dark and n8n themes passed at 1440 and 390 px; desktop summary
+panel bottoms match, mobile has no horizontal overflow, coverage icons render,
+and a 429 retains findings/instance evidence with status notices and Retry.
+Before/after screenshots are in OS temp/inference-dashboard-layout. JavaScript
+passed node --check as a temporary .mjs copy. No live VPS calls or full backend
+suite were needed for this visual-only change.
+
+
+## 2026-09-22 — Shared UI consistency and honest loading
+
+Completed the all-page icon, native-dropdown motion, Notes layout, optional Docker
+state and dashboard loading pass. See docs/ui-audit-2026-09-22.md for scope,
+remaining limits and verification. Backend: 897 passed, 11 skipped, 1 warning.
+Browser: 18 PASS, exit 0. All 30 modules parse. Delayed API checks show independent
+dashboard rendering and retained successful content after transient errors.
+
+
+## 2026-09-22 — Archived repair rejection
+
+Read-only VPS checks found the failed target archived (last updated before both failures). Both saved desired documents validate against that server's published PUT schema. Block repair proposal creation and confirmation when archived, with an explicit unarchive instruction; never unarchive automatically. Two regressions prove zero remote writes, including archiving after proposal. Full verification: 899 passed, 11 skipped, 1 warning; 18 browser PASS. Backend activation awaits the user's restart choice.
+
+
+## 2026-09-22 — Proposal display consistency
+
+Omit absent DOM children instead of rendering literal null after failed/cancelled proposals. Stack each action-review title above its status so long titles keep the full column. Edge reproduced one null text node before and zero after; 390px rail titles both measure 320px with badges below. Full browser suite includes the null regression and passes 18 checks.
+
+
+## 2026-09-22 — Workflow suggestions
+
+Add debounced name suggestions from each selected instance, bounded to three concurrent reads and ten displayed options. Cancel stale requests on typing, blur and navigation. Names include instance/ID; keyboard arrows/Enter/Escape and reduced motion are verified at 1440/390px. The VPS returned partial-name matches for AI and GATE in read-only checks. Clear search now actually clears the query. Browser suite: 18 PASS; changed modules parse.
+
+
+## 2026-09-22 — Answer questions before proposing changes
+
+Repair prompt previously directed the model to propose a complete change even when the message was a question. Clarify in both general and repair prompts that a pinned target is context, and edits require a request for a change/fix. Approval controls remain unchanged. Full suite: 899 passed, 11 skipped, 1 warning in 307.78s; provider tests are scripted, so no claim of live model compliance. Backend activation awaits restart.
+
+
+## 2026-09-22 — Verified local activation
+
+User explicitly approved restarting Inference. Verified the old port-3000 PID command line, stopped only that process and restarted scripts/run_local.py hidden. New server PID 4648 completed startup, /healthz returned 200 and the live app serves the updated workflow suggestions, proposal errors and CSS. Backend archive guards and question-oriented prompts are now loaded. No n8n workflow was changed. All work remains committed on work/ui-consistency; nothing pushed.
+
+
+## 2026-09-22 — Workspace spacing and partial fleet visibility
+
+The saved local n8n connection at 127.0.0.1:5681 does not respond to a read-only
+socket probe. Its incomplete history correctly prevents claiming complete fleet
+totals. Show counts separately for each resource whose instance scan completed,
+including true zero, while keeping fleet totals unavailable when incomplete.
+No connection was deleted and no remote workflow was changed.
+
+Notes now uses one library/editor workspace with aligned panes, a bounded editor
+and a shared preview section; mobile stacks the panes. Closed assistant details
+explicitly remove their non-summary descendants from layout. Before hardening,
+closed descendants still had off-page bounding boxes, although the reported large
+blank gap was not reproduced in the clean isolated session. After hardening,
+Edge and Chrome both measure a 40px desktop / 31.94px mobile end gap after chat and
+repeated disclosure toggles. Mobile notification space remains intentional.
+Focused browser checks and changed-module syntax checks pass. Full-suite outcome
+is recorded below after the final run. No backend code changed in this unit.
+
+Final browser verification: 18 PASS, exit 0; notes persistence, disclosure toggles, mobile layouts, partial counts and existing repair flows pass. All changed frontend files deployed to the running repository after checking for concurrent edits. No restart required.

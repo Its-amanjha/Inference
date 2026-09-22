@@ -30,6 +30,7 @@ const ERRORS={
   context_stale:'The workflow changed after this proposal was made. Nothing was written.',
   approval_stale:'The workflow changed after this proposal was made. Nothing was written.',
   workflow_active:'The workflow is active. Deactivate it, then apply the change. Nothing was written.',
+  workflow_archived:'This workflow is archived in n8n. Unarchive it in n8n, then ask for a new proposal. Nothing was written.',
   target_mismatch:'This proposal names a different workflow than the pinned repair target. Nothing was written.',
   upstream_outcome_unknown:'n8n did not confirm the write, so the change may or may not have been saved.',
   history_unavailable:'Workflow history is unavailable for this workflow, so the earlier version cannot be restored. Nothing was written.',
@@ -39,7 +40,7 @@ const ERRORS={
   self_call_blocked:'This workflow would call its own trigger in a loop. Ask the AI to use the service it should call instead.',
   execution_not_retryable:'This execution can no longer be retried. Open its latest state in n8n and choose a failed or crashed execution without an existing successful retry.',
 };
-export const statusForError=code=>({context_stale:'stale',approval_stale:'stale',upstream_outcome_unknown:'uncertain',execution_not_retryable:'failed'})[code];
+export const statusForError=code=>({context_stale:'stale',approval_stale:'stale',upstream_outcome_unknown:'uncertain',execution_not_retryable:'failed',workflow_archived:'failed'})[code];
 export const describeRepairError=error=>ERRORS[error?.code]||error?.message||String(error);
 
 export const formatBytes=bytes=>{
@@ -283,7 +284,7 @@ export function renderProposal(card,view,handlers){
     el('div',{className:'proposal-head'},el('h3',{className:'proposal-title',id:`proposal-${safe}-title`},preview?.summary_text||(action?.name==='propose_restore_workflow'?'Restore an earlier workflow version':'Change a workflow')),statusBadge(status)),
     el('p',{className:'proposal-target'},targetLine(action),status==='pending'&&Number.isFinite(Number(action?.expires_at))?` · Expires ${formatTime(Number(action.expires_at))}`:''),
     ...(preview?.kind==='execution_retry'?[el('div',{className:'proposal-uncertain proposal-retry-warning'},icon('errors'),el('div',{},el('p',{className:'proposal-state-title'},'A retry can repeat payments and other effects'),el('p',{},RETRY_WARNING)))]:[]),
-    state,...sections,...(round2&&!footer?[]:[footer]),feedback,raw);
+    ...(state?[state]:[]),...sections,...(footer?[footer]:[]),feedback,raw);
   if(focused){
     const target=focused==='card'?null:[...card.querySelectorAll('[data-control]')].find(node=>node.dataset.control===focused&&!node.disabled);
     (target||card).focus({preventScroll:true});
