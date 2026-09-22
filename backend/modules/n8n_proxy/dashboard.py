@@ -67,6 +67,7 @@ async def aggregate(request: Request, instance_id: str | None) -> dict[str, Any]
             elif status not in ('running', 'waiting', 'new'):
                 execution_complete = False
         return {'instance_id':instance['id'], 'name':instance['name'], 'observed_workflows':len(workflows),
+                'active_workflows':sum(1 for row in workflows if isinstance(row, dict) and row.get('active') is True),
                 'observed_executions_24h':count, 'successes':success, 'terminal':terminal,
                 'workflows_complete':workflow_complete, 'executions_complete':execution_complete}
 
@@ -77,7 +78,7 @@ async def aggregate(request: Request, instance_id: str | None) -> dict[str, Any]
             try:
                 result = await asyncio.wait_for(one(instance), timeout=30)
             except asyncio.TimeoutError:
-                result = {'instance_id':instance['id'], 'name':instance['name'], 'observed_workflows':0,
+                result = {'instance_id':instance['id'], 'name':instance['name'], 'observed_workflows':0, 'active_workflows':0,
                           'observed_executions_24h':0, 'successes':0, 'terminal':0,
                           'workflows_complete':False, 'executions_complete':False}
             results.append(result)

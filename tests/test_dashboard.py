@@ -73,3 +73,13 @@ async def test_dashboard_silent_count_uses_confirmed_recent_scoped_spans(fleet):
             (target,'trace',str(index),stamp,health,silent))
     data = (await fleet.client.get('/api/n8n_proxy/dashboard',params={'instance_id':instance})).json()
     assert data['confirmed_silent_error_spans_24h'] == 1
+
+
+async def test_dashboard_counts_active_workflows_per_instance(fleet):
+    instance = await add(fleet)
+    fleet.replies[('alpha.example','GET','/api/v1/executions')] = httpx.Response(200,json={'data':[]})
+    fleet.replies[('alpha.example','GET','/api/v1/workflows')] = httpx.Response(200,json={'data':[
+        {'id':'one','active':True},{'id':'two','active':False},{'id':'three'},{'id':'four','active':'true'}]})
+    row = (await fleet.client.get('/api/n8n_proxy/dashboard',params={'instance_id':instance})).json()['data'][0]
+    # Only a real boolean true counts; a missing or string flag is not proof of activation.
+    assert row['observed_workflows'] == 4 and row['active_workflows'] == 1
