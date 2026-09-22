@@ -63,6 +63,23 @@ export function rememberProbe(instance,result){
   const bounded=Object.fromEntries(Object.entries(rows).sort((a,b)=>String(b[1]?.result?.checked_at).localeCompare(String(a[1]?.result?.checked_at))).slice(0,200));
   try{sessionStorage.setItem(key,JSON.stringify(bounded));}catch{/* Storage may be disabled. */}
 }
+// The fleet scan is rate-limited (4 a minute) and three pages show its numbers. They share one result:
+// a scan newer than a minute is reused, and a rate-limited or failed scan falls back to the last one.
+const FLEET_TTL=60000;
+function fleetKey(){const user=state.user?.username;return user?`inference:fleet-metrics:${user}`:null;}
+// A cached scan is only reused for the same set of instances: adding or removing one invalidates it.
+const fleetIds=()=>state.instances.map(item=>item.id).sort().join(',');
+function readFleet(){const key=fleetKey();if(!key)return null;try{const entry=JSON.parse(sessionStorage.getItem(key)||'null');
+  return entry&&Array.isArray(entry.metrics?.data)&&entry.ids===fleetIds()?entry:null;}catch{return null;}}
+export function rememberFleetMetrics(metrics){const key=fleetKey();if(!key||!Array.isArray(metrics?.data))return;
+  try{sessionStorage.setItem(key,JSON.stringify({at:Date.now(),ids:fleetIds(),metrics}));}catch{/* Storage may be disabled. */}}
+// `fresh` always asks the server (the overview's Refresh must refresh) but still falls back when limited.
+export async function fleetMetrics({signal,fresh=false}={}){
+  const cached=readFleet();
+  if(!fresh&&cached&&Date.now()-cached.at<FLEET_TTL)return cached.metrics;
+  try{const metrics=await api('/api/n8n_proxy/dashboard',{signal});rememberFleetMetrics(metrics);return metrics;}
+  catch(error){if(error?.name==='AbortError'||!cached)throw error;return cached.metrics;}
+}
 // Availability, throughput and error rate for one instance, from the dashboard scan. A value the scan
 // could not count is shown as a dash, never as zero.
 export function instanceStats(evidence){

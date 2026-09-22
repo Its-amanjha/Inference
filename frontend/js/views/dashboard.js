@@ -1,9 +1,9 @@
 import {api} from '../api.js';
-import {state,pageSize,can} from '../state.js';
+import {state,can} from '../state.js';
 import {el,button,heading,table,empty} from '../lib/html.js';
 import {icon,registerIcons} from '../lib/icons.js';
 import {severityPill,relativeTime,instanceName,explainHref,repairHref} from '../lib/triage.js';
-import {loadingState,loadFailure,asOf,cachedProbe,instanceStats} from '../lib/payload.js';
+import {loadingState,loadFailure,asOf,cachedProbe,fleetMetrics} from '../lib/payload.js';
 
 
 // Adapted Lucide SVG paths, kept local and rendered at the shared UI stroke width.
@@ -40,20 +40,46 @@ export async function render(container) {
   function renderFleet(metrics) {
     fleet.replaceChildren();
     if(!scoped.length){fleet.append(empty('Connect your first instance','Connect your automation environment to see workflows and execution history.',[el('a',{class:'button ghost',href:'#instances'},icon('add'),'Open instances')]));return;}
-    for(const row of scoped){
+    // One row per instance: name with its last connection check, then the numbers an operator compares.
+    // A value the scan could not count is a dash with a reason on hover, never a zero.
+    const count=(done,value)=>done&&Number.isFinite(value)?value:null;
+    const rows=scoped.map(row=>{
       const evidence=metrics?.data?.find(item=>item.instance_id===row.id||item.id===row.id);
-      const complete=evidence?.workflows_complete&&evidence?.executions_complete;
       const probe=cachedProbe(row);
-      // Reachability comes only from a real connection check; without one the card says so.
-      const reach=probe?el('span',{class:`badge ${probe.reachable?'success':'error'}`},icon(probe.reachable?'check':'errors'),probe.reachable?'Reachable':'Unreachable')
-        :el('span',{class:'badge'},'Not checked');
-      const latency=probe?.reachable&&Number.isFinite(probe.latency_ms)?el('span',{class:'badge latency'},`${probe.latency_ms} ms`):null;
-      fleet.append(el('article',{class:'instance-row'},
-        el('div',{class:'instance-row-head'},el('a',{href:'#fleet-health'},icon('overview-server'),row.name),el('span',{class:'instance-badges'},reach,latency)),
-        el('p',{class:'instance-host'},row.url.replace(/^https?:\/\//,'')),
-        evidence?instanceStats(evidence):null,
-        evidence&&!complete?el('p',{class:'instance-partial'},icon('overview-partial'),'Some history could not be counted.'):null));
-    }
+      const health=probe?(probe.reachable?'up':'down'):'unknown';
+      const status=probe?(probe.reachable?(Number.isFinite(probe.latency_ms)?`${probe.latency_ms} ms`:'Reachable'):'Unreachable'):'Not checked';
+      const workflows=count(evidence?.workflows_complete,evidence?.observed_workflows);
+      const runs=count(evidence?.executions_complete,evidence?.observed_executions_24h);
+      const finished=runs!==null&&Number.isFinite(evidence?.terminal)?evidence.terminal:null;
+      const missing=el('span',{class:'fleet-mini-missing',title:evidence?'Could not be counted from this instance':'Not loaded yet'},'—');
+      return [
+        el('div',{class:'fleet-mini-name'},el('a',{href:'#fleet-health'},row.name),
+          el('span',{class:`fleet-mini-status is-${health}`},el('span',{class:'fleet-mini-dot','aria-hidden':'true'}),status)),
+        workflows===null?missing:el('span',{},String(workflows),Number.isFinite(evidence?.active_workflows)?el('span',{class:'fleet-mini-sub'},`${evidence.active_workflows} active`):null),
+        runs===null?missing.cloneNode(true):String(runs),
+        finished?`${Math.round(evidence.successes/finished*100)}%`:runs===null?missing.cloneNode(true):'—',
+      ];
+    });
+    fleet.append(table(['Instance','Workflows','Runs · 24h','Success'],rows,{numeric:[1,2,3],className:'fleet-mini'}));
+  }
+  const names=new Map();let namesLoaded=false;
+  async function workflowNames(rows){
+    if(namesLoaded||!instance||!rows.some(row=>!names.has(String(row.workflowId))))return;
+    namesLoaded=true;
+    try{
+      const result=await api('/api/n8n_proxy/workflows?'+new URLSearchParams({instance_id:instance,limit:'250'}),{signal:controller.signal});
+      for(const row of result.data||[])names.set(String(row.id),row.name||String(row.id));
+    }catch{/* Names are a convenience: without them the row still shows its workflow ID. */}
+  }
+  const RUN_STATES={success:['success','Succeeded','check'],error:['error','Failed','errors'],crashed:['error','Crashed','errors'],
+    running:['info','Running','refresh'],waiting:['info','Waiting','clock'],new:['info','Queued','clock'],canceled:['','Canceled','close']};
+  const runBadge=status=>{const [tone,label,glyph]=RUN_STATES[status]||['',status?String(status):'Unknown','info'];
+    return el('span',{class:`badge run-badge${tone?` ${tone}`:''}`},icon(glyph),label);};
+  function duration(started,stopped,status){
+    const from=Date.parse(started),to=Date.parse(stopped);
+    if(!Number.isFinite(from)||!Number.isFinite(to)||to<from)return ['running','waiting','new'].includes(status)?'In progress':'—';
+    const ms=to-from;
+    return ms<1000?`${ms} ms`:ms<60000?`${(ms/1000).toFixed(ms<10000?1:0)} s`:ms<3600000?`${Math.round(ms/60000)} min`:`${(ms/3600000).toFixed(1)} h`;
   }
   function emptyExecutions(){return state.instances.length?empty('Choose an instance','Pick one at the top of the page to see its runs.',[el('a',{class:'button ghost',href:'#instances'},'Open instances')]):empty('No instances connected',can('admin')?'Connect an n8n instance in Instances, then pick it in the switcher at the top of the page to see its recent executions.':'An administrator needs to connect an n8n instance before recent executions can appear.',can('admin')?[el('a',{class:'button ghost',href:'#instances'},'Open instances')]:[]);}
   renderFleet();
@@ -69,8 +95,9 @@ export async function render(container) {
       const query=instance?`?instance_id=${encodeURIComponent(instance)}`:'';
       const errorQuery=new URLSearchParams({status:'open',limit:'4'});if(instance)errorQuery.set('instance_id',instance);
       const requests=[
-        instance?api('/api/n8n_proxy/executions'+query+'&limit='+pageSize(),{signal:controller.signal}):Promise.resolve(null),
-        api('/api/n8n_proxy/dashboard'+query,{signal:controller.signal}),
+        instance?api('/api/n8n_proxy/executions'+query+'&limit=10',{signal:controller.signal}):Promise.resolve(null),
+        // The whole-fleet scan is shared with Fleet health and Instances; one instance's scan is not.
+        instance?api('/api/n8n_proxy/dashboard'+query,{signal:controller.signal}):fleetMetrics({signal:controller.signal,fresh:true}),
         api('/api/errors?'+errorQuery,{signal:controller.signal})
       ];
       const results=[];
@@ -95,9 +122,23 @@ export async function render(container) {
         coverage.replaceChildren();
         const metrics=results[1].value;
         // Null means the data could not be counted; it is shown as missing, never as zero or failure.
-        const rate=metrics.success_rate_percent===null?(metrics.terminal_executions_24h===0?'No completed runs':null):`${Math.round(metrics.success_rate_percent)}%`;
+        // Fleet totals are null when any instance could not be counted. Show what the counted instances
+        // reported instead, and say how much of the fleet that covers; nothing counted stays Unavailable.
+        const rows=metrics.data||[];
+        const counted=flag=>rows.filter(row=>row[flag]);
+        const cover=done=>`From ${done.length} of ${rows.length} instances`;
+        const sum=(done,key)=>done.reduce((total,row)=>total+(Number.isFinite(row[key])?row[key]:0),0);
+        const wfDone=counted('workflows_complete'),exDone=counted('executions_complete');
+        const workflows=metrics.workflows??(wfDone.length?sum(wfDone,'observed_workflows'):null);
+        const executions=metrics.executions_24h??(exDone.length?sum(exDone,'observed_executions_24h'):null);
+        const finished=metrics.success_rate_percent===null&&metrics.executions_24h===null&&exDone.length?sum(exDone,'terminal'):null;
+        const rate=metrics.success_rate_percent!==null?`${Math.round(metrics.success_rate_percent)}%`
+          :finished?`${Math.round(sum(exDone,'successes')/finished*100)}%`
+          :metrics.terminal_executions_24h===0||finished===0?'No completed runs':null;
+        const partial={workflows:metrics.workflows===null&&wfDone.length?cover(wfDone):null,
+          executions:metrics.executions_24h===null&&exDone.length?cover(exDone):null};
         const incomplete=metrics.data.filter(row=>!row.workflows_complete||!row.executions_complete);
-        for(const [index,[label,value,glyph,hint]] of [['Confirmed silent-error spans · 24h',metrics.confirmed_silent_error_spans_24h,'errors'],['Saved executions · 24h',metrics.executions_24h,'play'],['Success rate · completed runs',rate,'check'],['Total workflows',metrics.workflows,'workflows']].entries()){
+        for(const [index,[label,value,glyph,hint]] of [['Confirmed silent-error spans · 24h',metrics.confirmed_silent_error_spans_24h,'errors'],['Saved executions · 24h',executions,'play',partial.executions],['Success rate · completed runs',rate,'check',partial.executions],['Total workflows',workflows,'workflows',partial.workflows]].entries()){
           const unknown=value===null,text=unknown?'Unavailable':String(value),labelId=`metric-label-${index}`,valueId=`metric-value-${index}`;
           const detail=unknown?(incomplete.length?'Coverage incomplete':'Not reported'):hint;
           // The label names the metric via an h2 heading; the value is associated with it via aria-describedby.
@@ -127,9 +168,19 @@ export async function render(container) {
       }
       if(index===0&&results[0].status==='fulfilled'&&!results[0].value)feed.append(emptyExecutions());
       else if(index===0&&results[0].status==='fulfilled'){
-        const rows=results[0].value.data;
-        const badge=status=>el('span',{class:`badge ${['success','completed'].includes(status)?'success':['error','crashed'].includes(status)?'error':['running','waiting'].includes(status)?'info':''}`},status||'Unknown');
-        feed.append(rows.length?table(['Execution','Workflow','Status','Started'],rows.map(row=>[String(row.id),row.workflowId??'—',badge(row.status),row.startedAt?new Date(row.startedAt).toLocaleString():'—'])):empty('No recent executions','No execution records were returned by this instance.',[button('Refresh executions',()=>refresh(),'ghost')]));
+        const rows=(results[0].value.data||[]).slice(0,10);
+        await workflowNames(rows);
+        if(controller.signal.aborted)return;
+        feed.append(rows.length?table(['Workflow','Status','Started','Duration','Execution'],rows.map(row=>{
+          const name=names.get(String(row.workflowId));
+          return [
+            el('div',{class:'run-workflow'},el('span',{class:'run-workflow-name'},name||'Unknown workflow'),name?null:el('span',{class:'run-workflow-id'},row.workflowId??'')),
+            runBadge(row.status),
+            relativeTime(row.startedAt),
+            el('span',{class:'run-duration'},duration(row.startedAt,row.stoppedAt,row.status)),
+            el('span',{class:'run-id'},String(row.id)),
+          ];
+        }),{numeric:[3,4],className:'runs-table'}):empty('No recent executions','This instance returned no execution records.',[button('Refresh executions',()=>refresh(),'ghost')]));
       }
       }));
     }finally{busy=false;refreshButton.disabled=false;}

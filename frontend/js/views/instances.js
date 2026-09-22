@@ -3,7 +3,7 @@ import {el,button,field,formCard,notice,empty,heading} from '../lib/html.js';
 import {icon} from '../lib/icons.js';
 import {confirmAction} from '../lib/confirm.js';
 import {can} from '../state.js';
-import {rawDisclosure,probeSummary,reachabilityBadge,checkedLine,loadingState,loadFailure,cachedProbe,forgetProbe,checkConnection,asOf} from '../lib/payload.js';
+import {rawDisclosure,probeSummary,reachabilityBadge,checkedLine,loadingState,loadFailure,cachedProbe,forgetProbe,checkConnection,asOf,instanceStats,fleetMetrics} from '../lib/payload.js';
 
 function probeResult(result){
   const {list,notes,diagnostics}=probeSummary(result);
@@ -35,7 +35,7 @@ export async function render(container) {
     const key=el('input',{type:'password',autocomplete:'new-password',required:!item.id,placeholder:item.id?'Leave blank to keep the saved key':''});
     const form=formCard({title:item.id?'Edit connection':'Add connection',
       description:item.id?item.url:'Inference reads workflows and executions through the n8n public API.',
-      body:[el('div',{class:'form-row'},field('Name',name),field('n8n base URL',url,{hint:'The address you open n8n at.'})),
+      body:[el('div',{class:'form-row'},field('Name',name),field('n8n base URL',url,{})),
         field('API key',key,{hint:item.id?'A key is already saved. Paste a new one only to replace it.':'Create one in n8n under Settings → n8n API.'})],
       note:[icon('lock'),'API keys are encrypted on this server.'],
       actions:[button('Cancel',()=>editor.replaceChildren(),'ghost'),el('button',{class:'button',type:'submit'},'Save connection')]});
@@ -48,8 +48,13 @@ export async function render(container) {
     const current=++generation;checks?.abort();checks=new AbortController();const checkSignal=checks.signal;
     const result=await api('/api/n8n_proxy/instances',{signal});if(signal.aborted||current!==generation)return;list.replaceChildren();
     if(!result.data.length)list.append(empty('No connections yet','Add your first n8n instance to explore workflows and executions.',can('admin')?[button('Add connection',()=>edit())]:[]));
-    const pending=[];
+    const pending=[],slots=new Map();
     for(const item of result.data){const detail=el('div'),feedback=el('div'),health=el('div',{class:'probe-status'}),actions=el('div',{class:'toolbar'});
+      // Numbers arrive from one fleet scan below; dashes until then, never zeros.
+      const stats=el('div',{class:'instance-stats-slot'},instanceStats(null));slots.set(item.id,stats);
+      const added=item.created_at?new Date(item.created_at.replace(' ','T')+(/Z|[+-]\d\d:?\d\d$/.test(item.created_at)?'':'Z')):null;
+      const meta=el('p',{class:'instance-meta'},[added&&!Number.isNaN(added.getTime())?`Added ${added.toLocaleDateString([],{day:'numeric',month:'short',year:'numeric'})}`:null,
+        item.api_key_configured?'API key saved':'No API key'].filter(Boolean).join(' · '));
       const cached=cachedProbe(item);let checking=false;
       const paint=result=>health.replaceChildren(reachabilityBadge(result),el('p',{class:'muted',title:result?.checked_at},checkedLine(result)));
       paint(cached);
@@ -65,8 +70,13 @@ export async function render(container) {
       }
       if(!cached)pending.push(check);
       if(can('admin'))actions.append(recheck,button('Edit',()=>edit(item),'ghost',{'aria-label':`Edit connection ${item.name}`}),button('Remove',()=>act(async()=>{if(!await confirmAction({title:'Remove connection',target:item.name,consequence:'Inference stops reading this instance and deletes its saved API key. Workflows and executions in n8n are untouched.',confirmLabel:'Remove connection',danger:true}))return;await api('/api/n8n_proxy/instances/'+encodeURIComponent(item.id),{method:'DELETE'});forgetProbe(item.id);await load();window.dispatchEvent(new Event('instances-changed'));}),'danger',{'aria-label':`Remove connection ${item.name}`}));
-      list.append(el('section',{class:'card stack','aria-label':`Connection ${item.name}`},el('h2',{},item.name),el('p',{class:'muted'},item.url),health,actions,feedback,detail));
+      list.append(el('section',{class:'card stack instance-connection','aria-label':`Connection ${item.name}`},
+        el('div',{class:'instance-connection-head'},el('div',{},el('h2',{},item.name),el('p',{class:'muted'},item.url)),health),
+        stats,meta,actions,feedback,detail));
     }
+    // One fleet scan fills every card's numbers; a rate limit or an unreachable instance leaves dashes.
+    if(slots.size)fleetMetrics({signal}).then(metrics=>{if(signal.aborted||current!==generation)return;
+      for(const [id,slot] of slots)slot.replaceChildren(instanceStats(metrics?.data?.find(row=>row.instance_id===id)||null));}).catch(()=>{});
     let index=0;
     // Fill only missing cache entries automatically, with bounded per-instance work.
     await Promise.all(Array.from({length:Math.min(3,pending.length)},async()=>{

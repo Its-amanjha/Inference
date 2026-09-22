@@ -1,8 +1,7 @@
-import {api} from '../api.js';
 import {state} from '../state.js';
 import {el,button,heading,empty} from '../lib/html.js';
 import {icon,registerIcons} from '../lib/icons.js';
-import {probeSummary,reachabilityBadge,checkedLine,loadingState,loadFailure,cachedProbe,rememberProbe,checkConnection,instanceStats} from '../lib/payload.js';
+import {probeSummary,reachabilityBadge,checkedLine,loadingState,loadFailure,cachedProbe,rememberProbe,checkConnection,instanceStats,fleetMetrics} from '../lib/payload.js';
 
 registerIcons({
   server:'M4 6h16M4 10h16M4 14h16M4 18h16 M2 4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4z M6 6h.01 M6 10h.01 M6 14h.01 M6 18h.01',
@@ -339,7 +338,7 @@ export async function render(container) {
 
   start();
   // One fleet scan for the numbers on every card. A rate limit or an unreachable instance leaves dashes.
-  if (entries.length) api('/api/n8n_proxy/dashboard', {signal: controller.signal}).then(metrics => {
+  if (entries.length) fleetMetrics({signal: controller.signal}).then(metrics => {
     for (const entry of entries) {
       const row = metrics?.data?.find(item => item.instance_id === entry.instance.id);
       entry.stats.replaceChildren(instanceStats(row || null));

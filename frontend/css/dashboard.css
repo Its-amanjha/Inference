@@ -35,7 +35,7 @@
 .dashboard .instance-host { margin:4px 0 16px; font-size:13px; color:var(--color-smoke); overflow-wrap:anywhere; }
 .dashboard .instance-partial { display:flex; align-items:center; gap:6px; margin:12px 0 0; font-size:12px; color:var(--color-smoke); }
 .dashboard .instance-partial>.icon { width:14px; height:14px; }
-.instance-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(132px,1fr)); gap:16px 20px; margin:0; padding:16px; border-radius:12px; background:var(--surface-page-canvas); }
+.instance-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:16px 24px; margin:0; padding:0; }
 .instance-stat { min-width:0; }
 .instance-stat dt { margin:0 0 4px; font-size:12px; line-height:16px; color:var(--color-smoke); }
 .instance-stat dd { display:flex; align-items:baseline; flex-wrap:wrap; gap:4px 8px; margin:0; }
@@ -45,3 +45,38 @@
 .dashboard .instance-row-head>a>.icon { width:18px; height:18px; color:var(--selection-text); }
 /* In the narrow dashboard column two numbers per row read better than four cramped ones. */
 .dashboard .instance-stats { grid-template-columns:repeat(2,minmax(0,1fr)); }
+/* Connected instances as a compact table: name with its connection state, then right-aligned numbers. */
+.dashboard .dashboard-fleet { padding:8px 12px 12px; }
+.fleet-mini th { font-size:12px; font-weight:500; color:var(--color-smoke); padding:10px 12px; background:none; }
+.fleet-mini td { padding:12px; vertical-align:top; font-variant-numeric:tabular-nums; font-size:14px; }
+.fleet-mini tbody tr:last-child td { border-bottom:0; }
+.fleet-mini-name { display:flex; flex-direction:column; gap:4px; min-width:0; }
+.fleet-mini-name>a { font-weight:600; color:var(--color-ink-black); overflow-wrap:anywhere; }
+.fleet-mini-status { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--color-smoke); }
+.fleet-mini-dot { width:7px; height:7px; flex:none; border-radius:50%; background:var(--color-smoke); }
+.fleet-mini-status.is-up .fleet-mini-dot { background:var(--color-success); }
+.fleet-mini-status.is-down .fleet-mini-dot { background:var(--color-danger); }
+.fleet-mini-status.is-down { color:var(--color-danger); }
+.fleet-mini-sub { display:block; font-size:12px; color:var(--color-smoke); }
+.fleet-mini-missing { color:var(--color-smoke); cursor:help; }
+/* Instances page: name and connection state on one line, the numbers, one quiet meta line, actions. */
+.instance-connection { gap:18px; }
+.instance-connection-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px 16px; flex-wrap:wrap; }
+.instance-connection-head h2 { margin:0; }
+.instance-connection-head .muted { margin:4px 0 0; overflow-wrap:anywhere; }
+.instance-connection-head .probe-status { display:flex; flex-direction:column; align-items:flex-end; gap:4px; text-align:right; }
+.instance-connection-head .probe-status p { margin:0; font-size:12px; }
+.instance-meta { margin:0; font-size:12px; color:var(--color-smoke); }
+@media(max-width:700px) { .instance-connection-head .probe-status { align-items:flex-start; text-align:left; } }
+.instance-connection { align-self:start; }
+/* Recent executions: workflow names, a labelled status, relative start time, duration and the run ID. */
+.runs-table td { padding-block:11px; }
+.runs-table th:first-child,.runs-table td:first-child { padding-left:24px; }
+.runs-table th:last-child,.runs-table td:last-child { padding-right:24px; }
+.run-workflow { display:flex; flex-direction:column; gap:2px; min-width:0; }
+.run-workflow-name { font-weight:500; color:var(--color-ink-black); overflow-wrap:anywhere; }
+.run-workflow-id,.run-id { font-family:var(--font-mono,monospace); font-size:12px; color:var(--color-smoke); }
+.run-duration { font-variant-numeric:tabular-nums; color:var(--color-graphite); }
+.run-badge { display:inline-flex; align-items:center; gap:5px; }
+.run-badge>.icon { width:13px; height:13px; }
+.instance-connection>div:empty { display:none; }

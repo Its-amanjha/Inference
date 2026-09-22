@@ -50,12 +50,20 @@ def exercise_design(page: Page, artifacts: Path) -> None:
         # Metric values are plain text; each metric is named by its label, not by a bare-number heading.
         expect(page.locator('.metric-cell h2')).to_have_count(0)
         expect(page.locator('.metric-cell .metric-number')).to_have_count(4)
-        expect(page.get_by_role('article', name='Total workflows')).to_contain_text('Unavailable')
+        # A fleet total shows what the counted instances reported and how much of the fleet that covers;
+        # with nothing counted it stays Unavailable rather than a misleading zero.
+        total = page.get_by_role('article', name='Total workflows')
         if len(instances) > 1:
-            # The counted instance shows its numbers in a stats block: 23 workflows, 0 runs in 24h.
-            counted = page.locator('.instance-stats').filter(has=page.locator('.instance-stat-value', has_text=re.compile(r'^23$')))
+            expect(total.locator('.metric-number')).to_have_text('23')
+            expect(total).to_contain_text('From 1 of 2 instances')
+        else:
+            expect(total).to_contain_text('Unavailable')
+        if len(instances) > 1:
+            # The counted instance's row in the Connected instances table: 23 workflows, 0 runs in 24h.
+            counted = page.locator('.fleet-mini tbody tr').filter(has=page.get_by_role('link', name=instances[1]['name'], exact=True))
             expect(counted).to_have_count(1)
-            expect(counted.locator('.instance-stat').nth(1).locator('.instance-stat-value')).to_have_text('0')
+            expect(counted.locator('td').nth(1)).to_have_text('23')
+            expect(counted.locator('td').nth(2)).to_have_text('0')
         expect(page.locator('.dashboard .panel-head h2 > svg')).to_have_count(3)
         expect(page.locator('.dashboard .panel-head a > svg')).to_have_count(3)
         expect(page.locator('.dashboard .panel-head svg[aria-hidden="true"]')).to_have_count(6)
@@ -65,8 +73,13 @@ def exercise_design(page: Page, artifacts: Path) -> None:
         expect(page.locator('.coverage-partial[role=status]')).to_be_visible()
         expect(page.locator('.coverage-partial')).to_contain_text('Source: workflow and execution history incomplete')
         expect(page.locator('.dashboard .coverage .error')).to_have_count(0)
-        expect(page.locator('.metric-unknown')).to_have_count(2)
-        expect(page.get_by_text('Coverage incomplete', exact=True)).to_have_count(2)
+        if len(instances) > 1:
+            # A second, counted instance: runs, success rate and workflows show its numbers with their coverage.
+            expect(page.locator('.metric-unknown')).to_have_count(0)
+            expect(page.get_by_text('From 1 of 2 instances', exact=True)).to_have_count(3)
+        else:
+            expect(page.locator('.metric-unknown')).to_have_count(2)
+            expect(page.get_by_text('Coverage incomplete', exact=True)).to_have_count(2)
         expect(page.get_by_text('No completed runs', exact=True)).to_be_visible()
         expect(page.get_by_role('link', name='Explain with AI')).to_have_attribute(
             'href', '#assistant?error_id=fixture-error&instance_id=source')
@@ -170,7 +183,7 @@ def exercise_design(page: Page, artifacts: Path) -> None:
         page.get_by_role('heading', name='Your notes', exact=True).wait_for()
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         page.set_viewport_size({'width': 1440, 'height': 900})
-        assert page.locator('.notes-layout').evaluate("""n => {
+        assert page.locator('.notes-shell').evaluate("""n => {
             const [library, editor] = [...n.children].map(x => x.getBoundingClientRect());
             return Math.abs(library.top-editor.top)<1 && Math.abs(library.bottom-editor.bottom)<1;
         }"""), 'Notes panes must share one aligned workspace'
