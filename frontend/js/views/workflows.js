@@ -2,7 +2,7 @@ import {api} from '../api.js';
 import {state,can,pageSize} from '../state.js';
 import {el,button,field,heading,table,notice,empty,jsonView} from '../lib/html.js';
 import {confirmAction,stateBadge} from '../lib/confirm.js';
-import {repairHref} from '../lib/triage.js';
+import {repairHref,relativeTime} from '../lib/triage.js';
 import {loadingState,loadFailure,asOf} from '../lib/payload.js';
 import {icon} from '../lib/icons.js';
 export async function render(container) {
@@ -63,7 +63,7 @@ export async function render(container) {
   signal.addEventListener('abort',closeSuggestions,{once:true});
   let searching=false, term='';
   const search=button('Search',searchFleet);
-  container.append(el('form',{class:'toolbar workflow-search',onsubmit:event=>{event.preventDefault();searchFleet();}},el('div',{class:'workflow-search-field'},field('Find workflows',input),suggestions,suggestionStatus),search),el('p',{class:'muted'},'Results and page limits are per instance. An unavailable instance does not hide the rest of your fleet.'),sections);
+  container.append(el('form',{class:'toolbar workflow-search',onsubmit:event=>{event.preventDefault();searchFleet();}},el('div',{class:'workflow-search-field'},field('Find workflows',input),suggestions,suggestionStatus),search),sections);
   const entries=instances.map(instance=>{
     const list=el('div'),detail=el('section',{class:'stack',hidden:true}),messages=el('div'),stamp=el('div');
     messages.append(loadingState(`Waiting to load workflows on ${instance.name}…`));
@@ -88,7 +88,7 @@ export async function render(container) {
       entry.messages.replaceChildren();entry.stamp.replaceChildren(asOf());entry.loaded=true;
       list.replaceChildren(result.data.length?table(['Workflow','Tags','Updated','State','Actions'],result.data.map(row=>{
         const id=encodeURIComponent(row.id),query='?instance_id='+encodeURIComponent(instance.id),name=row.name??row.id;
-        const actions=el('div',{class:'toolbar'},button('Inspect',async()=>{
+        const actions=el('div',{class:'toolbar row-actions'},button('Inspect',async()=>{
           const item=await api(`/api/n8n_proxy/workflows/${id}${query}`,{signal});
           detail.hidden=false;detail.replaceChildren(el('h3',{},row.name),jsonView(item));
         },'ghost',{'aria-label':`Inspect workflow ${name}`}),el('a',{class:'button ghost',href:'#promote?'+new URLSearchParams({workflow_id:row.id,source_instance_id:instance.id}),'aria-label':`Promote workflow ${name}`},'Promote'),el('a',{class:'button ghost',href:'#codelab?'+new URLSearchParams({workflow_id:row.id,instance_id:instance.id}),'aria-label':`Open workflow ${name} in CodeLab`},'CodeLab'),
@@ -108,13 +108,15 @@ export async function render(container) {
         return [
           { sortValue: row.name ?? row.id, content: name },
           (row.tags??[]).map(tag=>tag.name).join(', ')||'—',
-          { sortValue: row.updatedAt ? new Date(row.updatedAt).getTime() : 0, content: row.updatedAt ? new Date(row.updatedAt).toLocaleString() : '—' },
+          // Relative, with the exact time on hover: short enough to stay on one line.
+          { sortValue: row.updatedAt ? new Date(row.updatedAt).getTime() : 0, content: row.updatedAt ? relativeTime(row.updatedAt) : '—' },
           { sortValue: row.active ? 'Active' : 'Inactive', content: el('div',{class:'state-cell'},badge,toggle) },
           actions
         ];
       }),{
         sortable: { 0: 'text', 2: 'date', 3: 'text' },
-        initialSort: { column: 0, direction: 'asc' }
+        initialSort: { column: 0, direction: 'asc' },
+        className: 'workflows-table'
       }):empty('No matching workflows','Try another name or create a workflow in this instance.',[button('Clear search',()=>{input.value='';searchFleet();},'ghost')]));
     } catch(error){if(!signal.aborted)entry.messages.replaceChildren(loadFailure(error,()=>load(entry,after),`Could not load workflows on ${instance.name}`));}
     finally{entry.loading=false;entry.next.disabled=searching||!entry.cursor;entry.retry.disabled=searching;}

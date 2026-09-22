@@ -158,3 +158,13 @@
 .result-card .triage-action-group { flex-wrap:wrap; }
 .result-card-foot { display:flex; justify-content:center; padding:12px 16px; border-top:1px solid var(--border); }
 .result-card-foot:has(> button:disabled) { display:none; }
+/* Workflows table: every cell on one line. State pairs the badge with its toggle; row actions are compact
+   buttons that do not wrap; the updated time is relative with the exact time on hover. */
+.workflows-table td { vertical-align:middle; }
+.workflows-table .relative-time { white-space:nowrap; }
+.state-cell { display:flex; align-items:center; gap:8px; flex-wrap:nowrap; }
+.row-actions { flex-wrap:nowrap; gap:6px; }
+.state-cell .button,.row-actions .button { min-height:30px; padding:0 10px; margin:0; font-size:12px; white-space:nowrap; gap:5px; }
+.state-cell .button>.icon,.row-actions .button>.icon { width:14px; height:14px; }
+.row-actions { margin:0; align-items:center; }
+.workflows-table td { padding-block:10px; }
