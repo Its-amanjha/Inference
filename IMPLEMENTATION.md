@@ -403,3 +403,20 @@ Update this ledger with actual code and check results after each unit. Do not co
 - Compared all 86 files under the vendored skill directories, including assets, against upstream commit `19cd793f4789e3ef9c657ccf26e097f641a77df0`. With line endings normalized, 43 match their upstream paths and 43 differ. This is not a completed provenance verification.
 - The Apache-derived hooks named in the retained upstream notice are absent, but the included router skill is also mentioned as borrowing document structure. Added this qualification to `backend/skills/README.md`; do not claim that no Apache-derived material is included.
 - Remaining: identify the imported upstream revision and review differences before closing the license check. Design review rerun is still pending; no frontend changes were made during this check.
+
+## 2026-09-22 — Dashboard alignment and semantic icons
+
+Moved investigation refresh feedback and its timestamp into the panel content
+padding, aligned the two summary panels on desktop, and kept their mobile stack.
+Added locally embedded Lucide paths for the queue, servers, retrieved/partial
+coverage and empty inbox, with text labels and the upstream license retained.
+Navigation links use the existing arrow glyph. All styling is scoped in the new
+frontend/css/dashboard.css; existing shared CSS and icon helpers are untouched.
+
+Verification: headless Edge on a temporary loopback static server with simulated
+API results. Light, Dark and n8n themes passed at 1440 and 390 px; desktop summary
+panel bottoms match, mobile has no horizontal overflow, coverage icons render,
+and a 429 retains findings/instance evidence with status notices and Retry.
+Before/after screenshots are in OS temp/inference-dashboard-layout. JavaScript
+passed node --check as a temporary .mjs copy. No live VPS calls or full backend
+suite were needed for this visual-only change.
