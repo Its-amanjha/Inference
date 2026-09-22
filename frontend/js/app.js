@@ -136,7 +136,12 @@ function renderShell() {
   const sidebar=el('aside',{class:'sidebar'},el('div',{class:'sidebar-head'},brand),more);
   // Scope first, then the current view: the same breadcrumb shape as project switchers in hosted consoles.
   const scope=el('div',{class:'scope-switcher'},icon('instances'),selector,icon('chevron-updown'));
-  const status=el('span',{id:'connection-status',class:'live-status',role:'status','data-state':'connecting',title:'Connecting to updates'},el('span',{class:'live-dot','aria-hidden':'true'}),el('span',{class:'live-label'},'Connecting to updates'));
+  // A clock replaces the connected label; the state text returns only when updates stop. The clock sits
+  // outside the live region so screen readers hear connection changes, not every minute.
+  const clock=el('time',{class:'live-clock'});
+  const tick=()=>{const now=new Date();clock.dateTime=now.toISOString();clock.textContent=now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});};
+  tick();clearInterval(window.__inferenceClock);window.__inferenceClock=setInterval(tick,15000);
+  const status=el('span',{id:'connection-status',class:'live-status','data-state':'connecting',title:'Connecting to updates'},el('span',{class:'live-dot','aria-hidden':'true'}),clock,el('span',{class:'live-label',role:'status'},'Connecting to updates'));
   const topbar=el('header',{class:'topbar'},el('div',{class:'topbar-context'},scope,el('span',{class:'crumb-separator','aria-hidden':'true'},'/'),el('span',{class:'crumb-current',id:'current-view'},'Overview')),el('div',{class:'topbar-actions'},status,accountMenu()));
   shell=el('main',{id:'main',class:'page',tabIndex:-1});
   root.replaceChildren(el('div',{class:'app-layout'},sidebar,el('div',{class:'workspace'},topbar,shell)));
