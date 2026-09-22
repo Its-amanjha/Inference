@@ -8,7 +8,7 @@ function loadMonaco(){if(window.monaco?.editor)return Promise.resolve(window.mon
 export async function render(container){
   const controller=new AbortController(),instance=new URLSearchParams(location.hash.split('?')[1]||'').get('instance_id')||state.instanceId;container.append(heading('CodeLab',`Edit Code nodes with workflow revision checks. Instance: ${state.instances.find(item=>item.id===instance)?.name||instance||'none selected'}.`));
   if(!instance){container.append(empty('Choose an instance','Select an instance before loading a workflow.',[el('a',{class:'button ghost',href:'#instances'},'Open instances')]));return()=>controller.abort();}
-  const workflowPicker=createIdPicker({label:'Workflow',placeholder:'Type a name or paste an ID',hint:'Search workflows by name, or paste an ID.',
+  const workflowPicker=createIdPicker({label:'Workflow',placeholder:'Type a name or paste an ID',
     load:signal=>loadInstanceWorkflows(instance,signal),
     emptyText:'No workflows found on this instance.',
     emptyActions:[el('a',{class:'button ghost',href:'#instances'},'Open instances')],

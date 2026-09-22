@@ -129,7 +129,7 @@ form.stack { gap:16px; }
 .form-card-body>div:empty { display:none; }
 .form-card-body>.button { align-self:flex-start; }
 .form-card-body>p { margin:0; }
-.form-card-foot { display:flex; flex-wrap:wrap; align-items:center; gap:12px 16px; padding:12px 24px; border-top:1px solid var(--border); background:var(--form-foot-fill); }
+.form-card-foot { display:flex; flex-wrap:wrap; align-items:center; gap:12px 16px; padding:4px 24px 24px; }
 .form-card-note { display:flex; align-items:center; gap:8px; margin:0; font-size:12px; line-height:18px; color:var(--color-smoke); max-width:64ch; }
 .form-card-note>.icon { width:14px; height:14px; flex:none; }
 .form-card.is-flat { border:0; border-radius:0; background:transparent; overflow:visible; }
@@ -175,7 +175,7 @@ form.stack { gap:16px; }
   .mapping-row { grid-template-columns:1fr; }
   .form-card-head { padding:16px 16px 0; }
   .form-card-body { padding:16px; }
-  .form-card-foot { padding:12px 16px; }
+  .form-card-foot { padding:4px 16px 16px; }
   .button,.action-menu>summary,.card-head-row .button,td .button,.auth-card .form>.button { min-height:44px; }
   /* Wide tables scroll inside their focusable region instead of crushing their cells; the triage table stacks instead. */
   .table-wrap table:not(.triage-table) { min-width:560px; }
@@ -183,3 +183,9 @@ form.stack { gap:16px; }
   .form-actions .button { flex:1; }
   .form-disclosure>div { padding-left:0; }
 }
+/* Audit history: ten rows, a position and Previous/Next below the table. */
+.audit-card .audit-table td { padding-block:11px; }
+.audit-card .audit-table time { font-variant-numeric:tabular-nums; white-space:nowrap; }
+.audit-pager { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:12px; }
+.audit-position { font-size:13px; color:var(--color-smoke); font-variant-numeric:tabular-nums; }
+.audit-pager-buttons { display:flex; gap:8px; }

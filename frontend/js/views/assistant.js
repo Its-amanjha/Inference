@@ -775,7 +775,6 @@ export async function render(container) {
     recentPicker.reload();
   }
   const recentPicker = createIdPicker({label: 'Saved conversations', placeholder: 'Filter saved conversations',
-    hint: 'Recently opened in this browser. Paste an ID below for anything else.',
     load: async () => {
       const rows = readRecents();
       if (rows === null) throw new Error('Saved conversations could not be read from this browser.');
@@ -881,8 +880,8 @@ export async function render(container) {
     const mcpForm = formCard({title: 'Remote MCP tools', heading: 'h3', flat: true,
       description: 'Discover a server’s tools here, then ask the assistant to propose an invocation. Every MCP call requires your confirmation.',
       body: [el('div', {className: 'form-row'}, field('Server ID', serverId, {hint: 'Letters, numbers, dashes and underscores.'}),
-        field('Streamable HTTP endpoint', url, {hint: 'The server’s streamable HTTP address.'})),
-        field('Key reference (optional)', mcpKey, {hint: 'A saved secret such as $MCP_KEY. Leave blank when the server needs no key.'})],
+        field('Streamable HTTP endpoint', url, {})),
+        field('Key reference (optional)', mcpKey, {hint: 'Optional.'})],
       actions: [mcpSave]});
     const catalogs = el('div', {className: 'stack'});
     const loadServers = async () => {

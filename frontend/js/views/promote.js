@@ -160,7 +160,6 @@ export async function render(container){
   const workflowPicker=createIdPicker({
     label:'Source workflow',
     placeholder:'Type a name or paste an ID',
-    hint:'Search workflows on the source instance, or paste a workflow ID.',
     clearAriaLabel:'Clear source workflow selection',
     load:signal=>loadInstanceWorkflows(source.value,signal),
     emptyText:'No workflows found on this instance.',
@@ -270,7 +269,6 @@ export async function render(container){
     const picker=createIdPicker({
       label:`Target workflow for ${isError?'error workflow':'subworkflow'} ${sourceId}`,
       placeholder:'Type a name or paste an ID',
-      hint:'Search workflows on the target instance, or paste an ID.',
       clearAriaLabel:`Clear target workflow for ${rowTitle}`,
       clearable:true,
       load:signal=>loadInstanceWorkflows(target.value,signal),

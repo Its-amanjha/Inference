@@ -65,7 +65,7 @@ export function providerSetup(host,onSaved,signal){
   const messages=el('div',{class:'form-messages','aria-live':'polite'}),test=button('Test connection',async()=>{messages.replaceChildren();try{await api(`/api/assistant/providers/${encodeURIComponent(id.value.trim())}/test`,{method:'POST',signal});notice(messages,'Connected. Select this model in Chat to start a conversation.');}catch(e){notice(messages,e);}},'ghost');test.disabled=true;
   let savedRef=null,saving=false;
   const save=el('button',{type:'submit',class:'button'},'Save model');
-  const keyField=field('API key',key,{hint:'Encrypted on this server. Local Ollama does not need a key.'});
+  const keyField=field('API key',key,{hint:'Local Ollama needs no key.'});
   // A known service already knows its own endpoint, so the URL only takes space in the main form for
   // "OpenAI-compatible"; the disclosure opens itself there, which is also where the browser check fills it.
   // Declared before preset() runs: it sets advanced.open on the first call.
@@ -73,7 +73,7 @@ export function providerSetup(host,onSaved,signal){
     el('div',{},field('API base URL',base,{hint:'Use the base URL ending in /v1, not /chat/completions.'}),egress),
     field('Saved secret reference (optional)',ref,{hint:'Use this instead of pasting a key. Text secret: $NAME. API-key template: $NAME.api_key.'}),
     field('This service does not require an API key',keyless),
-    field('Enable tool calls',tools,{hint:'Start with chat only. Enable tools after the connection works; changes still require approval.'})));
+    field('Enable tool calls',tools,{})));
   function preset(){
     base.value=presets[kind.value][1];model.placeholder=presets[kind.value][2];
     keyField.hidden=kind.value==='ollama';test.disabled=true;
@@ -87,8 +87,8 @@ export function providerSetup(host,onSaved,signal){
   base.addEventListener('input',paintEgress,{signal});
   const form=formCard({title:'Connect a model',heading:'h3',flat:true,className:'provider-setup',
     description:'Choose a service, copy the connection details it gives you, then test the connection.',
-    body:[el('div',{class:'form-row'},field('Connection name',id,{hint:'Names this connection in the model list.'}),field('Provider',kind)),
-      el('div',{class:'form-row'},field('Model ID',model,{hint:'Must match an ID supported by your provider.'}),keyField),
+    body:[el('div',{class:'form-row'},field('Connection name',id,{}),field('Provider',kind)),
+      el('div',{class:'form-row'},field('Model ID',model,{}),keyField),
       advanced,messages],
     note:'Test connection sends a short message to the saved model and may use provider credits. It cannot run tools.',
     actions:[test,save]});

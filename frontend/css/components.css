@@ -213,7 +213,7 @@ tbody tr:hover { background:var(--color-ash-mist); }
 .button>.icon { width:16px; height:16px; }
 .toolbar>.field { margin:0; flex:1; min-width:150px; max-width:360px; }
 .toolbar>.field input,.toolbar>.field select { width:100%; }
-.table-wrap { scrollbar-gutter:stable; }
+.table-wrap { scrollbar-gutter:auto; }
 .table-wrap:focus-visible { outline-offset:-3px; }
 .badge.info,.badge.active { background:var(--selection-fill); color:var(--selection-text); }
 .button:hover:not(:disabled) { opacity:1; filter:brightness(.94); }

@@ -7,15 +7,6 @@
 .empty>.icon { width:28px; height:28px; color:var(--color-smoke); margin-bottom:12px; }
 .button>.icon,summary>.icon { width:16px; height:16px; }
 #main>.stack>div:empty { display:none; }
-.notes-layout { align-items:stretch; grid-template-columns:minmax(220px,280px) minmax(0,1fr); gap:0; border:1px solid var(--border); border-radius:16px; background:var(--surface-card-surface); overflow:hidden; }
-.notes-layout>aside { padding:24px; border:0; border-right:1px solid var(--border); border-radius:0; }
-.notes-layout>aside>h2 { margin:0 0 16px; font-size:16px; }
-.notes-layout>div { gap:0; }
-.notes-layout .form-card { border:0; border-radius:0; }
-.notes-layout .form-card+.form-card { border-top:1px solid var(--border); }
-.notes-layout .form-card-body { max-width:none; }
-.notes-layout>aside .empty { padding:28px 0; }
-.notes-layout textarea { min-height:240px; height:clamp(240px,30dvh,360px); }
 .settings-nav { margin-bottom:0; }
 .assistant-chat-toolbar { flex-wrap:wrap; row-gap:12px; }
 .assistant-rail-heading { flex-wrap:wrap; }
@@ -65,36 +56,18 @@
 .docker-unavailable p { max-width:72ch; margin:8px 0; }
 .docker-unavailable details { margin-top:12px; }
 .docker-unavailable summary { cursor:pointer; }
-/* Modern native selects keep their semantics; other browsers retain native pickers. */
-@supports (appearance:base-select) {
-  select:not([multiple]):not([size]),select:not([multiple]):not([size])::picker(select) { appearance:base-select; }
-  select:not([multiple]):not([size]) { background-image:none; padding-right:12px; align-items:center; gap:12px; }
-  select:not([multiple]):not([size])::picker-icon { content:''; width:7px; height:7px; border-right:1.5px solid var(--color-smoke); border-bottom:1.5px solid var(--color-smoke); transform:rotate(45deg); margin-right:3px; transition:rotate .16s ease-out; }
-  select:open::picker-icon { rotate:180deg; }
-  select::picker(select) { color:var(--color-ink-black); background:var(--surface-card-surface); border:1px solid var(--border); border-radius:10px; padding:6px; margin-block:6px; max-height:min(360px,60dvh); overflow:auto; box-shadow:0 8px 24px -8px rgb(0 0 0 / .24); opacity:0; transform:translateY(-4px); transition:opacity .16s ease-out,transform .16s ease-out,display .16s allow-discrete,overlay .16s allow-discrete; }
-  select:open::picker(select) { opacity:1; transform:translateY(0); }
-  @starting-style { select:open::picker(select) { opacity:0; transform:translateY(-4px); } }
-  select option { padding:9px 12px; min-height:36px; border-radius:6px; font:inherit; font-size:14px; overflow-wrap:anywhere; white-space:normal; }
-  select option:checked { background:var(--selection-fill); color:var(--selection-text); }
-  select option:hover,select option:focus { background:var(--selection-fill); color:var(--selection-text); outline:1px solid var(--focus); outline-offset:-1px; }
-  select option::checkmark { color:var(--selection-text); }
-  .scope-switcher>select { padding-right:12px; }
-  .scope-switcher>.icon:last-child { display:none; }
-}
+/* Native dropdowns: the customisable base-select picker started invisible until the browser marked it
+   open, so on some Chromium builds it never appeared. Selects use the native picker again. */
 @keyframes disclosure-enter { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
 @media(prefers-reduced-motion:no-preference) {
   .account-panel:not([hidden]),.picker-list:not([hidden]),.action-menu[open]>.action-menu-list,
   .assistant-disclosure[open]>:not(summary),.assistant-settings[open]>:not(summary) { animation:disclosure-enter .16s ease-out; }
 }
 @media(prefers-reduced-motion:reduce) {
-  select::picker(select),select::picker-icon,.assistant-disclosure>summary::after,.assistant-settings>summary::after { transition:none !important; }
+  .assistant-disclosure>summary::after,.assistant-settings>summary::after { transition:none; }
 }
 @media(max-width:700px) {
-  .notes-layout { grid-template-columns:minmax(0,1fr); }
-  .notes-layout>aside { border-right:0; border-bottom:1px solid var(--border); }
-  .notes-layout textarea { height:260px; }
   .assistant-disclosure>summary { min-height:44px; }
-  select option { min-height:44px; }
 }
 /* Loading is quiet, inset and shaped like the content it will replace. */
 .loading-state { padding:16px 0; }
@@ -128,3 +101,53 @@
 .workflow-search-field .picker-name,.workflow-search-field .picker-id { display:block; max-width:none; margin-left:0; white-space:normal; overflow-wrap:anywhere; }
 /* Provider setup is opened from Assistant settings; it sits below the workspace, not beside it. */
 @media(min-width:901px) { #studio-chat>.assistant-settings { margin-top:24px; } }
+/* No divider lines inside cards: sections, list items and action rows are separated by space,
+   not by rules. Structural edges (top bar, sidebar, table rows, the docked chat composer) keep theirs. */
+.decision-section,.proposal-section,.proposal-footer,.repair-rail-item,.raw-json-disclosure { border-top:0; }
+.capability-list li,.finding-row,.instance-row,.assistant-disclosure { border-bottom:0; }
+.instance-actions-row,.result-card-foot { border-top:0; }
+.dashboard .instance-row+.instance-row { border-top:0; }
+.assistant-rail-group>.assistant-disclosure+.assistant-disclosure { border-top:0; }
+.finding-row+.finding-row { margin-top:4px; }
+.form-card.is-flat .form-card-foot { padding-bottom:0; }
+
+/* Notes: one bordered workspace. The library lists notes by name and folder; the open note has its path
+   as a title, then the editor and a live preview side by side. Space separates regions, not rules. */
+.notes-shell { display:grid; grid-template-columns:minmax(220px,280px) minmax(0,1fr); min-height:min(680px,calc(100dvh - 220px)); border:1px solid var(--border); border-radius:var(--radius-card); background:var(--surface-card-surface); overflow:hidden; }
+.notes-library { display:flex; flex-direction:column; gap:12px; min-width:0; padding:20px 16px; background:var(--surface-page-canvas); }
+.notes-library-head { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:0 4px; }
+.notes-library-head h2 { margin:0; font-size:15px; }
+.notes-library-head .button { min-height:32px; padding:4px 12px; font-size:13px; }
+.notes-search { display:flex; gap:6px; }
+.notes-search input { flex:1; min-width:0; }
+.notes-search .button { flex:none; min-height:36px; padding:4px 12px; font-size:13px; }
+.notes-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:2px; overflow:auto; }
+.notes-item-button { display:flex; flex-direction:column; align-items:flex-start; gap:2px; width:100%; min-height:44px; padding:8px 10px; border:0; border-radius:10px; background:none; color:var(--color-ink-black); text-align:left; cursor:pointer; font:inherit; }
+.notes-item-button:hover { background:var(--surface-card-surface); }
+.notes-item[aria-current] .notes-item-button { background:var(--selection-fill); color:var(--selection-text); }
+.notes-item-button>.icon { display:none; }
+.notes-item-name { font-size:14px; font-weight:500; overflow-wrap:anywhere; }
+.notes-item-folder { font-size:12px; color:var(--color-smoke); }
+.notes-item-excerpt { font-size:12px; color:var(--color-smoke); display:-webkit-box; -webkit-line-clamp:1; -webkit-box-orient:vertical; overflow:hidden; }
+.notes-list-empty .empty { border:0; background:none; box-shadow:none; padding:24px 8px; }
+.notes-main { display:flex; flex-direction:column; gap:16px; min-width:0; padding:20px 24px 24px; }
+.notes-head { display:flex; align-items:center; gap:12px; }
+.notes-title { flex:1; min-width:0; border:0; box-shadow:none; background:none; padding:4px 0; font-size:20px; font-weight:600; letter-spacing:-.01em; color:var(--color-ink-black); }
+.notes-title:focus-visible { outline:2px solid var(--focus); outline-offset:4px; border-radius:6px; }
+.notes-actions { display:flex; gap:8px; flex:none; }
+.notes-split { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:20px; flex:1; min-height:0; }
+.notes-pane { display:flex; flex-direction:column; gap:8px; min-width:0; min-height:0; }
+.notes-pane-label { font-size:12px; font-weight:500; color:var(--color-smoke); }
+.notes-editor { flex:1; min-height:360px; resize:none; font-family:var(--font-mono,monospace); font-size:13px; line-height:1.65; }
+.notes-preview { flex:1; min-height:360px; overflow:auto; padding:14px 16px; border-radius:10px; background:var(--surface-page-canvas); }
+.notes-preview-empty { color:var(--color-smoke); font-size:13px; }
+.notes-links h3 { margin:0 0 8px; font-size:13px; }
+@media(max-width:900px) {
+  .notes-shell { grid-template-columns:minmax(0,1fr); min-height:0; }
+  .notes-list { max-height:260px; }
+  .notes-split { grid-template-columns:minmax(0,1fr); }
+  .notes-editor,.notes-preview { min-height:240px; }
+  .notes-main { padding:16px; }
+  .notes-head { flex-wrap:wrap; }
+  .notes-actions { width:100%; justify-content:flex-end; }
+}
