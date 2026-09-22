@@ -449,3 +449,8 @@ Add debounced name suggestions from each selected instance, bounded to three con
 ## 2026-09-22 — Answer questions before proposing changes
 
 Repair prompt previously directed the model to propose a complete change even when the message was a question. Clarify in both general and repair prompts that a pinned target is context, and edits require a request for a change/fix. Approval controls remain unchanged. Full suite: 899 passed, 11 skipped, 1 warning in 307.78s; provider tests are scripted, so no claim of live model compliance. Backend activation awaits restart.
+
+
+## 2026-09-22 — Verified local activation
+
+User explicitly approved restarting Inference. Verified the old port-3000 PID command line, stopped only that process and restarted scripts/run_local.py hidden. New server PID 4648 completed startup, /healthz returned 200 and the live app serves the updated workflow suggestions, proposal errors and CSS. Backend archive guards and question-oriented prompts are now loaded. No n8n workflow was changed. All work remains committed on work/ui-consistency; nothing pushed.
