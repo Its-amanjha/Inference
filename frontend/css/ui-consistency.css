@@ -19,7 +19,39 @@
 .settings-nav { margin-bottom:0; }
 .assistant-chat-toolbar { flex-wrap:wrap; row-gap:12px; }
 .assistant-rail-heading { flex-wrap:wrap; }
-.assistant-disclosure { padding:16px; border:1px solid var(--border); border-radius:12px; background:var(--surface-card-surface); }
+/* AI workspace tabs: one compact segmented control instead of a ruled band above the title. */
+.studio-tabs { display:inline-flex; align-self:flex-start; width:fit-content; gap:2px; padding:3px; border:1px solid var(--control-border); border-radius:var(--radius-pill); background:var(--surface-card-surface); }
+.studio-tabs>.button { min-height:32px; padding:6px 14px; border:0; border-radius:var(--radius-pill); background:none; font-size:13px; }
+.studio-tabs>.button[aria-pressed=true] { background:var(--selection-fill); color:var(--selection-text); }
+/* The conversation and the action rail fill the screen and end on the same line; the transcript
+   scrolls between a fixed header and a docked composer, and Action review scrolls inside the rail. */
+@media(min-width:901px) {
+  #studio-chat .assistant-layout { height:max(520px,calc(100dvh - 264px)); align-items:stretch; }
+  #studio-chat .assistant-chat { height:auto; min-height:0; }
+  #studio-chat .assistant-rail { min-height:0; }
+  #studio-chat .assistant-approval-panel { flex:1 1 auto; min-height:0; display:flex; flex-direction:column; overflow:hidden; }
+  #studio-chat .assistant-approval-panel>:last-child { flex:1 1 auto; min-height:0; overflow:auto; }
+  #studio-chat .assistant-rail-group { flex:none; }
+}
+/* AI workspace: every card on the page shares one radius and one inset. */
+.assistant-approval-panel { border-radius:var(--radius-card); padding:20px; }
+.assistant-rail-group { display:flex; flex-direction:column; border:1px solid var(--border); border-radius:var(--radius-card); background:var(--surface-card-surface); overflow:hidden; }
+.assistant-rail-group>.assistant-disclosure { padding:16px 20px; border:0; border-radius:0; background:none; }
+.assistant-rail-group>.assistant-disclosure+.assistant-disclosure { border-top:1px solid var(--border); }
+/* Ask / Propose changes: a two-option segmented control built on native radios. */
+.composer-mode { display:inline-flex; flex:none; margin:0; padding:3px; border:1px solid var(--control-border); border-radius:var(--radius-pill); gap:2px; }
+.composer-mode-option { position:relative; display:inline-flex; }
+.composer-mode-option>input { position:absolute; inset:0; margin:0; opacity:0; cursor:pointer; }
+.composer-mode-option>span { display:inline-flex; align-items:center; min-height:28px; padding:4px 12px; border-radius:var(--radius-pill); font-size:12px; font-weight:500; color:var(--color-smoke); white-space:nowrap; transition:background-color .16s ease-out,color .16s ease-out; }
+.composer-mode-option>input:checked+span { background:var(--selection-fill); color:var(--selection-text); }
+.composer-mode-option>input:focus-visible+span { outline:2px solid var(--focus); outline-offset:1px; }
+.composer-foot>#composer-mode-hint { flex:1; min-width:0; max-width:none; }
+@media(prefers-reduced-motion:reduce) { .composer-mode-option>span { transition:none; } }
+@media(max-width:700px) {
+  .assistant-page .composer-mode { grid-column:1 / -1; grid-row:3; justify-self:start; }
+  .assistant-page .composer-mode-option>span { min-height:44px; padding-inline:16px; }
+  .assistant-page .composer-foot>#composer-mode-hint { grid-column:1 / -1; grid-row:4; }
+}
 .assistant-disclosure>summary { color:var(--color-ink-black); font-size:13px; font-weight:500; }
 .assistant-settings>summary,.assistant-disclosure>summary { display:flex; align-items:center; gap:8px; list-style:none; }
 .assistant-settings>summary::-webkit-details-marker,.assistant-disclosure>summary::-webkit-details-marker { display:none; }
@@ -94,3 +126,5 @@
 .workflow-search-field .picker-option { align-items:center; }
 .workflow-search-field .picker-option>span { min-width:0; flex:1; }
 .workflow-search-field .picker-name,.workflow-search-field .picker-id { display:block; max-width:none; margin-left:0; white-space:normal; overflow-wrap:anywhere; }
+/* Provider setup is opened from Assistant settings; it sits below the workspace, not beside it. */
+@media(min-width:901px) { #studio-chat>.assistant-settings { margin-top:24px; } }

@@ -17,7 +17,7 @@ from frontend_fleet_fixture import (REPAIR_ERROR_MESSAGE, REPAIR_EXECUTION_ID, R
 
 # Every UI name and selector this check depends on; reconcile frontend changes here only.
 UI = {
-    'heading': 'AI copilot',
+    'heading': 'AI workspace',
     'workspace_tab': 'AI workspace',
     'code_tab': 'Code editor (manual)',
     'target': 'div.repair-target[role=group][aria-label="Repair target"]',
@@ -233,13 +233,24 @@ def act(page, log, scope, name, predicate, what, timeout=60.0):
     return wait_until(page, done, what, timeout)
 
 
-def send_chat(page, log, state, text, requests=1):
-    """Send one message as the human; assert exactly `requests` provider requests. Returns (response, data, writes)."""
+def send_chat(page, log, state, text, requests=1, propose=True):
+    """Send one message as the human; assert exactly `requests` provider requests. Returns (response, data, writes).
+
+    These checks exercise proposals, so they switch the composer to Propose changes; Ask is the page default."""
     before, writes, start = provider_count(state), len(state['writes']), len(log.responses)
     main = page.locator('#main')
+    main.get_by_label('Propose changes' if propose else 'Ask', exact=True).check()
     main.get_by_label(UI['message'], exact=True).fill(text)
     control(main, UI['send']).click()
     response = log.wait(start, is_chat, 'the chat response', timeout=90)
+    # The browser cannot read this fetch body back, so check what the model was actually offered.
+    offered = [set(request['tools'] or []) for request in state['provider']['requests'][before:]]
+    for tools in offered:
+        if propose:
+            continue  # Later requests of a turn may legitimately carry no tools.
+        assert not {name for name in tools if name.startswith('propose_')}, f'Ask mode offered proposal tools: {sorted(tools)}'
+    if propose and offered:
+        assert any(name.startswith('propose_') for name in offered[0]), f'Propose mode offered no proposal tool: {sorted(offered[0])}'
     data = response_json(response)
     sent = provider_count(state) - before
     assert sent == requests, f'{sent} provider requests for one human message (expected {requests})'

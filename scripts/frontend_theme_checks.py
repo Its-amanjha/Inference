@@ -90,7 +90,7 @@ def exercise_themes(page: Page, artifacts: Path) -> None:
         assert danger_hue(waterfall['failed']) and not danger_hue(waterfall['bar']), (theme, waterfall)
     page.evaluate("location.hash = 'assistant'")
     page.locator('.assistant-chat').wait_for()
-    expect(page.locator('.page-heading h1')).to_have_text('AI copilot')
+    expect(page.locator('.page-heading h1')).to_have_text('AI workspace')
     expect(page.get_by_role('button', name='New conversation', exact=True).locator('svg')).to_have_count(1)
     expect(page.locator('.page-heading svg')).to_have_attribute('aria-hidden', 'true')
     page.evaluate('scrollTo(0,0)')

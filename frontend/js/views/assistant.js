@@ -643,6 +643,7 @@ export async function render(container) {
     const sentContext = repairSnapshot === undefined ? (target ? repairContext(target, errorTextEnabled(), operatorNotes.value) : null) : repairSnapshot;
     const body = {provider_id: provider.value, ...(chatId ? {chat_id: chatId} : {}), ...(sentContext ? {context: sentContext} : {})};
     if (continueTurn) body.continue_turn = true; else body.message = message;
+    body.allow_changes = allowChanges();
     try {
       const result = await request('/chat', {method: 'POST', json: body});
       if (signal.aborted) return false;
@@ -670,7 +671,22 @@ export async function render(container) {
     } finally { busy = false; if (!signal.aborted) { send.disabled = !modelsAvailable; provider.disabled = !modelsAvailable; } }
   };
   const send = el('button', {type: 'submit', className: 'button button-primary',disabled:true}, 'Send message',icon('arrow'));
-  const form = el('form', {className: 'assistant-composer'}, field('Your message', input), el('div',{className:'composer-foot'},el('span',{className:'muted'},'Changes require your approval.'),send));
+  // Ask is the default: the server offers the model no tool that could create an approval,
+  // so a question never comes back as a proposal, whatever the model decides to do.
+  const modeHint = el('span',{className:'muted',id:'composer-mode-hint'});
+  const modeRadio = (value, label) => el('label',{className:'composer-mode-option'},
+    el('input',{type:'radio',name:'composer-mode',value,'aria-describedby':'composer-mode-hint'}),el('span',{},label));
+  const modeGroup = el('fieldset',{className:'composer-mode'},el('legend',{className:'sr-only'},'What the AI may do'),
+    modeRadio('ask','Ask'),modeRadio('propose','Propose changes'));
+  const allowChanges = () => modeGroup.querySelector('input:checked')?.value === 'propose';
+  const setMode = mode => {
+    for (const option of modeGroup.querySelectorAll('input')) option.checked = option.value === mode;
+    modeHint.textContent = mode === 'propose' ? 'The AI may propose changes. You approve each one.'
+      : 'The AI answers and reads. It cannot propose changes.';
+  };
+  modeGroup.addEventListener('change', () => setMode(allowChanges() ? 'propose' : 'ask'));
+  setMode('ask');
+  const form = el('form', {className: 'assistant-composer'}, field('Your message', input), el('div',{className:'composer-foot'},modeGroup,modeHint,send));
   // Follow chat's end, not the document's end: the action rail follows the chat.
   // Detect the overflow owner so expanded repair layouts use the same policy as
   // desktop. Instant scrolling also respects prefers-reduced-motion.
@@ -815,16 +831,17 @@ export async function render(container) {
   const chat=el('section',{className:'assistant-chat','aria-label':'Chat workspace'},
     el('div',{className:'assistant-chat-toolbar'},field('Model',provider),el('div',{className:'tool-calling'},toolBadge,toolCheck),newChat),
     repairBar,transcript,messages,form);
+  // Action review is what needs attention, so it leads; the three tools share one card below it.
   const rail=el('aside',{className:'assistant-rail','aria-label':'Actions and conversation tools'},
-    creationEntry,
     el('section',{className:'assistant-approval-panel'},el('div',{className:'assistant-rail-heading'},el('h2',{},'Action review'),action('Refresh proposals',refreshApprovals)),approvals),
+    el('div',{className:'assistant-rail-group'},creationEntry,
     el('details',{className:'assistant-disclosure'},el('summary',{},'Open a saved conversation'),el('div',{className:'stack'},recentPicker.node,field('Conversation ID',resumeId),resume)),
     el('details',{className:'assistant-disclosure'},el('summary',{},'Context and privacy'),el('div',{},
       el('p',{},`Workspace selection: ${scopeName}.`),
       el('p',{},state.instanceId?`For instance-specific requests, include this ID: ${state.instanceId}`:'Include the instance ID when asking about a specific workflow or execution.'),
       el('p',{},'Messages go to the selected model provider. Built-in tools share metadata; execution inputs, outputs and stored secrets are not sent automatically.'),
-      el('p',{},'With a repair target pinned, the workflow and a scrubbed error summary are also sent, with secret values masked. Open What the AI sees to review them.'))));
-  container.replaceChildren(polite,urgent,el('div',{className:'page-heading-row'},heading('AI copilot','Investigate executions. Review changes. Stay in control.'),can('admin')?action('Assistant settings',openSettings):null),el('div',{className:'assistant-layout'},chat,rail));
+      el('p',{},'With a repair target pinned, the workflow and a scrubbed error summary are also sent, with secret values masked. Open What the AI sees to review them.')))));
+  container.replaceChildren(polite,urgent,el('div',{className:'page-heading-row'},heading('AI workspace','Investigate executions. Review changes. Stay in control.'),can('admin')?action('Assistant settings',openSettings):null),el('div',{className:'assistant-layout'},chat,rail));
   transcript.append(el('p',{className:'muted',role:'status'},'Loading assistant…'));
   paintTarget();
   if (parsed.rejected.length) notice(messages, `This repair link had invalid values, which were ignored: ${parsed.rejected.join(', ')}.`);
@@ -834,6 +851,8 @@ export async function render(container) {
     : target.execution_id ? `Find why execution ${target.execution_id} failed and propose a fix I can review.` : target.workflow_id ? 'Check the pinned workflow for problems and propose a fix I can review.' : 'Propose a new inactive workflow for this instance. ';
   const explain = context.get('explain') || repairPrompt || (errorId ? `Help me investigate error ${errorId.slice(0,128)} for instance ${(context.get('instance_id') || state.instanceId).slice(0,128)}. Use available metadata and suggest next steps.` : '');
   if (explain) input.value = explain.slice(0, 16000);
+  // Arriving from "Repair with AI" is a request for a fix; everything else starts as a question.
+  if (repairPrompt && !context.get('explain')) setMode('propose');
   scheduleComposerSize();
 
   let repairSettingsReady = false, repairSettingsError = null, directoryAllowed = true, shareDirectory = null;

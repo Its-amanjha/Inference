@@ -71,7 +71,7 @@ Assistant and CodeLab share one AI workspace entry with "AI workspace" and "Code
 
 ## AI repair workspace — 2026-09-16
 
-One window, two tabs: **AI workspace** (the conversation, headed AI copilot) and **Code editor (manual)** (CodeLab). `#assistant` and `#codelab` deep links still open the matching tab.
+One window, two tabs: **AI workspace** (the conversation, headed AI workspace so the tab, the navigation link and the heading use one name) and **Code editor (manual)** (CodeLab). `#assistant` and `#codelab` deep links still open the matching tab.
 
 - **People pin the target.** Operators get "Repair with AI" on Errors rows, overview findings and workflow rows; it opens `#assistant?mode=repair&instance_id=…&workflow_id=…&error_id=…`. A "Repair target" chip under the model toolbar names the instance, workflow name and ID, and the error or execution, with Change (inline workflow search) and Clear. The model never sets it; the address updates in place without rebuilding the view.
 - **Context is visible.** "What the AI sees" shows the redaction count, the "Send scrubbed error text to the AI" choice (disabled with a sentence when an administrator turns error text off) and the exact context JSON. Replies carry a "Context sent" disclosure, and repair turns list their steps with status badges. Continue and Try again run only on a click.

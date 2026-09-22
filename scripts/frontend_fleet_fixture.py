@@ -513,7 +513,7 @@ def exercise_fleet(page, fixture_url, state):
 def exercise_approvals(page, instance_id, state):
     """Create real durable proposals via the tool API; operate their browser cards."""
     page.evaluate("location.hash = 'assistant'")
-    page.get_by_role('heading', name='AI copilot', exact=True).wait_for()
+    page.get_by_role('heading', name='AI workspace', exact=True).wait_for()
 
     def propose():
         count = len(state['writes'])

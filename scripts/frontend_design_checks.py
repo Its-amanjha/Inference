@@ -71,7 +71,7 @@ def exercise_design(page: Page, artifacts: Path) -> None:
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         page.screenshot(path=str(artifacts / 'inference-populated-desktop.png'), full_page=True)
         page.get_by_role('link', name='Explain with AI').click()
-        page.get_by_role('heading', name='AI copilot', exact=False).wait_for()
+        page.get_by_role('heading', name='AI workspace', exact=False).wait_for()
         page.evaluate("location.hash = 'dashboard'")
         page.get_by_text('Order synchronization', exact=True).wait_for()
         page.evaluate("async () => (await import('/js/themes.js')).setTheme('dark')")
