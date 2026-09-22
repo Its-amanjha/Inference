@@ -81,9 +81,8 @@ export async function render(container) {
     summaryStrip,
     toolbar,
     messages,
-    stamp,
-    list,
-    next,
+    // Traces and their pagination share one card, like the error list.
+    el('section', {class: 'card result-card'}, list, el('div', {class: 'result-card-foot'}, next)),
     detail
   );
 

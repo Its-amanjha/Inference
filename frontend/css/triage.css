@@ -52,7 +52,7 @@
 .active-view-indicator .button { min-height:24px; padding:0 6px; font-size:11px; }
 
 .triage-announce { margin:0 0 8px; font-size:13px; color:var(--color-graphite); }
-.triage-announce:empty { margin:0; }
+.triage-announce:empty { margin:0; position:absolute; }
 .triage-results { margin-bottom:16px; }
 .triage-results:focus { outline:none; }
 
@@ -145,3 +145,16 @@
   :is(.triage-table, .table-wrap:not(.table-scroll) table:not(.table-scroll)) td :is(.toolbar, .actions) .button,
   :is(.triage-table, .table-wrap:not(.table-scroll) table:not(.table-scroll)) td>.button { margin:0; }
 }
+/* A result list and its "older" control in one card. Nested empty states drop their own frame;
+   the footer disappears when there is nothing older to load. */
+.result-card { padding:0; overflow:hidden; }
+.result-card>:first-child { margin-bottom:0; }
+.result-card>:first-child:empty { display:none; }
+.result-card>:first-child>.empty,.result-card>:first-child>.loading-state { border:0; box-shadow:none; }
+.result-card .table-wrap { border:0; border-radius:0; scrollbar-gutter:auto; }
+.result-card th:first-child,.result-card td:first-child { padding-left:20px; }
+.result-card th:last-child,.result-card td:last-child { padding-right:20px; }
+/* Two actions stack in a narrow column instead of forcing the table wider than its card. */
+.result-card .triage-action-group { flex-wrap:wrap; }
+.result-card-foot { display:flex; justify-content:center; padding:12px 16px; border-top:1px solid var(--border); }
+.result-card-foot:has(> button:disabled) { display:none; }

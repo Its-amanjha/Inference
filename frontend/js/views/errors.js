@@ -86,7 +86,6 @@ export async function render(container){
       contextStrip.replaceChildren(
         el('div', { class: 'triage-context-left' },
           count,
-          el('p', { class: 'triage-scope-note' }, 'Filters apply to loaded errors only.'),
           activeBadge
         )
       );
@@ -235,7 +234,9 @@ export async function render(container){
     heading('Error triage', 'Confirmed errors and evidence-based findings, newest first.'),
     commandStrip,
     contextStrip,
-    announcer, feedback, content, next
+    announcer, feedback,
+    // The list and its pagination live in one card, so "Older errors" belongs visibly to the list.
+    el('section', { class: 'card result-card' }, content, el('div', { class: 'result-card-foot' }, next))
   );
 
   const unregisterShortcuts = registerShortcuts([
@@ -437,7 +438,7 @@ export async function render(container){
     if(!rows.length){
       selectedIds.clear();
       updateSelectionUI();
-      content.replaceChildren(empty('Nothing to triage',loadedStatus==='open'?'No open errors for this instance selection. An empty list does not prove every execution succeeded; telemetry coverage may be incomplete.':'No resolved errors for this instance selection. Errors marked resolved from the Open list appear here.',loadedStatus==='resolved'?[button('Check again',()=>load(),'ghost'),button('Back to Open',()=>{status.value='open';selectedIds.clear();load();},'ghost')]:[button('Check again',()=>load(),'ghost')]));
+      content.replaceChildren(empty('Nothing to triage',loadedStatus==='open'?'No open errors right now.':'No resolved errors yet.',loadedStatus==='resolved'?[button('Check again',()=>load(),'ghost'),button('Back to Open',()=>{status.value='open';selectedIds.clear();load();},'ghost')]:[button('Check again',()=>load(),'ghost')]));
       return;
     }
     if(!shown.length){
