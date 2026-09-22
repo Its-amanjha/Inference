@@ -80,3 +80,9 @@
   .loading-metrics>.loading-rows { grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; }
   .dashboard-section:not(.dashboard-investigation)>div:last-child>.loading-state { padding:16px; }
 }
+.workflow-search-field { position:relative; flex:0 1 420px; min-width:0; }
+.workflow-search-field input { width:100%; }
+.workflow-search-field .picker-list { position:absolute; z-index:20; top:100%; inset-inline:0; margin-top:4px; }
+.workflow-search-field .picker-option { align-items:center; }
+.workflow-search-field .picker-option>span { min-width:0; flex:1; }
+.workflow-search-field .picker-name,.workflow-search-field .picker-id { display:block; max-width:none; margin-left:0; white-space:normal; overflow-wrap:anywhere; }

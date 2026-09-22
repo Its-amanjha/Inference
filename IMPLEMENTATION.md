@@ -439,3 +439,8 @@ Read-only VPS checks found the failed target archived (last updated before both 
 ## 2026-09-22 — Proposal display consistency
 
 Omit absent DOM children instead of rendering literal null after failed/cancelled proposals. Stack each action-review title above its status so long titles keep the full column. Edge reproduced one null text node before and zero after; 390px rail titles both measure 320px with badges below. Full browser suite includes the null regression and passes 18 checks.
+
+
+## 2026-09-22 — Workflow suggestions
+
+Add debounced name suggestions from each selected instance, bounded to three concurrent reads and ten displayed options. Cancel stale requests on typing, blur and navigation. Names include instance/ID; keyboard arrows/Enter/Escape and reduced motion are verified at 1440/390px. The VPS returned partial-name matches for AI and GATE in read-only checks. Clear search now actually clears the query. Browser suite: 18 PASS; changed modules parse.
