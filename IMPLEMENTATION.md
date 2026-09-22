@@ -444,3 +444,8 @@ Omit absent DOM children instead of rendering literal null after failed/cancelle
 ## 2026-09-22 — Workflow suggestions
 
 Add debounced name suggestions from each selected instance, bounded to three concurrent reads and ten displayed options. Cancel stale requests on typing, blur and navigation. Names include instance/ID; keyboard arrows/Enter/Escape and reduced motion are verified at 1440/390px. The VPS returned partial-name matches for AI and GATE in read-only checks. Clear search now actually clears the query. Browser suite: 18 PASS; changed modules parse.
+
+
+## 2026-09-22 — Answer questions before proposing changes
+
+Repair prompt previously directed the model to propose a complete change even when the message was a question. Clarify in both general and repair prompts that a pinned target is context, and edits require a request for a change/fix. Approval controls remain unchanged. Full suite: 899 passed, 11 skipped, 1 warning in 307.78s; provider tests are scripted, so no claim of live model compliance. Backend activation awaits restart.
