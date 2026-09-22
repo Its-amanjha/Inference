@@ -52,7 +52,10 @@ def exercise_design(page: Page, artifacts: Path) -> None:
         expect(page.locator('.metric-cell .metric-number')).to_have_count(4)
         expect(page.get_by_role('article', name='Total workflows')).to_contain_text('Unavailable')
         if len(instances) > 1:
-            expect(page.locator('.instance-counts')).to_have_text('23 workflows · 0 saved executions in 24h')
+            # The counted instance shows its numbers in a stats block: 23 workflows, 0 runs in 24h.
+            counted = page.locator('.instance-stats').filter(has=page.locator('.instance-stat-value', has_text=re.compile(r'^23$')))
+            expect(counted).to_have_count(1)
+            expect(counted.locator('.instance-stat').nth(1).locator('.instance-stat-value')).to_have_text('0')
         expect(page.locator('.dashboard .panel-head h2 > svg')).to_have_count(3)
         expect(page.locator('.dashboard .panel-head a > svg')).to_have_count(3)
         expect(page.locator('.dashboard .panel-head svg[aria-hidden="true"]')).to_have_count(6)

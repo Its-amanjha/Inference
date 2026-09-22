@@ -3,7 +3,7 @@ import {state,pageSize,can} from '../state.js';
 import {el,button,heading,table,empty} from '../lib/html.js';
 import {icon,registerIcons} from '../lib/icons.js';
 import {severityPill,relativeTime,instanceName,explainHref,repairHref} from '../lib/triage.js';
-import {loadingState,loadFailure,asOf} from '../lib/payload.js';
+import {loadingState,loadFailure,asOf,cachedProbe,instanceStats} from '../lib/payload.js';
 
 
 // Adapted Lucide SVG paths, kept local and rendered at the shared UI stroke width.
@@ -21,22 +21,21 @@ export async function render(container) {
   let busy=false;
   container.classList.add('dashboard');
   const stats=el('div',{class:'metric-strip',role:'group','aria-label':'Execution metrics'});
-  const coverage=el('div',{class:'coverage'}),telemetry=el('section',{class:'telemetry-strip','aria-label':'Retained telemetry'});
+  const coverage=el('div',{class:'coverage'});
   const findings=el('div',{class:'dashboard-findings'}),fleet=el('div',{class:'panel-body dashboard-fleet'}),feed=el('div',{});
   const panel=(title,body,label,href,glyph=href.slice(1))=>el('section',{class:'panel'},el('header',{class:'panel-head'},el('h2',{},icon(glyph),title),label?el('a',{href},label,icon('arrow')):null),body);
   const scope=state.instances.find(row=>row.id===instance)?.name||'All instances';
   const sections=[
-    {content:telemetry,short:'telemetry',label:`retained telemetry for ${scope}`},
     {content:feed,short:'execution history',label:`recent executions for ${scope}`},
     {content:stats,short:'metrics',kind:'metrics',label:`execution metrics for ${scope}`},
     {content:findings,short:'findings',label:`investigation queue for ${scope}`}
   ].map(section=>({...section,feedback:el('div'),stamp:el('div'),loaded:false}));
-  const wrap=index=>el('div',{class:`dashboard-section${index===3?' panel-body dashboard-investigation':''}`},sections[index].feedback,sections[index].stamp,sections[index].content);
+  const wrap=index=>el('div',{class:`dashboard-section${index===2?' panel-body dashboard-investigation':''}`},sections[index].feedback,sections[index].stamp,sections[index].content);
   const refreshButton=button([icon('refresh'),'Refresh'],()=>refresh(),'ghost');
   const actions=el('div',{class:'actions'},refreshButton,el('a',{class:'button',href:can('admin')?'#instances':'#errors'},can('admin')?'Manage instances':'Investigate errors',icon('arrow')));
   container.append(el('div',{class:'page-heading-row'},heading('Fleet overview',`${scope} · Execution health and findings that need attention.`),actions),
-    sections[2].feedback,sections[2].stamp,stats,coverage,el('div',{class:'dashboard-columns'},panel('Investigation queue',wrap(3),'View all errors','#errors','overview-queue'),panel('Connected instances',fleet,'Fleet health','#fleet-health','overview-server')),
-    panel('Recent executions',wrap(1),'View traces','#observe'),wrap(0));
+    sections[1].feedback,sections[1].stamp,stats,coverage,el('div',{class:'dashboard-columns'},panel('Investigation queue',wrap(2),'View all errors','#errors','overview-queue'),panel('Connected instances',fleet,'Fleet health','#fleet-health','overview-server')),
+    panel('Recent executions',wrap(0),'View traces','#observe'));
   const scoped=instance?state.instances.filter(row=>row.id===instance):state.instances;
   function renderFleet(metrics) {
     fleet.replaceChildren();
@@ -44,16 +43,19 @@ export async function render(container) {
     for(const row of scoped){
       const evidence=metrics?.data?.find(item=>item.instance_id===row.id||item.id===row.id);
       const complete=evidence?.workflows_complete&&evidence?.executions_complete;
-      fleet.append(el('article',{class:'instance-row'},el('a',{href:'#instances'},icon('overview-server'),row.name),el('p',{},row.url),el('span',{class:`badge ${evidence?(complete?'info':'warning'):''}`},icon(evidence?(complete?'overview-retrieved':'overview-partial'):'overview-server'),evidence?(complete?'History retrieved':'Partial coverage'):'Connection saved')));
-      if(evidence){
-        const counts=[];
-        if(evidence.workflows_complete&&Number.isFinite(evidence.observed_workflows))counts.push(`${evidence.observed_workflows} workflows`);
-        if(evidence.executions_complete&&Number.isFinite(evidence.observed_executions_24h))counts.push(`${evidence.observed_executions_24h} saved executions in 24h`);
-        if(counts.length)fleet.lastElementChild.append(el('p',{class:'instance-counts'},counts.join(' · ')));
-      }
+      const probe=cachedProbe(row);
+      // Reachability comes only from a real connection check; without one the card says so.
+      const reach=probe?el('span',{class:`badge ${probe.reachable?'success':'error'}`},icon(probe.reachable?'check':'errors'),probe.reachable?'Reachable':'Unreachable')
+        :el('span',{class:'badge'},'Not checked');
+      const latency=probe?.reachable&&Number.isFinite(probe.latency_ms)?el('span',{class:'badge latency'},`${probe.latency_ms} ms`):null;
+      fleet.append(el('article',{class:'instance-row'},
+        el('div',{class:'instance-row-head'},el('a',{href:'#fleet-health'},icon('overview-server'),row.name),el('span',{class:'instance-badges'},reach,latency)),
+        el('p',{class:'instance-host'},row.url.replace(/^https?:\/\//,'')),
+        evidence?instanceStats(evidence):null,
+        evidence&&!complete?el('p',{class:'instance-partial'},icon('overview-partial'),'Some history could not be counted.'):null));
     }
   }
-  function emptyExecutions(){return state.instances.length?empty('Choose an instance','Pick an instance in the switcher at the top of the page to see its recent executions.',[el('a',{class:'button ghost',href:'#instances'},'Open instances')]):empty('No instances connected',can('admin')?'Connect an n8n instance in Instances, then pick it in the switcher at the top of the page to see its recent executions.':'An administrator needs to connect an n8n instance before recent executions can appear.',can('admin')?[el('a',{class:'button ghost',href:'#instances'},'Open instances')]:[]);}
+  function emptyExecutions(){return state.instances.length?empty('Choose an instance','Pick one at the top of the page to see its runs.',[el('a',{class:'button ghost',href:'#instances'},'Open instances')]):empty('No instances connected',can('admin')?'Connect an n8n instance in Instances, then pick it in the switcher at the top of the page to see its recent executions.':'An administrator needs to connect an n8n instance before recent executions can appear.',can('admin')?[el('a',{class:'button ghost',href:'#instances'},'Open instances')]:[]);}
   renderFleet();
   async function refresh() {
     if(busy||controller.signal.aborted)return;busy=true;refreshButton.disabled=true;
@@ -67,13 +69,12 @@ export async function render(container) {
       const query=instance?`?instance_id=${encodeURIComponent(instance)}`:'';
       const errorQuery=new URLSearchParams({status:'open',limit:'4'});if(instance)errorQuery.set('instance_id',instance);
       const requests=[
-        api('/api/otel/summary'+query,{signal:controller.signal}),
         instance?api('/api/n8n_proxy/executions'+query+'&limit='+pageSize(),{signal:controller.signal}):Promise.resolve(null),
         api('/api/n8n_proxy/dashboard'+query,{signal:controller.signal}),
         api('/api/errors?'+errorQuery,{signal:controller.signal})
       ];
       const results=[];
-      // Render independently: a slow fleet scan must not delay findings or telemetry.
+      // Render independently: a slow fleet scan must not delay the findings.
       await Promise.all(requests.map(async(request,index)=>{
         let result;
         try{result={status:'fulfilled',value:await request};}
@@ -84,19 +85,19 @@ export async function render(container) {
         {
         const section=sections[index];section.feedback.replaceChildren();
         if(result.status==='fulfilled'){
-          section.content.replaceChildren();section.stamp.replaceChildren(asOf());section.loaded=true;
+          section.content.replaceChildren();if(index===1)section.stamp.replaceChildren(asOf());section.loaded=true;
         }else{
           if(!section.loaded)section.content.replaceChildren();
           section.feedback.append(loadFailure(result.reason,refresh,`Could not refresh ${section.label}`));
         }
       }
-      if(index===2&&results[2].status==='fulfilled'){
+      if(index===1&&results[1].status==='fulfilled'){
         coverage.replaceChildren();
-        const metrics=results[2].value;
+        const metrics=results[1].value;
         // Null means the data could not be counted; it is shown as missing, never as zero or failure.
-        const rate=metrics.success_rate_percent===null?(metrics.terminal_executions_24h===0?'No completed runs':null):`${metrics.success_rate_percent}%`;
+        const rate=metrics.success_rate_percent===null?(metrics.terminal_executions_24h===0?'No completed runs':null):`${Math.round(metrics.success_rate_percent)}%`;
         const incomplete=metrics.data.filter(row=>!row.workflows_complete||!row.executions_complete);
-        for(const [index,[label,value,glyph,hint]] of [['Confirmed silent-error spans · 24h',metrics.confirmed_silent_error_spans_24h,'errors','Silent failures confirmed from received telemetry'],['Saved executions · 24h',metrics.executions_24h,'play'],['Success rate · completed runs',rate,'check'],['Total workflows',metrics.workflows,'workflows']].entries()){
+        for(const [index,[label,value,glyph,hint]] of [['Confirmed silent-error spans · 24h',metrics.confirmed_silent_error_spans_24h,'errors'],['Saved executions · 24h',metrics.executions_24h,'play'],['Success rate · completed runs',rate,'check'],['Total workflows',metrics.workflows,'workflows']].entries()){
           const unknown=value===null,text=unknown?'Unavailable':String(value),labelId=`metric-label-${index}`,valueId=`metric-value-${index}`;
           const detail=unknown?(incomplete.length?'Coverage incomplete':'Not reported'):hint;
           // The label names the metric via an h2 heading; the value is associated with it via aria-describedby.
@@ -107,38 +108,33 @@ export async function render(container) {
           const missing=row=>!row.workflows_complete&&!row.executions_complete?'workflow and execution history incomplete':!row.workflows_complete?'workflow list incomplete':'execution history incomplete';
           coverage.prepend(el('section',{class:'coverage-partial',role:'status'},icon('info'),el('div',{},
             el('h2',{},'Incomplete coverage'),
-            el('p',{},'Totals that depend on these instances show as Unavailable. Data is missing; this does not mean anything failed.'),
+            el('p',{},'Some totals show as Unavailable. Missing data is not a failure.'),
             el('ul',{},incomplete.map(row=>el('li',{},el('strong',{},row.name),`: ${missing(row)}`))),
-            el('p',{class:'muted'},'Possible causes: the instance was unreachable, returned data this version does not support, or has more than 2,500 records per resource.'))));
+            )));
         }
         renderFleet(metrics);
       }
-      if(index===0&&results[0].status==='fulfilled'){
-        for(const [label,key] of [['Retained traces','traces'],['Recorded spans','spans'],['Error spans','error_spans']])telemetry.append(el('div',{class:'telemetry-stat'},el('span',{},label),el('strong',{},String(results[0].value[key]))));
-        telemetry.append(el('p',{class:'muted'},'Everything kept in retention, not only the last 24 hours. Error spans count every failed span; the silent-error metric above counts only confirmed silent failures from the last 24 hours. Missing telemetry does not prove failure.'));
-      }
-      if(index===3&&results[3].status==='fulfilled'){
-        const rows=results[3].value.data;
-        if(!rows.length){const blank=empty('No open findings',scoped.length?'No recorded errors match this instance selection. Telemetry coverage may be incomplete.':'Connect an instance and configure telemetry to start investigating execution anomalies.',[el('a',{class:'button ghost',href:scoped.length?'#errors':'#instances'},scoped.length?'Open errors':'Open instances',icon('arrow'))]);blank.querySelector(':scope > .icon')?.replaceWith(icon('overview-empty'));findings.append(blank);}
+      if(index===2&&results[2].status==='fulfilled'){
+        const rows=results[2].value.data;
+        if(!rows.length){const blank=empty('No open findings',scoped.length?'Nothing needs attention right now.':'Connect an instance to start investigating.',[el('a',{class:'button ghost',href:scoped.length?'#errors':'#instances'},scoped.length?'Open errors':'Open instances',icon('arrow'))]);blank.querySelector(':scope > .icon')?.replaceWith(icon('overview-empty'));findings.append(blank);}
         for(const row of rows){
-          const occurrences=row.count===null||row.count===undefined?'Occurrences unavailable':`${row.count} occurrence(s)`;
+          const occurrences=row.count===null||row.count===undefined?'Occurrences unavailable':`${row.count} ${row.count===1?'occurrence':'occurrences'}`;
           // Time and execution are shown only when the record carries them.
           const parts=[el('span',{},`${instanceName(row.instance_id)} · ${row.node_name||'Workflow'} · ${occurrences}`),row.occurred_at?relativeTime(row.occurred_at):null,row.execution_id?el('span',{},`Execution ${row.execution_id}`):null].filter(Boolean);
           findings.append(el('article',{class:'finding-row'},el('div',{class:'finding-title'},el('strong',{},row.workflow_name),severityPill(row.error_type)),
             el('p',{},row.error_message),el('div',{class:'finding-meta'},parts.flatMap((part,position)=>position?[el('span',{class:'finding-sep','aria-hidden':'true'},'·'),part]:[part]),el('span',{class:'finding-actions'},el('a',{href:explainHref(row)},'Explain with AI'),can('operator')?el('a',{href:repairHref(row),'aria-label':`Repair workflow ${row.workflow_name} with AI`},'Repair with AI'):null))));
         }
-        if(rows.length)findings.append(el('p',{class:'muted'},'Latest open findings. Review all errors for earlier records.'));
       }
-      if(index===1&&results[1].status==='fulfilled'&&!results[1].value)feed.append(emptyExecutions());
-      else if(index===1&&results[1].status==='fulfilled'){
-        const rows=results[1].value.data;
+      if(index===0&&results[0].status==='fulfilled'&&!results[0].value)feed.append(emptyExecutions());
+      else if(index===0&&results[0].status==='fulfilled'){
+        const rows=results[0].value.data;
         const badge=status=>el('span',{class:`badge ${['success','completed'].includes(status)?'success':['error','crashed'].includes(status)?'error':['running','waiting'].includes(status)?'info':''}`},status||'Unknown');
-        feed.append(rows.length?table(['Execution','Workflow','Status','Started'],rows.map(row=>[String(row.id),row.workflowId??'—',badge(row.status),row.startedAt?new Date(row.startedAt).toLocaleString():'—'])):empty('No recent executions','No execution records were returned by this instance.',[button('Refresh executions',()=>refresh(),'ghost')]),el('p',{class:'muted feed-caption'},`Latest ${pageSize()} executions from the selected instance. Refreshes every 30 seconds.`));
+        feed.append(rows.length?table(['Execution','Workflow','Status','Started'],rows.map(row=>[String(row.id),row.workflowId??'—',badge(row.status),row.startedAt?new Date(row.startedAt).toLocaleString():'—'])):empty('No recent executions','No execution records were returned by this instance.',[button('Refresh executions',()=>refresh(),'ghost')]));
       }
       }));
     }finally{busy=false;refreshButton.disabled=false;}
   }
-  const run=()=>refresh().catch(error=>{if(!controller.signal.aborted)sections[2].feedback.replaceChildren(loadFailure(error,run,'Could not refresh the dashboard'));});
+  const run=()=>refresh().catch(error=>{if(!controller.signal.aborted)sections[1].feedback.replaceChildren(loadFailure(error,run,'Could not refresh the dashboard'));});
   run();
   const timer=setInterval(()=>{if(!document.hidden)run();},30000);
   return()=>{controller.abort();clearInterval(timer);};

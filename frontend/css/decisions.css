@@ -143,3 +143,11 @@
 .span-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:8px; }
 .span-actions .button { min-height:28px; font-size:11px; padding:0 8px; }
 
+/* Fleet health card: numbers first, API access as inline chips, one quiet "last checked" line. */
+.instance-card .instance-body { gap:16px; }
+.instance-card .capability-row { display:flex; align-items:center; flex-wrap:wrap; gap:8px 12px; }
+.instance-card .capability-row-label { font-size:12px; color:var(--color-smoke); }
+.instance-card .capability-row .capability-list { flex-direction:row; flex-wrap:wrap; gap:8px 16px; }
+.instance-card .capability-row .capability-list li { padding:0; border:0; gap:6px; font-size:13px; }
+.instance-card .instance-checked { margin:0; font-size:12px; color:var(--color-smoke); }
+.instance-card>div:empty { display:none; }

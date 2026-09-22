@@ -104,7 +104,8 @@ def main() -> None:
                     page.get_by_label('Confirm password', exact=True).fill(password)
                     page.get_by_role('button', name='Create admin account').click()
                     page.get_by_role('heading', name='Fleet overview', exact=True).wait_for()
-                    page.get_by_text('Recorded spans', exact=True).wait_for()
+                    # The metric strip is the dashboard's first data; the telemetry strip was removed.
+                    page.get_by_role('article', name='Total workflows', exact=True).wait_for()
                     assert page.evaluate('getComputedStyle(document.body).backgroundColor') == 'rgb(245, 247, 249)'
                     expect(page.get_by_role('navigation', name='All views')).to_be_visible()
                     expect(page.get_by_role('navigation', name='All views').get_by_role('link')).to_have_count(13)

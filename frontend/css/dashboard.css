@@ -26,3 +26,22 @@
   .dashboard .panel-head a { min-height:44px; }
   .dashboard .dashboard-findings>.empty { padding:20px 0; }
 }
+/* Connected instances: name and state, host, then four numbers an operator reads at a glance. */
+.dashboard .instance-row { display:flex; flex-direction:column; gap:0; }
+.dashboard .instance-row+.instance-row { margin-top:20px; padding-top:20px; border-top:1px solid var(--border); }
+.dashboard .instance-row-head { display:flex; align-items:center; justify-content:space-between; gap:8px 12px; flex-wrap:wrap; }
+.dashboard .instance-row-head>a { font-size:15px; font-weight:600; color:var(--color-ink-black); }
+.dashboard .instance-badges { display:inline-flex; gap:6px; flex-wrap:wrap; }
+.dashboard .instance-host { margin:4px 0 16px; font-size:13px; color:var(--color-smoke); overflow-wrap:anywhere; }
+.dashboard .instance-partial { display:flex; align-items:center; gap:6px; margin:12px 0 0; font-size:12px; color:var(--color-smoke); }
+.dashboard .instance-partial>.icon { width:14px; height:14px; }
+.instance-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(132px,1fr)); gap:16px 20px; margin:0; padding:16px; border-radius:12px; background:var(--surface-page-canvas); }
+.instance-stat { min-width:0; }
+.instance-stat dt { margin:0 0 4px; font-size:12px; line-height:16px; color:var(--color-smoke); }
+.instance-stat dd { display:flex; align-items:baseline; flex-wrap:wrap; gap:4px 8px; margin:0; }
+.instance-stat-value { font-size:22px; line-height:28px; font-weight:600; letter-spacing:-.01em; font-variant-numeric:tabular-nums; color:var(--color-ink-black); }
+.instance-stat-note { font-size:12px; color:var(--color-smoke); }
+.dashboard .instance-row-head>a { display:inline-flex; align-items:center; gap:10px; }
+.dashboard .instance-row-head>a>.icon { width:18px; height:18px; color:var(--selection-text); }
+/* In the narrow dashboard column two numbers per row read better than four cramped ones. */
+.dashboard .instance-stats { grid-template-columns:repeat(2,minmax(0,1fr)); }

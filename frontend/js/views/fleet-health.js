@@ -1,7 +1,8 @@
+import {api} from '../api.js';
 import {state} from '../state.js';
 import {el,button,heading,empty} from '../lib/html.js';
 import {icon,registerIcons} from '../lib/icons.js';
-import {rawDisclosure,probeSummary,reachabilityBadge,checkedLine,loadingState,loadFailure,asOf,cachedProbe,rememberProbe,checkConnection} from '../lib/payload.js';
+import {probeSummary,reachabilityBadge,checkedLine,loadingState,loadFailure,cachedProbe,rememberProbe,checkConnection,instanceStats} from '../lib/payload.js';
 
 registerIcons({
   server:'M4 6h16M4 10h16M4 14h16M4 18h16 M2 4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4z M6 6h.01 M6 10h.01 M6 14h.01 M6 18h.01',
@@ -60,7 +61,7 @@ export async function render(container) {
   const toolbar = el('div', {class: 'fleet-toolbar'}, filterGroup, refresh);
 
   container.append(
-    heading('Fleet health', 'Live connection, reachability, and public API capability telemetry across all managed n8n instances.'),
+    heading('Fleet health', 'Reachability, latency and throughput for every instance.'),
     statusAnnouncer,
     rollupStrip,
     toolbar,
@@ -136,14 +137,14 @@ export async function render(container) {
       el('a', {class: 'button ghost', href: '#errors'}, 'Errors')
     );
 
-    return el('div', {class: 'stack'},
-      el('p', {class: 'muted', title: result.checked_at}, checkedLine(result)),
-      asOf(new Date(result.checked_at)),
-      list,
+    // Throughput and error rate first, then API access as chips; warnings appear only when something is wrong.
+    return el('div', {class: 'stack instance-body'},
+      entry.stats,
+      el('div', {class: 'capability-row'}, el('span', {class: 'capability-row-label'}, 'API access'), list),
       guidance,
-      diagnostics.length ? notes : el('p', {class: 'muted'}, 'Public API checks passed.'),
-      actionsRow,
-      rawDisclosure(result)
+      diagnostics.length ? notes : null,
+      el('p', {class: 'instance-checked', title: result.checked_at}, checkedLine(result)),
+      actionsRow
     );
   }
 
@@ -250,7 +251,9 @@ export async function render(container) {
       feedback,
       statusBadge,
       latencyBadge,
-      currentResult: cached
+      currentResult: cached,
+      // Filled when the fleet scan returns; dashes until then, never zeros.
+      stats: el('div', {class: 'instance-stats-slot'}, instanceStats(null))
     };
 
     if (!cached) {
@@ -335,6 +338,13 @@ export async function render(container) {
   }
 
   start();
+  // One fleet scan for the numbers on every card. A rate limit or an unreachable instance leaves dashes.
+  if (entries.length) api('/api/n8n_proxy/dashboard', {signal: controller.signal}).then(metrics => {
+    for (const entry of entries) {
+      const row = metrics?.data?.find(item => item.instance_id === entry.instance.id);
+      entry.stats.replaceChildren(instanceStats(row || null));
+    }
+  }).catch(() => {});
   return () => {
     controller.abort();
     round?.abort();
