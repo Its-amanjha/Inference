@@ -482,6 +482,7 @@ def exercise_chat(page, log, state, ids):
     cancelled = act(page, log, node, UI['cancel'], is_cancel, 'cancelling the chat proposal')
     assert cancelled.status == 200, f'Cancel: HTTP {cancelled.status}'
     expect(node).to_have_attribute(UI['status_attribute'], UI['status_cancelled'])
+    assert node.evaluate("n => ![...n.childNodes].some(child => child.nodeType === 3 && child.textContent === 'null')"), 'Absent proposal footer must not render literal null'
     assert len(state['writes']) == writes, 'Cancel must not write to n8n'
 
     # Per-conversation consent: with the toggle off, the scrubbed error text does not reach the provider.

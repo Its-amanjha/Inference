@@ -284,7 +284,7 @@ export function renderProposal(card,view,handlers){
     el('div',{className:'proposal-head'},el('h3',{className:'proposal-title',id:`proposal-${safe}-title`},preview?.summary_text||(action?.name==='propose_restore_workflow'?'Restore an earlier workflow version':'Change a workflow')),statusBadge(status)),
     el('p',{className:'proposal-target'},targetLine(action),status==='pending'&&Number.isFinite(Number(action?.expires_at))?` · Expires ${formatTime(Number(action.expires_at))}`:''),
     ...(preview?.kind==='execution_retry'?[el('div',{className:'proposal-uncertain proposal-retry-warning'},icon('errors'),el('div',{},el('p',{className:'proposal-state-title'},'A retry can repeat payments and other effects'),el('p',{},RETRY_WARNING)))]:[]),
-    state,...sections,...(round2&&!footer?[]:[footer]),feedback,raw);
+    ...(state?[state]:[]),...sections,...(footer?[footer]:[]),feedback,raw);
   if(focused){
     const target=focused==='card'?null:[...card.querySelectorAll('[data-control]')].find(node=>node.dataset.control===focused&&!node.disabled);
     (target||card).focus({preventScroll:true});

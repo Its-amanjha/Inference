@@ -434,3 +434,8 @@ dashboard rendering and retained successful content after transient errors.
 ## 2026-09-22 — Archived repair rejection
 
 Read-only VPS checks found the failed target archived (last updated before both failures). Both saved desired documents validate against that server's published PUT schema. Block repair proposal creation and confirmation when archived, with an explicit unarchive instruction; never unarchive automatically. Two regressions prove zero remote writes, including archiving after proposal. Full verification: 899 passed, 11 skipped, 1 warning; 18 browser PASS. Backend activation awaits the user's restart choice.
+
+
+## 2026-09-22 — Proposal display consistency
+
+Omit absent DOM children instead of rendering literal null after failed/cancelled proposals. Stack each action-review title above its status so long titles keep the full column. Edge reproduced one null text node before and zero after; 390px rail titles both measure 320px with badges below. Full browser suite includes the null regression and passes 18 checks.
