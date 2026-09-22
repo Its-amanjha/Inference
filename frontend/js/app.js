@@ -139,7 +139,9 @@ function renderShell() {
   // A clock replaces the connected label; the state text returns only when updates stop. The clock sits
   // outside the live region so screen readers hear connection changes, not every minute.
   const clock=el('time',{class:'live-clock'});
-  const tick=()=>{const now=new Date();clock.dateTime=now.toISOString();clock.textContent=now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});};
+  const tick=()=>{const now=new Date();clock.dateTime=now.toISOString();
+    clock.replaceChildren(el('span',{class:'live-clock-date'},now.toLocaleDateString([],{weekday:'short',day:'numeric',month:'short'})),
+      el('span',{class:'live-clock-time'},now.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})));};
   tick();clearInterval(window.__inferenceClock);window.__inferenceClock=setInterval(tick,15000);
   const status=el('span',{id:'connection-status',class:'live-status','data-state':'connecting',title:'Connecting to updates'},el('span',{class:'live-dot','aria-hidden':'true'}),clock,el('span',{class:'live-label',role:'status'},'Connecting to updates'));
   const topbar=el('header',{class:'topbar'},el('div',{class:'topbar-context'},scope,el('span',{class:'crumb-separator','aria-hidden':'true'},'/'),el('span',{class:'crumb-current',id:'current-view'},'Overview')),el('div',{class:'topbar-actions'},status,accountMenu()));
