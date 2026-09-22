@@ -1,5 +1,6 @@
 import {api as request} from '../api.js';
 import {el,button,field,formCard,notice,empty,heading,jsonView} from '../lib/html.js';
+import {icon} from '../lib/icons.js';
 import {can} from '../state.js';
 import {confirmAction,actionMenu,stateBadge,humanize} from '../lib/confirm.js';
 
@@ -28,6 +29,8 @@ export async function render(container){
   if(!can('admin')){container.append(empty('Administrator access required','An administrator manages n8n bundles.'));return;}
   const controller=new AbortController(),signal=controller.signal,messages=el('div'),list=el('div',{class:'grid'}),editor=el('div'),service=el('div');
   const results=new Map();
+  let engineAvailable=true;
+  const provisionButton=button('Provision bundle',provision);
   let writing=false;
   const api=async(path,options={})=>{
     if(signal.aborted)throw new DOMException('View closed','AbortError');
@@ -37,6 +40,29 @@ export async function render(container){
     try{return await request(path,options);}finally{if(write)writing=false;}
   };
   const act=async fn=>{try{await fn();}catch(e){if(!signal.aborted)notice(messages,e);}};
+  function emptyInventory(){
+    return engineAvailable
+      ? empty('No owned bundles','Provision a matching n8n and task runner pair. Existing host containers remain outside this inventory.',[button('Provision your first bundle',provision)])
+      : empty('No owned bundles','Remote n8n connections are managed in Instances. This inventory only lists Docker bundles created by Inference.',[el('a',{class:'button ghost',href:'#instances'},'Open instances')]);
+  }
+  async function checkEngine(){
+    try{
+      const result=await api('/api/docker_mgr/status',{signal});
+      engineAvailable=true;service.replaceChildren(dockerStatus(result));
+    }catch(error){
+      if(signal.aborted)return;
+      if(error.code!=='docker_unavailable')throw error;
+      engineAvailable=false;
+      service.replaceChildren(el('section',{class:'card docker-unavailable',role:'status'},icon('containers'),el('div',{},
+        el('h2',{},'Docker management is unavailable on this server.'),
+        el('p',{},'Your connected n8n instances can still be monitored and managed through their APIs. This page only manages containers on the server running Inference.'),
+        el('details',{},el('summary',{},'How to enable container management'),el('p',{},'Run Inference on a Linux host with an accessible Docker Unix socket. Adding a VPS URL in Instances does not grant access to that VPS\u2019s Docker engine.')))));
+    }finally{provisionButton.disabled=!engineAvailable;}
+  }
+  async function refresh(){
+    await Promise.allSettled([act(checkEngine),act(load)]);
+    if(!signal.aborted&&list.querySelector('.empty'))list.replaceChildren(emptyInventory());
+  }
   async function load(){const result=await api('/api/docker_mgr/bundles',{signal});list.replaceChildren();for(const item of result.data){
     const detail=el('div'),id=encodeURIComponent(item.id),name=item.name||item.id,base='/api/docker_mgr/bundles/'+id;
     if(results.has(item.id))detail.append(jsonView(results.get(item.id)));
@@ -66,7 +92,7 @@ export async function render(container){
     else{primary.push(reconcile('button'));more.push(lifecycle('start','ghost'),lifecycle('stop','ghost'));}
     const actions=el('div',{class:'toolbar'},primary,inspect,actionMenu([...more,remove,purge],`More actions for ${name}`));
     list.append(el('section',{class:'card stack'},el('div',{class:'title-row'},el('h2',{},name),bundleBadge(item.status)),item.version?el('p',{class:'muted'},'n8n '+item.version):null,actions,detail));}
-    if(!result.data.length)list.append(empty('No owned bundles','Provision a matching n8n and task runner pair. Existing host containers remain outside this inventory.',[button('Provision your first bundle',provision)]));}
+    if(!result.data.length)list.append(emptyInventory());}
   function provision(){
     const specs=[['name','Bundle name','text','','Used for the container and volume names.'],
       ['version','Exact n8n / runner version','text','','Both images use this tag, for example 2.19.0.'],
@@ -83,6 +109,6 @@ export async function render(container){
       note:'Downloads matching images and creates a persistent data volume. Complete n8n owner setup and add its API key in Instances afterwards.',
       actions:[button('Cancel',()=>editor.replaceChildren(),'ghost'),submit]});
     let request=null;form.addEventListener('input',()=>{request=null;});form.addEventListener('submit',e=>{e.preventDefault();act(async()=>{if(!request){if(!await confirmAction({title:'Create n8n bundle',target:inputs.name.value,consequence:`Downloads the n8n and task runner ${inputs.version.value} images, then creates the containers, a network and a persistent data volume published on ${inputs.bind_host.value}:${inputs.port.value}.`,confirmLabel:'Create bundle'}))return;request={spec:{name:inputs.name.value,version:inputs.version.value,port:Number(inputs.port.value),bind_host:inputs.bind_host.value,exporter_base_url:inputs.exporter_base_url.value},instance_url:inputs.instance_url.value,idempotency_key:crypto.randomUUID(),readiness_timeout:90};}submit.disabled=true;try{result.replaceChildren(jsonView(await api('/api/docker_mgr/bundles',{method:'POST',json:request})));await load();window.dispatchEvent(new Event('instances-changed'));}finally{submit.disabled=false;}});});editor.replaceChildren(form);}
-  container.append(heading('Containers','Provision and manage bundles owned by this Inference installation.'),messages,service,el('div',{class:'toolbar'},button('Provision bundle',provision),button('Refresh',()=>act(load),'ghost')),editor,list);
-  await Promise.allSettled([act(async()=>{service.replaceChildren(dockerStatus(await api('/api/docker_mgr/status',{signal})));}),act(load)]);return()=>controller.abort();
+  container.append(heading('Containers','Provision and manage bundles owned by this Inference installation.'),messages,service,el('div',{class:'toolbar'},provisionButton,button('Refresh',refresh,'ghost')),editor,list);
+  await refresh();return()=>controller.abort();
 }

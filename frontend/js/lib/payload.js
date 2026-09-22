@@ -7,11 +7,13 @@ import {api} from '../api.js';
 import {parseTimestamp,relativeLabel} from './triage.js';
 
 // A single loading treatment for initial loads; keep existing content during refreshes.
-export function loadingState(label,{rows=3}={}){
-  return el('div',{class:'loading-state',role:'status','aria-live':'polite'},
-    el('p',{class:'loading-label'},icon('clock'),label),
-    el('div',{class:'loading-rows','aria-hidden':'true'},
-      Array.from({length:rows},()=>el('span',{class:'loading-row'}))));
+export function loadingState(label,{rows=3,compactLabel=label,kind='rows'}={}){
+  const lines=()=>Array.from({length:rows},()=>el('span',{class:'loading-row'}));
+  return el('div',{class:`loading-state${kind==='metrics'?' loading-metrics':''}`,role:'status','aria-live':'polite'},
+    el('p',{class:'loading-label'},el('span',{class:'loading-spinner','aria-hidden':'true'}),
+      el('span',{'aria-hidden':'true'},compactLabel),el('span',{class:'sr-only'},label)),
+    el('div',{class:'loading-rows','aria-hidden':'true'},kind==='metrics'
+      ? Array.from({length:4},()=>el('div',{class:'loading-metric'},lines())) : lines()));
 }
 
 export function asOf(date=new Date()){

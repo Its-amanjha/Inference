@@ -26,10 +26,10 @@ export async function render(container) {
   const panel=(title,body,label,href,glyph=href.slice(1))=>el('section',{class:'panel'},el('header',{class:'panel-head'},el('h2',{},icon(glyph),title),label?el('a',{href},label,icon('arrow')):null),body);
   const scope=state.instances.find(row=>row.id===instance)?.name||'All instances';
   const sections=[
-    {content:telemetry,label:`retained telemetry for ${scope}`},
-    {content:feed,label:`recent executions for ${scope}`},
-    {content:stats,label:`execution metrics for ${scope}`},
-    {content:findings,label:`investigation queue for ${scope}`}
+    {content:telemetry,short:'telemetry',label:`retained telemetry for ${scope}`},
+    {content:feed,short:'execution history',label:`recent executions for ${scope}`},
+    {content:stats,short:'metrics',kind:'metrics',label:`execution metrics for ${scope}`},
+    {content:findings,short:'findings',label:`investigation queue for ${scope}`}
   ].map(section=>({...section,feedback:el('div'),stamp:el('div'),loaded:false}));
   const wrap=index=>el('div',{class:`dashboard-section${index===3?' panel-body dashboard-investigation':''}`},sections[index].feedback,sections[index].stamp,sections[index].content);
   const refreshButton=button([icon('refresh'),'Refresh'],()=>refresh(),'ghost');
@@ -47,26 +47,35 @@ export async function render(container) {
       fleet.append(el('article',{class:'instance-row'},el('a',{href:'#instances'},icon('overview-server'),row.name),el('p',{},row.url),el('span',{class:`badge ${evidence?(complete?'info':'warning'):''}`},icon(evidence?(complete?'overview-retrieved':'overview-partial'):'overview-server'),evidence?(complete?'History retrieved':'Partial coverage'):'Connection saved')));
     }
   }
+  function emptyExecutions(){return state.instances.length?empty('Choose an instance','Pick an instance in the switcher at the top of the page to see its recent executions.',[el('a',{class:'button ghost',href:'#instances'},'Open instances')]):empty('No instances connected',can('admin')?'Connect an n8n instance in Instances, then pick it in the switcher at the top of the page to see its recent executions.':'An administrator needs to connect an n8n instance before recent executions can appear.',can('admin')?[el('a',{class:'button ghost',href:'#instances'},'Open instances')]:[]);}
   renderFleet();
   async function refresh() {
     if(busy||controller.signal.aborted)return;busy=true;refreshButton.disabled=true;
     for(const section of sections){
       section.feedback.replaceChildren();
-      if(!section.loaded)section.content.replaceChildren(loadingState(`Loading ${section.label}…`));
-      else section.feedback.append(el('p',{class:'load-progress',role:'status'},`Refreshing ${section.label}…`));
+      if(section.content===feed&&!instance){if(!section.loaded)section.content.replaceChildren(emptyExecutions());continue;}
+      if(!section.loaded)section.content.replaceChildren(loadingState(`Loading ${section.label}…`,{compactLabel:`Loading ${section.short}`,kind:section.kind}));
+      else section.feedback.append(el('p',{class:'load-progress',role:'status'},el('span',{class:'loading-spinner','aria-hidden':'true'}),el('span',{'aria-hidden':'true'},'Updating…'),el('span',{class:'sr-only'},`Refreshing ${section.label}…`)));
     }
     try {
       const query=instance?`?instance_id=${encodeURIComponent(instance)}`:'';
       const errorQuery=new URLSearchParams({status:'open',limit:'4'});if(instance)errorQuery.set('instance_id',instance);
-      const results=await Promise.allSettled([
+      const requests=[
         api('/api/otel/summary'+query,{signal:controller.signal}),
         instance?api('/api/n8n_proxy/executions'+query+'&limit='+pageSize(),{signal:controller.signal}):Promise.resolve(null),
         api('/api/n8n_proxy/dashboard'+query,{signal:controller.signal}),
         api('/api/errors?'+errorQuery,{signal:controller.signal})
-      ]);
-      if(controller.signal.aborted)return;
-      // Each response owns one section. A failed refresh never discards its last good content.
-      for(const [index,result] of results.entries()){
+      ];
+      const results=[];
+      // Render independently: a slow fleet scan must not delay findings or telemetry.
+      await Promise.all(requests.map(async(request,index)=>{
+        let result;
+        try{result={status:'fulfilled',value:await request};}
+        catch(reason){result={status:'rejected',reason};}
+        if(controller.signal.aborted)return;
+        results[index]=result;
+        // A failed refresh never discards this section's last good content.
+        {
         const section=sections[index];section.feedback.replaceChildren();
         if(result.status==='fulfilled'){
           section.content.replaceChildren();section.stamp.replaceChildren(asOf());section.loaded=true;
@@ -75,7 +84,7 @@ export async function render(container) {
           section.feedback.append(loadFailure(result.reason,refresh,`Could not refresh ${section.label}`));
         }
       }
-      if(results[2].status==='fulfilled'){
+      if(index===2&&results[2].status==='fulfilled'){
         coverage.replaceChildren();
         const metrics=results[2].value;
         // Null means the data could not be counted; it is shown as missing, never as zero or failure.
@@ -98,13 +107,13 @@ export async function render(container) {
         }
         renderFleet(metrics);
       }
-      if(results[0].status==='fulfilled'){
+      if(index===0&&results[0].status==='fulfilled'){
         for(const [label,key] of [['Retained traces','traces'],['Recorded spans','spans'],['Error spans','error_spans']])telemetry.append(el('div',{class:'telemetry-stat'},el('span',{},label),el('strong',{},String(results[0].value[key]))));
         telemetry.append(el('p',{class:'muted'},'Everything kept in retention, not only the last 24 hours. Error spans count every failed span; the silent-error metric above counts only confirmed silent failures from the last 24 hours. Missing telemetry does not prove failure.'));
       }
-      if(results[3].status==='fulfilled'){
+      if(index===3&&results[3].status==='fulfilled'){
         const rows=results[3].value.data;
-        if(!rows.length){const blank=empty('No open findings',scoped.length?'No recorded errors match this instance selection. Telemetry coverage may be incomplete.':'Connect an instance and configure telemetry to start investigating execution anomalies.',[el('a',{class:'button ghost',href:scoped.length?'#errors':'#instances'},scoped.length?'Open errors':'Open instances',icon('arrow'))]);blank.prepend(icon('overview-empty'));findings.append(blank);}
+        if(!rows.length){const blank=empty('No open findings',scoped.length?'No recorded errors match this instance selection. Telemetry coverage may be incomplete.':'Connect an instance and configure telemetry to start investigating execution anomalies.',[el('a',{class:'button ghost',href:scoped.length?'#errors':'#instances'},scoped.length?'Open errors':'Open instances',icon('arrow'))]);blank.querySelector(':scope > .icon')?.replaceWith(icon('overview-empty'));findings.append(blank);}
         for(const row of rows){
           const occurrences=row.count===null||row.count===undefined?'Occurrences unavailable':`${row.count} occurrence(s)`;
           // Time and execution are shown only when the record carries them.
@@ -114,12 +123,13 @@ export async function render(container) {
         }
         if(rows.length)findings.append(el('p',{class:'muted'},'Latest open findings. Review all errors for earlier records.'));
       }
-      if(results[1].status==='fulfilled'&&!results[1].value)feed.append(state.instances.length?empty('Choose an instance','Pick an instance in the switcher at the top of the page to see its recent executions.',[el('a',{class:'button ghost',href:'#instances'},'Open instances')]):empty('No instances connected',can('admin')?'Connect an n8n instance in Instances, then pick it in the switcher at the top of the page to see its recent executions.':'An administrator needs to connect an n8n instance before recent executions can appear.',can('admin')?[el('a',{class:'button ghost',href:'#instances'},'Open instances')]:[]));
-      else if(results[1].status==='fulfilled'){
+      if(index===1&&results[1].status==='fulfilled'&&!results[1].value)feed.append(emptyExecutions());
+      else if(index===1&&results[1].status==='fulfilled'){
         const rows=results[1].value.data;
         const badge=status=>el('span',{class:`badge ${['success','completed'].includes(status)?'success':['error','crashed'].includes(status)?'error':['running','waiting'].includes(status)?'info':''}`},status||'Unknown');
         feed.append(rows.length?table(['Execution','Workflow','Status','Started'],rows.map(row=>[String(row.id),row.workflowId??'—',badge(row.status),row.startedAt?new Date(row.startedAt).toLocaleString():'—'])):empty('No recent executions','No execution records were returned by this instance.',[button('Refresh executions',()=>refresh(),'ghost')]),el('p',{class:'muted feed-caption'},`Latest ${pageSize()} executions from the selected instance. Refreshes every 30 seconds.`));
       }
+      }));
     }finally{busy=false;refreshButton.disabled=false;}
   }
   const run=()=>refresh().catch(error=>{if(!controller.signal.aborted)sections[2].feedback.replaceChildren(loadFailure(error,run,'Could not refresh the dashboard'));});

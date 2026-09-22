@@ -46,7 +46,9 @@ def exercise_design(page: Page, artifacts: Path) -> None:
         expect(page.locator('.metric-cell h2')).to_have_count(0)
         expect(page.locator('.metric-cell .metric-number')).to_have_count(4)
         expect(page.get_by_role('article', name='Total workflows')).to_contain_text('Unavailable')
-        expect(page.locator('.dashboard .panel-head svg')).to_have_count(3)
+        expect(page.locator('.dashboard .panel-head h2 > svg')).to_have_count(3)
+        expect(page.locator('.dashboard .panel-head a > svg')).to_have_count(3)
+        expect(page.locator('.dashboard .panel-head svg[aria-hidden="true"]')).to_have_count(6)
         assert page.locator('.metric-strip').bounding_box()['y'] < page.locator('.dashboard-columns').bounding_box()['y']
         expect(page.locator('.coverage-details')).not_to_have_attribute('open', '')
         # Partial data is a dashed amber status note, never the red failure treatment.
@@ -113,6 +115,27 @@ def exercise_design(page: Page, artifacts: Path) -> None:
         page.set_viewport_size({'width': 390, 'height': 844})
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         page.screenshot(path=str(artifacts / 'inference-errors-mobile.png'), full_page=True)
+        # Optional Docker unavailability is an explanatory state, not a broken
+        # n8n connection. Refresh must recover provisioning when Docker returns.
+        docker_reply = {'status': 503, 'body': {'detail': 'Socket unavailable.', 'code': 'docker_unavailable'}}
+        def docker_status(route):
+            route.fulfill(status=docker_reply['status'], json=docker_reply['body'])
+        page.route('**/api/docker_mgr/status', docker_status)
+        try:
+            page.evaluate("location.hash = 'containers'")
+            expect(page.get_by_text('Docker management is unavailable on this server.', exact=True)).to_be_visible()
+            expect(page.get_by_role('button', name='Provision bundle', exact=True)).to_be_disabled()
+            expect(page.locator('#main [role=alert]')).to_have_count(0)
+            expect(page.get_by_role('link', name='Open instances', exact=True)).to_be_visible()
+            docker_reply.update(status=200, body={'available': True, 'version': 'fixture'})
+            page.get_by_role('button', name='Refresh', exact=True).click()
+            expect(page.get_by_role('button', name='Provision bundle', exact=True)).to_be_enabled()
+            expect(page.get_by_text('Docker management is unavailable on this server.', exact=True)).to_have_count(0)
+            docker_reply.update(status=500, body={'detail': 'Confirmed status failure.', 'code': 'internal_error'})
+            page.get_by_role('button', name='Refresh', exact=True).click()
+            expect(page.locator('#main [role=alert]')).to_contain_text('Confirmed status failure.')
+        finally:
+            page.unroute('**/api/docker_mgr/status', docker_status)
         print('PASS: Inference desktop/mobile navigation, anomaly queue, inert error text, explicit assistant target, partial coverage, dark theme, isolated API failure and error triage table.', flush=True)
     finally:
         page.unroute('**/api/n8n_proxy/dashboard*')

@@ -29,10 +29,11 @@ export async function render(container){
   // validation; nothing here is ever hidden.
   const groups={};
   for(const [key,label] of [['account','Account'],['security','Security'],['deployment','Deployment'],['users','Users'],['audit','Audit']])groups[key]=el('section',{class:'settings-section',id:`settings-${key}`},el('h2',{class:'settings-group-title',tabindex:-1},label));
+  const sectionIcons={account:'user',security:'shield',display:'theme',deployment:'containers',users:'user',audit:'history'};
   const navLinks=[['account','Account'],['security','Security'],['display','Display']];
   if(can('admin'))navLinks.push(['deployment','Deployment'],['users','Users'],['audit','Audit']);
   const nav=el('nav',{class:'settings-nav','aria-label':'Settings sections'},
-    ...navLinks.map(([key,label])=>el('a',{class:'button ghost',href:`#settings-${key}`},label)));
+    ...navLinks.map(([key,label])=>el('a',{class:'button ghost',href:`#settings-${key}`},icon(sectionIcons[key]),label)));
   nav.addEventListener('click',event=>{
     const link=event.target.closest('a[href^="#settings-"]');
     if(!link)return;

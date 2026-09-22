@@ -420,3 +420,12 @@ and a 429 retains findings/instance evidence with status notices and Retry.
 Before/after screenshots are in OS temp/inference-dashboard-layout. JavaScript
 passed node --check as a temporary .mjs copy. No live VPS calls or full backend
 suite were needed for this visual-only change.
+
+
+## 2026-09-22 — Shared UI consistency and honest loading
+
+Completed the all-page icon, native-dropdown motion, Notes layout, optional Docker
+state and dashboard loading pass. See docs/ui-audit-2026-09-22.md for scope,
+remaining limits and verification. Backend: 897 passed, 11 skipped, 1 warning.
+Browser: 18 PASS, exit 0. All 30 modules parse. Delayed API checks show independent
+dashboard rendering and retained successful content after transient errors.
