@@ -487,7 +487,7 @@ def exercise_fleet(page, fixture_url, state):
         source_wf.focus()
         source_wf.fill('source-wf')
         page.get_by_role('listbox').get_by_role('option').filter(has_text='source-wf').click()
-        page.get_by_role('button', name='Review preflight', exact=True).click()
+        page.get_by_role('button', name='Check changes', exact=True).click()
         page.get_by_text('Ready for deployment', exact=True).wait_for()
         count = len(state['writes'])
         state['source']['name'] = 'Changed after preflight'
@@ -501,7 +501,7 @@ def exercise_fleet(page, fixture_url, state):
         assert len(state['writes']) == count, 'Stale preview must not write to target'
         page.evaluate("window.fixtureUUID = crypto.randomUUID; crypto.randomUUID = () => 'browser-replay-check'")
         with page.expect_response(lambda response: response.url.endswith('/api/n8n_promote/preflight')) as fresh:
-            page.get_by_role('button', name='Review preflight', exact=True).click()
+            page.get_by_role('button', name='Check changes', exact=True).click()
         page.get_by_text('Ready for deployment', exact=True).wait_for()
         page.evaluate('crypto.randomUUID = window.fixtureUUID; delete window.fixtureUUID')
         with page.expect_response(lambda response: response.url.endswith('/api/n8n_promote/deploy')) as deployed:
