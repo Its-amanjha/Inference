@@ -16,9 +16,7 @@
 /* Merged fleet table: one row per instance, management on demand below. */
 .fleet-instance-cell { display:flex; flex-direction:column; gap:2px; min-width:0; }
 .fleet-instance-url { overflow-wrap:anywhere; }
-.fleet-detail { margin-top:16px; }
-.fleet-detail[hidden] { display:none; }
-.fleet-detail>div:empty { display:none; }
+
 @media(max-width:700px) {
   .fleet-summary-strip { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .telemetry-body .button { min-height:44px; }

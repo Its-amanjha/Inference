@@ -14,7 +14,7 @@
 .error.load-notice>.icon { flex:none; width:20px; height:20px; }
 .load-progress { margin:8px 0; color:var(--color-smoke); }
 .metric-strip>.loading-state { grid-column:1 / -1; width:100%; }
-.telemetry-strip>.loading-state { flex-basis:100%; }
+
 .probe-status { display:flex; gap:8px 16px; flex-wrap:wrap; align-items:center; }
 .probe-status p { margin:0; }
 @keyframes loading-pulse { from { opacity:.45; } to { opacity:1; } }

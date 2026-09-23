@@ -64,7 +64,6 @@
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
-.clarity-title { font-family:var(--font-body); font-weight:600; }
 :root {
   --brand-name: "Inference";
   --color-signal-blue: #0080ff;
@@ -95,7 +94,7 @@
 }
 * { box-sizing: border-box; }
 body { background: var(--color-ash-mist); color: var(--color-graphite); font-family: var(--font-body); font-size: var(--text-body); line-height: 1.5; letter-spacing: -.01em; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
-h1,h2,.editorial-title { font-family: var(--font-display); font-weight: 600; color: var(--color-ink-black); line-height: 1.2; margin: 0 0 12px; }
+h1,h2 { font-family: var(--font-display); font-weight: 600; color: var(--color-ink-black); line-height: 1.2; margin: 0 0 12px; }
 h1 { font-size: var(--text-display); } h2 { font-size: var(--text-heading); } h3 { font-size: var(--text-heading-sm); font-weight:600; color:var(--color-ink-black); margin:0 0 12px; }
 p { margin: 0 0 16px; } a { color: var(--selection-text); text-underline-offset: 3px; } button,input,select,textarea { font: inherit; } button,a,input,select,textarea,summary { -webkit-tap-highlight-color: transparent; }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; } [hidden] { display: none !important; }
@@ -112,7 +111,7 @@ hr { border:0; border-top:1px solid var(--border); margin:24px 0; } .muted { col
 input,textarea { caret-color:var(--focus); }
 h1,h2,h3 { text-wrap:balance; letter-spacing:-.025em; }
 button[aria-busy=true] { cursor:progress; opacity:.65; }
-table,.metric-value,.stat-value { font-variant-numeric:tabular-nums; }
+table { font-variant-numeric:tabular-nums; }
 .icon { width:18px; height:18px; flex:none; }
 /* Disclosure toggles are controls: a 24px desktop target, 44px on touch layouts. */
 summary { cursor:pointer; min-height:24px; }

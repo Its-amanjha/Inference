@@ -1,9 +1,6 @@
 /* AI repair workspace: repair target, what the AI sees, repair turns, inline proposals, rail status and entry links. */
 
 /* Model support sits beside the model selector. */
-.assistant-chat-toolbar .tool-calling { display:flex; flex-wrap:wrap; align-items:center; gap:8px; min-height:36px; }
-.assistant-chat-toolbar .tool-calling:not(:has(> :not([hidden]))) { display:none; }
-.assistant-chat-toolbar .tool-calling .button { margin-left:0; }
 
 /* Repair bar: target chip, context disclosure and model notice under the toolbar. */
 .repair-bar { flex:none; display:flex; flex-direction:column; gap:8px; padding:10px 20px 12px; border-bottom:1px solid var(--border); background:var(--color-ash-mist); min-width:0; }
@@ -261,7 +258,7 @@
 .composer-create[hidden] { display:none; }
 
 /* Review rail */
-.assistant-rail .assistant-rail-heading { flex-direction:row; justify-content:flex-start; align-items:center; gap:8px; }
+
 .assistant-rail-heading h2 { display:flex; align-items:center; gap:8px; }
 .review-count:not(:empty) { display:inline-grid; place-items:center; min-width:20px; height:20px; padding:0 6px; border-radius:10px; background:var(--selection-fill); color:var(--selection-text); font-size:12px; font-weight:600; }
 .review-updated { margin-left:auto; font-size:12px; color:var(--color-smoke); }
@@ -269,10 +266,6 @@
 .icon-button:hover:not(:disabled) { background:var(--color-ash-mist); color:var(--color-ink-black); }
 .icon-button:focus-visible { outline:2px solid var(--focus); outline-offset:1px; }
 .icon-button .icon { width:16px; height:16px; }
-.assistant-rail .approval-card { border:0; border-radius:10px; padding:12px; margin:0; background:var(--color-ash-mist); }
-.assistant-privacy { padding:4px 18px; }
-.assistant-privacy h2 { margin:0 0 6px; font-size:13px; }
-.assistant-privacy p { margin:0 0 6px; font-size:12px; line-height:1.55; color:var(--color-smoke); }
 
 /* Settings drawer */
 dialog.peek.settings-drawer { width:min(640px,100vw); }

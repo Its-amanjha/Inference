@@ -23,7 +23,7 @@
 [data-theme=n8n] .action-menu>summary { border-radius:8px; }
 
 /* State shown next to the control that changes it. */
-.state-cell { display:flex; flex-wrap:wrap; align-items:center; gap:10px; }
+
 .title-row { display:flex; flex-wrap:wrap; align-items:center; gap:10px 12px; }
 .title-row>h2,.title-row>h3 { margin:0; }
 .run-status { display:inline-flex; flex-wrap:wrap; align-items:center; gap:6px 8px; }

@@ -46,7 +46,7 @@
 .triage-context-strip { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:6px 14px; min-height:28px; margin:0 0 8px; }
 .triage-context-left { display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 12px; font-size:13px; color:var(--color-smoke); }
 .triage-context-left .triage-count { color:var(--color-graphite); font-weight:600; font-variant-numeric:tabular-nums; margin:0; }
-.triage-context-left .triage-scope-note { margin:0; }
+
 .active-view-indicator { display:flex; align-items:center; gap:6px; margin-left:4px; }
 .active-view-indicator .badge { font-size:12px; padding:2px 8px; }
 .active-view-indicator .button { min-height:24px; padding:0 6px; font-size:11px; }
@@ -57,7 +57,6 @@
 .triage-results:focus { outline:none; }
 
 /* Checkbox selection and bulk actions */
-.triage-select-head,
 .triage-select-cell { width:48px; text-align:center; padding:0 8px; }
 .triage-checkbox-label { display:inline-flex; align-items:center; justify-content:center; min-width:44px; min-height:44px; cursor:pointer; }
 .triage-checkbox-label input[type="checkbox"] { width:18px; height:18px; cursor:pointer; accent-color:var(--selection-text); margin:0; }
@@ -69,7 +68,6 @@
 .triage-bulk-scope { font-size:12px; color:var(--color-smoke); }
 .triage-bulk-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
 .triage-bulk-actions .button { min-height:32px; font-size:12px; padding:0 12px; }
-
 
 /* Dense triage table. */
 .table-wrap.triage-table-wrap { border:1px solid var(--border); border-radius:16px; background:var(--surface-card-surface); }
@@ -84,9 +82,9 @@
 .triage-table tbody tr.is-selected { background:var(--selection-fill); }
 .triage-table tbody tr.is-focused { outline:2px solid var(--selection-text); outline-offset:-2px; }
 .triage-table .triage-num { text-align:right; font-variant-numeric:tabular-nums; }
-.triage-table .triage-actions-head { text-align:right; }
-.triage-severity,.triage-when,.triage-execution { white-space:nowrap; }
-.triage-execution { font-variant-numeric:tabular-nums; }
+
+.triage-severity,.triage-when { white-space:nowrap; }
+
 .triage-subject { min-width:16rem; width:40%; }
 .triage-title { display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 8px; }
 .triage-title strong { color:var(--color-ink-black); font-weight:600; overflow-wrap:anywhere; }
@@ -105,8 +103,6 @@
 .undo-bar[hidden] { display:none; }
 .undo-bar .button { min-height:32px; margin:0; }
 .triage-instance { min-width:7rem; overflow-wrap:anywhere; }
-.triage-action-group { display:flex; justify-content:flex-end; gap:6px; }
-.triage-table td .triage-action-group .button { margin:0; white-space:nowrap; }
 
 @media(max-width:700px) {
   .metric-cell p.metric-number { font-size:26px; }
@@ -147,7 +143,6 @@
   :is(.triage-table, .table-wrap:not(.table-scroll) table:not(.table-scroll)) td:is(:not([data-label]),[data-label=""]) { grid-template-columns:minmax(0,1fr); }
   :is(.triage-table, .table-wrap:not(.table-scroll) table:not(.table-scroll)) tbody tr td:last-child { border-bottom:0; }
   :is(.triage-table, .table-wrap:not(.table-scroll) table:not(.table-scroll)) :is(.triage-num, .num, td.num) { text-align:left; }
-  .triage-action-group,
   :is(.triage-table, .table-wrap:not(.table-scroll) table:not(.table-scroll)) td :is(.toolbar, .actions) { justify-content:flex-start; flex-wrap:wrap; margin:0; gap:6px; }
   :is(.triage-table, .table-wrap:not(.table-scroll) table:not(.table-scroll)) td :is(.toolbar, .actions) .button,
   :is(.triage-table, .table-wrap:not(.table-scroll) table:not(.table-scroll)) td>.button { margin:0; }
@@ -179,9 +174,9 @@
 .result-card th:first-child,.result-card td:first-child { padding-left:20px; }
 .result-card th:last-child,.result-card td:last-child { padding-right:20px; }
 /* Two actions stack in a narrow column instead of forcing the table wider than its card. */
-.result-card .triage-action-group { flex-wrap:wrap; }
+
 .result-card-foot { display:flex; justify-content:center; padding:12px 16px; border-top:1px solid var(--border); }
-.result-card-foot:has(> button:disabled) { display:none; }
+.result-card-foot:has(> button[hidden]) { display:none; }
 /* Workflows: the name opens the details panel; under it, the steps in run order on one line. */
 .workflows-table td { vertical-align:middle; padding-block:8px; }
 .workflows-table .relative-time { white-space:nowrap; }

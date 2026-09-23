@@ -8,46 +8,37 @@
 .button>.icon,summary>.icon { width:16px; height:16px; }
 #main>.stack>div:empty { display:none; }
 .settings-nav { margin-bottom:0; }
-.assistant-chat-toolbar { flex-wrap:wrap; row-gap:12px; }
+
 .assistant-rail-heading { flex-wrap:wrap; }
 /* AI workspace tabs: one compact segmented control instead of a ruled band above the title. */
 .studio-tabs { display:inline-flex; align-self:flex-start; width:fit-content; gap:2px; padding:3px; border:1px solid var(--control-border); border-radius:var(--radius-pill); background:var(--surface-card-surface); }
 .studio-tabs>.button { min-height:32px; padding:6px 14px; border:0; border-radius:var(--radius-pill); background:none; font-size:13px; }
 .studio-tabs>.button[aria-pressed=true] { background:var(--selection-fill); color:var(--selection-text); }
-/* The conversation and the action rail fill the screen and end on the same line; the transcript
-   scrolls between a fixed header and a docked composer, and Action review scrolls inside the rail. */
+/* The conversation fills the screen: the transcript scrolls between a fixed header and a docked composer,
+   and the Review list scrolls inside its drawer. */
 @media(min-width:901px) {
   #studio-chat .assistant-layout { height:max(520px,calc(100dvh - 264px)); align-items:stretch; }
   #studio-chat .assistant-chat { height:auto; min-height:0; }
-  #studio-chat .assistant-rail { min-height:0; }
+  
   #studio-chat .assistant-approval-panel { flex:1 1 auto; min-height:0; display:flex; flex-direction:column; overflow:hidden; }
   #studio-chat .assistant-approval-panel>:last-child { flex:1 1 auto; min-height:0; overflow:auto; }
-  #studio-chat .assistant-rail-group { flex:none; }
+  
 }
 /* AI workspace: every card on the page shares one radius and one inset. */
 .assistant-approval-panel { border-radius:var(--radius-card); padding:20px; }
-.assistant-rail-group { display:flex; flex-direction:column; border:1px solid var(--border); border-radius:var(--radius-card); background:var(--surface-card-surface); overflow:hidden; }
-.assistant-rail-group>.assistant-disclosure { padding:16px 20px; border:0; border-radius:0; background:none; }
-.assistant-rail-group>.assistant-disclosure+.assistant-disclosure { border-top:1px solid var(--border); }
+
 /* Ask / Propose changes: a two-option segmented control built on native radios. */
-.composer-mode { display:inline-flex; flex:none; margin:0; padding:3px; border:1px solid var(--control-border); border-radius:var(--radius-pill); gap:2px; }
-.composer-mode-option { position:relative; display:inline-flex; }
-.composer-mode-option>input { position:absolute; inset:0; margin:0; opacity:0; cursor:pointer; }
-.composer-mode-option>span { display:inline-flex; align-items:center; min-height:28px; padding:4px 12px; border-radius:var(--radius-pill); font-size:12px; font-weight:500; color:var(--color-smoke); white-space:nowrap; transition:background-color .16s ease-out,color .16s ease-out; }
-.composer-mode-option>input:checked+span { background:var(--selection-fill); color:var(--selection-text); }
-.composer-mode-option>input:focus-visible+span { outline:2px solid var(--focus); outline-offset:1px; }
-.composer-foot>#composer-mode-hint { flex:1; min-width:0; max-width:none; }
-@media(prefers-reduced-motion:reduce) { .composer-mode-option>span { transition:none; } }
+
+
 @media(max-width:700px) {
-  .assistant-page .composer-mode { grid-column:1 / -1; grid-row:3; justify-self:start; }
-  .assistant-page .composer-mode-option>span { min-height:44px; padding-inline:16px; }
-  .assistant-page .composer-foot>#composer-mode-hint { grid-column:1 / -1; grid-row:4; }
+  
+  
 }
-.assistant-disclosure>summary { color:var(--color-ink-black); font-size:13px; font-weight:500; }
-.assistant-settings>summary,.assistant-disclosure>summary { display:flex; align-items:center; gap:8px; list-style:none; }
-.assistant-settings>summary::-webkit-details-marker,.assistant-disclosure>summary::-webkit-details-marker { display:none; }
-.assistant-settings>summary::after,.assistant-disclosure>summary::after { content:''; width:7px; height:7px; border-right:1.5px solid currentColor; border-bottom:1.5px solid currentColor; transform:rotate(-45deg); margin-left:auto; flex:none; transition:transform .16s ease-out; }
-.assistant-settings[open]>summary::after,.assistant-disclosure[open]>summary::after { transform:rotate(45deg); }
+
+.assistant-settings>summary { display:flex; align-items:center; gap:8px; list-style:none; }
+.assistant-settings>summary::-webkit-details-marker { display:none; }
+.assistant-settings>summary::after { content:''; width:7px; height:7px; border-right:1.5px solid currentColor; border-bottom:1.5px solid currentColor; transform:rotate(-45deg); margin-left:auto; flex:none; transition:transform .16s ease-out; }
+.assistant-settings[open]>summary::after { transform:rotate(45deg); }
 /* Closed disclosure descendants must not retain off-page layout boxes. */
 .assistant-page details:not([open])>:not(summary) { display:none; }
 .docker-unavailable { display:flex; align-items:flex-start; gap:14px; }
@@ -60,15 +51,12 @@
    open, so on some Chromium builds it never appeared. Selects use the native picker again. */
 @keyframes disclosure-enter { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
 @media(prefers-reduced-motion:no-preference) {
-  .account-panel:not([hidden]),.picker-list:not([hidden]),.action-menu[open]>.action-menu-list,
-  .assistant-disclosure[open]>:not(summary),.assistant-settings[open]>:not(summary),.triage-saved-dropdown[open] .triage-saved-panel { animation:disclosure-enter .16s ease-out; }
+  .account-panel:not([hidden]),.picker-list:not([hidden]),.action-menu[open]>.action-menu-list,.assistant-settings[open]>:not(summary),.triage-saved-dropdown[open] .triage-saved-panel { animation:disclosure-enter .16s ease-out; }
 }
 @media(prefers-reduced-motion:reduce) {
-  .assistant-disclosure>summary::after,.assistant-settings>summary::after { transition:none; }
+  .assistant-settings>summary::after { transition:none; }
 }
-@media(max-width:700px) {
-  .assistant-disclosure>summary { min-height:44px; }
-}
+
 /* Loading is quiet, inset and shaped like the content it will replace. */
 .loading-state { padding:16px 0; }
 .loading-label { gap:8px; margin-bottom:14px; font-size:12px; line-height:1.5; }
@@ -103,11 +91,10 @@
 @media(min-width:901px) { #studio-chat>.assistant-settings { margin-top:24px; } }
 /* No divider lines inside cards: sections, list items and action rows are separated by space,
    not by rules. Structural edges (top bar, sidebar, table rows, the docked chat composer) keep theirs. */
-.decision-section,.proposal-section,.proposal-footer,.repair-rail-item,.raw-json-disclosure { border-top:0; }
-.capability-list li,.finding-row,.instance-row,.assistant-disclosure { border-bottom:0; }
-.instance-actions-row,.result-card-foot { border-top:0; }
-.dashboard .instance-row+.instance-row { border-top:0; }
-.assistant-rail-group>.assistant-disclosure+.assistant-disclosure { border-top:0; }
+.decision-section,.proposal-section,.proposal-footer,.repair-rail-item { border-top:0; }
+.capability-list li,.finding-row { border-bottom:0; }
+.result-card-foot { border-top:0; }
+
 .finding-row+.finding-row { margin-top:4px; }
 .form-card.is-flat .form-card-foot { padding-bottom:0; }
 

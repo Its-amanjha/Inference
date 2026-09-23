@@ -27,11 +27,7 @@
   #toasts .toast-dismiss { width:40px; height:40px; }
   #toasts .toast-message { padding:10px 0; }
   #toasts .toast-count { margin-top:9px; }
-  .fleet-toolbar .button,
-  .fleet-filter-btn,
-  .instance-actions-row .button,
-  .observe-toolbar .button,
-  .observe-filter-btn { min-height:44px; }
+  .fleet-toolbar .button,.fleet-filter-btn,.observe-toolbar .button,.observe-filter-btn { min-height:44px; }
 }
 
 /* Sidebar group names are labels for their link groups, not headings. */
