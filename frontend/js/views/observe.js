@@ -106,11 +106,15 @@ export async function render(container) {
     await Promise.all(rows.map(async row => {
       const key = row.instance_id + ':' + row.trace_id;
       if (!metas.has(key)) {
-        metas.set(key, api('/api/otel/traces/' + encodeURIComponent(row.trace_id) + '?' + new URLSearchParams({instance_id: row.instance_id, limit: '1'}), {signal: controller.signal})
-          .then(result => {
-            const span = result.data?.[0];
-            return span ? {workflow: span.workflow_name || span.workflow_id || null, execution: span.execution_id || null} : null;
-          }).catch(() => null));
+        // Newer backends name the workflow on the list row itself; older ones
+        // need one bounded first-span read per row.
+        metas.set(key, row.workflow_name || row.workflow_id || row.execution_id
+          ? Promise.resolve({workflow: row.workflow_name || row.workflow_id || null, execution: row.execution_id || null})
+          : api('/api/otel/traces/' + encodeURIComponent(row.trace_id) + '?' + new URLSearchParams({instance_id: row.instance_id, limit: '1'}), {signal: controller.signal})
+            .then(result => {
+              const span = result.data?.[0];
+              return span ? {workflow: span.workflow_name || span.workflow_id || null, execution: span.execution_id || null} : null;
+            }).catch(() => null));
       }
       metas.set(key, await metas.get(key));
     }));
