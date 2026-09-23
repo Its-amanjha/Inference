@@ -116,27 +116,19 @@ export async function checkConnection(instance,{signal}={}){
   const cancel=()=>controller.abort(signal?.reason);
   if(signal?.aborted)cancel();else signal?.addEventListener('abort',cancel,{once:true});
   let timedOut=false;
-  const timer=setTimeout(()=>{timedOut=true;controller.abort();},10000);
+  const timer=setTimeout(()=>{timedOut=true;controller.abort();},30000);
   try{
-    const resources=[['workflows','workflow_read'],['executions','execution_read']];
-    const results=await Promise.allSettled(resources.map(([resource])=>api(`/api/n8n_proxy/${resource}?`+
-      new URLSearchParams({instance_id:instance.id,limit:'1'}),{signal:controller.signal})));
-    if(signal?.aborted)throw new DOMException('Check cancelled','AbortError');
-    if(timedOut)throw Object.assign(new Error('No response after 10s - the instance may be unreachable'),{code:'probe_timeout'});
-    const capabilities={},diagnostics=[];
-    let reachable=false;
-    results.forEach((result,index)=>{
-      const capability=resources[index][1];
-      if(result.status==='fulfilled'){capabilities[capability]='supported';reachable=true;return;}
-      const error=result.reason,code=error.code||'upstream_unavailable';
-      if(['authentication_required','session_revoked','session_expired','permission_denied'].includes(code))throw error;
-      const denied=['upstream_auth_failed','upstream_forbidden'].includes(code);
-      capabilities[capability]=denied?'forbidden':'unavailable';
-      reachable ||= denied || ['upstream_not_found','upstream_rate_limited','upstream_invalid_response'].includes(code);
-      diagnostics.push({capability,code});
-    });
-    if(results.every(result=>result.status==='rejected'&&isTransient(result.reason)))throw results[0].reason;
-    const result={instance_id:instance.id,reachable,capabilities,diagnostics,checked_at:new Date().toISOString(),latency_ms:Math.round(performance.now()-started)};
+    // The server runs the check (one read of workflows and of executions) and keeps the result, so every
+    // page and every person sees the same reachability.
+    let result;
+    try{result=await api(`/api/n8n_proxy/instances/${encodeURIComponent(instance.id)}/probe`,{method:'POST',signal:controller.signal});}
+    catch(error){
+      if(signal?.aborted)throw new DOMException('Check cancelled','AbortError');
+      if(timedOut)throw Object.assign(new Error('No response after 30s - the instance may be unreachable'),{code:'probe_timeout'});
+      throw error;
+    }
+    if(typeof result?.reachable!=='boolean')throw Object.assign(new Error('The connection check returned no result.'),{code:'probe_invalid'});
+    if(!Number.isFinite(result.latency_ms))result.latency_ms=Math.round(performance.now()-started);
     if(user===state.user)rememberProbe(instance,result);
     return result;
   }finally{clearTimeout(timer);signal?.removeEventListener('abort',cancel);}

@@ -251,14 +251,16 @@ def ensure_same_connection(before: dict[str,Any],after: dict[str,Any]) -> None:
 
 @router.post('/instances/{instance_id}/probe')
 async def probe(instance_id: str,request: Request) -> dict[str,Any]:
-    actor=require_role(request,'admin')
-    if not request.app.state.limiter.hit(f"probe:{actor['username']}",limit=10,window=60):
+    # A check only reads (one workflow and one execution page), like the fleet scan viewers may run; its
+    # result is kept so every page and person sees the same reachability.
+    actor=require_role(request,'viewer')
+    if not request.app.state.limiter.hit(f"probe:{actor['username']}",limit=30,window=60):
         fail(429,'rate_limited','Wait before checking connections again.')
     snapshot=await instance_row(request,instance_id)
     result=await probe_result(request,instance_id)
     async with instance_guard(request,instance_id):
         async with request.app.state.db.transaction() as tx:
-            await require_current_role(request,'admin',tx)
+            await require_current_role(request,'viewer',tx)
             ensure_same_connection(snapshot,await instance_row(request,instance_id,tx))
             await save_probe(tx,instance_id,result)
     await audit.record(request,'fleet.instance_probed',instance_id,{'reachable':result['reachable']})
