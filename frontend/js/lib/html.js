@@ -76,7 +76,8 @@ export function empty(title, body = '', actions = []) {
 }
 // options.numeric lists zero-based column indexes that hold numbers (right-aligned, tabular numerals).
 // options.stack controls phone row-stacking (defaults to true; false preserves standard horizontal scroll).
-// options.sortable maps column index to 'text'|'number'|'date' for opt-in sortable columns.
+// options.sortable maps column index to 'text'|'number'|'rank'|'date' for opt-in sortable columns;
+// 'rank' is numeric with severity wording (a higher value is more severe).
 // options.initialSort sets { column: index, direction: 'asc'|'desc' }.
 // options.onSort receives ({ column, direction }) on sort change.
 // options.className adds classes to <table>.
@@ -109,7 +110,7 @@ export function table(headers, rows, options = {}) {
       else if ('value' in cell) raw = cell.value;
       else if (cell instanceof Node) raw = cell.dataset?.sortValue ?? cell.textContent;
     }
-    if (type === 'number') {
+    if (type === 'number' || type === 'rank') {
       const num = typeof raw === 'number' ? raw : Number(String(raw).replace(/[^0-9.-]+/g, ''));
       return Number.isFinite(num) ? num : (raw === null || raw === undefined || raw === '' ? -Infinity : 0);
     }
@@ -209,7 +210,7 @@ export function table(headers, rows, options = {}) {
     const decorated = renderedRows.map(entry => ({ entry, key: parseSortValue(getRowCells(entry.row)[colIndex], type) }));
     decorated.sort((a, b) => {
       let cmp = 0;
-      if (type === 'number' || type === 'date') {
+      if (type === 'number' || type === 'rank' || type === 'date') {
         cmp = a.key < b.key ? -1 : (a.key > b.key ? 1 : 0);
       } else {
         cmp = collator.compare(a.key, b.key);
@@ -305,11 +306,15 @@ export function table(headers, rows, options = {}) {
   if (sortable && Object.keys(sortable).length > 0 && stack) {
     const sortId = `table-sort-${++sequence}`;
     mobileSelect = el('select', { id: sortId, 'aria-label': 'Sort table' });
+    // Until a column is sorted the select says so, instead of claiming the first option.
+    if (currentSortCol === null) mobileSelect.append(el('option', { value: '', disabled: true, selected: true }, 'Default order'));
 
     for (const [colStr, colType] of Object.entries(sortable)) {
       const colIdx = Number(colStr);
       const colLabel = resolveLabel(colIdx);
-      const ascDesc = colType === 'number'
+      const ascDesc = colType === 'rank'
+        ? ['Least severe first', 'Most severe first']
+        : colType === 'number'
         ? ['Lowest first', 'Highest first']
         : colType === 'date'
         ? ['Oldest first', 'Newest first']
@@ -321,11 +326,11 @@ export function table(headers, rows, options = {}) {
       );
     }
 
-    if (currentSortCol !== null && `${currentSortCol}:${currentSortDir}` in mobileSelect) {
-      mobileSelect.value = `${currentSortCol}:${currentSortDir}`;
-    }
+    // The initial sort ran before this select existed, so it is synced here.
+    if (currentSortCol !== null) mobileSelect.value = `${currentSortCol}:${currentSortDir}`;
 
     mobileSelect.addEventListener('change', () => {
+      if (!mobileSelect.value) return;
       const [colStr, dir] = mobileSelect.value.split(':');
       applySort(Number(colStr), dir);
     });

@@ -96,8 +96,8 @@ export async function render(container) {
       const errorQuery=new URLSearchParams({status:'open',limit:'4'});if(instance)errorQuery.set('instance_id',instance);
       const requests=[
         instance?api('/api/n8n_proxy/executions'+query+'&limit=10',{signal:controller.signal}):Promise.resolve(null),
-        // The whole-fleet scan is shared with Fleet health and Instances; one instance's scan is not.
-        instance?api('/api/n8n_proxy/dashboard'+query,{signal:controller.signal}):fleetMetrics({signal:controller.signal,fresh:true}),
+        // The whole-fleet scan is shared with Fleet health and Instances; a rate-limited scan shows the last one.
+        fleetMetrics({signal:controller.signal,fresh:true,instance}),
         api('/api/errors?'+errorQuery,{signal:controller.signal})
       ];
       const results=[];
@@ -112,7 +112,8 @@ export async function render(container) {
         {
         const section=sections[index];section.feedback.replaceChildren();
         if(result.status==='fulfilled'){
-          section.content.replaceChildren();if(index===1)section.stamp.replaceChildren(asOf());section.loaded=true;
+          section.content.replaceChildren();section.loaded=true;
+          if(index===1){const ran=new Date(result.value?.window_end);section.stamp.replaceChildren(asOf(Number.isNaN(ran.getTime())?new Date():ran));}
         }else{
           if(!section.loaded)section.content.replaceChildren();
           section.feedback.append(loadFailure(result.reason,refresh,`Could not refresh ${section.label}`));

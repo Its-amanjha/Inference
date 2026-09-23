@@ -394,14 +394,15 @@ export async function render(container){
   function renderPreview(result,context){
     const blocking=[...list(result.missing),...list(result.collisions)],warnings=list(result.warnings),mapped=list(result.mapped);
     renderMappings(result);
-    previewBody.replaceChildren(
+    // replaceChildren turns null into the text "null", so absent sections are dropped first.
+    previewBody.replaceChildren(...[
       el('div',{className:'decision-status'},result.can_deploy?toneBadge('Ready for deployment','success'):toneBadge('Resolve the findings before deployment','error')),
       el('p',{className:'decision-headline'},headline(result,context)),
       blocking.length?section('Blocking findings',blocking.length,'blocking',el('ul',{className:'decision-list'},blocking.map(item=>itemRow('blocked',...findingText(item)))),rawDisclosure({missing:result.missing,collisions:result.collisions})):null,
       warnings.length?section('Warnings',warnings.length,'warning',el('ul',{className:'decision-list'},warnings.map(item=>itemRow('errors',item?.message||`${describeCode(item?.code)}.`))),rawDisclosure(result.warnings)):null,
       mapped.length?section('Mapped references',mapped.length,'mapped',el('ul',{className:'decision-list'},mapped.map(item=>itemRow('check',mappedText(item)))),rawDisclosure(result.mapped)):null,
       diffSection(result.diff,context.targetName),
-      el('p',{className:'muted'},'Preview expires after 15 minutes. Source and target are checked again before deployment.'),deploy);
+      el('p',{className:'muted'},'Preview expires after 15 minutes. Source and target are checked again before deployment.'),deploy].filter(Boolean));
   }
 
   const preflight=button('Review preflight',async()=>{
