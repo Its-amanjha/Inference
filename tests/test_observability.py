@@ -79,11 +79,25 @@ async def test_trace_queries_keep_instances_separate_and_unknown_cost_null(fleet
         assert (await send(fleet,token['token'],batch())).status_code==200
     traces=await fleet.client.get('/api/otel/traces')
     assert len(traces.json()['data'])==2
+    assert traces.json()['data'][0]['workflow_name'] is None
     detail=await fleet.client.get('/api/otel/traces/'+'a'*32,params={'instance_id':first})
     assert len(detail.json()['data'])==1
     assert detail.json()['cost_usd'] is None
     assert detail.json()['unknown_cost_spans']==1
     assert (await fleet.client.get('/api/otel/traces/'+'a'*32)).status_code==422
+
+
+async def test_trace_list_names_the_workflow_and_filters_by_it(fleet):
+    instance,token=await issue(fleet)
+    named=[{'key':'n8n.workflow.id','value':{'stringValue':'wf-7'}},{'key':'n8n.workflow.name','value':{'stringValue':'Order sync'}},
+           {'key':'n8n.execution.id','value':{'stringValue':'4821'}}]
+    assert (await send(fleet,token['token'],batch(trace='c'*32,attributes=named))).status_code==200
+    assert (await send(fleet,token['token'],batch(trace='d'*32))).status_code==200
+    rows=(await fleet.client.get('/api/otel/traces',params={'instance_id':instance})).json()['data']
+    labelled=next(row for row in rows if row['trace_id']=='c'*32)
+    assert (labelled['workflow_id'],labelled['workflow_name'],labelled['execution_id'])==('wf-7','Order sync','4821')
+    only=(await fleet.client.get('/api/otel/traces',params={'instance_id':instance,'workflow_id':'wf-7'})).json()['data']
+    assert [row['trace_id'] for row in only]==['c'*32]
 
 
 async def test_confirmed_span_errors_are_triaged_once(fleet):

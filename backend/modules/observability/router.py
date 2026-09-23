@@ -165,15 +165,27 @@ async def ingest(request: Request):
 
 
 @router.get('/traces')
-async def traces(request: Request,instance_id: str | None=Query(default=None,max_length=128),limit: int=Query(default=50,ge=1,le=100),before: int | None=Query(default=None,ge=1)):
+async def traces(request: Request,instance_id: str | None=Query(default=None,max_length=128),workflow_id: str | None=Query(default=None,max_length=128),
+                 limit: int=Query(default=50,ge=1,le=100),before: int | None=Query(default=None,ge=1)):
     require_role(request,'viewer')
-    where='WHERE instance_id=?' if instance_id else ''
-    params=[instance_id] if instance_id else []
+    conditions,params=[],[]
+    if instance_id:
+        conditions.append('instance_id=?')
+        params.append(instance_id)
+    # A workflow ID is only unique within its instance; callers pass both to name one workflow.
+    if workflow_id:
+        conditions.append('workflow_id=?')
+        params.append(workflow_id)
+    where='WHERE '+' AND '.join(conditions) if conditions else ''
     having='HAVING MAX(id)<?' if before else ''
     if before:
         params.append(before)
     params.append(limit+1)
-    rows=await request.app.state.db.fetchall(f'SELECT instance_id,trace_id,MIN(start_ns) start_ns,MAX(end_ns) end_ns,COUNT(*) span_count,SUM(status=\'error\' OR health_status=\'error\') error_spans,MAX(id) cursor FROM otel_spans {where} GROUP BY instance_id,trace_id {having} ORDER BY cursor DESC LIMIT ?',params)
+    # Workflow and execution identity come from the spans that carry them, so a trace can be
+    # labelled by its workflow instead of its hex ID.
+    rows=await request.app.state.db.fetchall(f'SELECT instance_id,trace_id,MIN(start_ns) start_ns,MAX(end_ns) end_ns,COUNT(*) span_count,SUM(status=\'error\' OR health_status=\'error\') error_spans,'
+        f"MAX(NULLIF(workflow_id,'')) workflow_id,MAX(NULLIF(workflow_name,'')) workflow_name,MAX(NULLIF(execution_id,'')) execution_id,MAX(id) cursor "
+        f'FROM otel_spans {where} GROUP BY instance_id,trace_id {having} ORDER BY cursor DESC LIMIT ?',params)
     more=len(rows)>limit
     rows=rows[:limit]
     for row in rows:

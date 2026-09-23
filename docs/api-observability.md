@@ -14,7 +14,7 @@ Prompt, input/output content, secret attributes and raw exception text are remov
 
 | Route | Role and behavior |
 |---|---|
-| `GET /api/otel/traces` | Viewer; optional `instance_id`, `limit` 1–100, `before` cursor; groups by instance and trace |
+| `GET /api/otel/traces` | Viewer; optional `instance_id`, `workflow_id` (pair it with `instance_id`), `limit` 1–100, `before` cursor; groups by instance and trace; each row carries `workflow_id`, `workflow_name` and `execution_id` when a span reported them, else null |
 | `GET /api/otel/traces/{trace_id}` | Viewer; required `instance_id`, optional `limit` up to 2,000 and `after` cursor; spans with attributes, exact costs and provenance |
 | `GET /api/otel/summary` | Viewer; optional `instance_id`; actual span/trace/error counts |
 | `POST /api/otel/classify` | Operator + CSRF; JSON `instance_id`, `execution_id`, optional `zero_output_nodes` IDs |

@@ -184,7 +184,10 @@ async def preflight(body: Preflight,request: Request):
 
 def public_run(row,state):
     status=row['status']
-    return {'id':row['id'],'preview_id':row['preview_id'],'status':status,'target_instance_id':state['body']['target_instance_id'],
+    # Source instance and workflow let a workflow's page list its own promotions.
+    return {'id':row['id'],'preview_id':row['preview_id'],'status':status,'created_at':row.get('created_at'),
+            'source_instance_id':state['body'].get('source_instance_id'),'workflow_id':state['body'].get('workflow_id'),
+            'target_instance_id':state['body']['target_instance_id'],
             'target_workflow_id':state.get('target_workflow_id'),'created_credentials':state.get('created_credentials',[]),
             'error_code':state.get('error_code'),'pending_credential':state.get('pending_credential'),
             'recovery_actions':(['reconcile','new_preview_with_explicit_mappings'] if status in (*IN_FLIGHT,'uncertain','partial') else ['activate','restore'] if status=='deployed' and state.get('previous') else ['activate'] if status=='deployed' else [])}

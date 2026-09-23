@@ -142,6 +142,10 @@ async def test_definitely_rejected_activation_keeps_deployment_available(promoti
     saved=await p.client.get(f"/api/n8n_promote/runs/{run['id']}")
     assert saved.json()['status']=='deployed'
     assert saved.json()['error_code']=='upstream_rejected'
+    # The run names its source so a workflow's page can list the promotions made from it.
+    listed=(await p.client.get('/api/n8n_promote/runs')).json()['data']
+    assert (listed[0]['source_instance_id'],listed[0]['workflow_id'])==(p.source,'source-wf')
+    assert listed[0]['created_at']
 
 
 async def test_restore_previous_version_checks_target_snapshot(promotion):

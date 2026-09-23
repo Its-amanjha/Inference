@@ -63,7 +63,7 @@ Deployment re-fetches source, mapped target, target subworkflows, connection set
 | Route | Behavior |
 |---|---|
 | `GET /api/n8n_promote/runs?limit=50` | Current user's runs, at most 100 |
-| `GET /api/n8n_promote/runs/{id}` | Safe status, target ID, residual credentials, error code, recovery actions |
+| `GET /api/n8n_promote/runs/{id}` | Safe status, created time, source instance and workflow, target ID, residual credentials, error code, recovery actions |
 | `GET /api/n8n_promote/runs/{id}/previous` | Creator's previous target snapshot, when an existing workflow was updated |
 | `POST /api/n8n_promote/runs/{id}/activate` | Separate activation after target snapshot and credential binding checks |
 | `POST /api/n8n_promote/runs/{id}/restore` | Restores previous writable workflow JSON only if the deployed target is unchanged and inactive |
