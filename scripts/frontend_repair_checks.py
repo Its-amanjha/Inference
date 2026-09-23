@@ -776,7 +776,10 @@ def exercise_links(page, ids, error_id):
     page.evaluate("location.hash = 'errors'")
     row = page.get_by_role('region', name='Errors table').locator('tbody tr').filter(has_text='Order synchronization')
     expect(row).to_have_count(1)
-    assert_repair_href(row.get_by_role('link', name=UI['repair_link'], exact=True), with_error)
+    # Error rows keep secondary actions in the row menu; the repair entry is a menu item there.
+    row.get_by_role('button', name=re.compile(r'^More actions for Order synchronization')).click()
+    assert_repair_href(page.get_by_role('menuitem', name=UI['repair_link'], exact=True), with_error)
+    page.keyboard.press('Escape')
     page.evaluate("location.hash = 'workflows'")
     section = page.get_by_role('region', name='Workflows on source', exact=True)
     workflow_row = section.get_by_role('row').filter(has=page.get_by_role('cell', name='Order synchronization', exact=True))

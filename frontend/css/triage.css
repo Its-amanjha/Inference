@@ -72,13 +72,13 @@
 
 
 /* Dense triage table. */
-.table-wrap.triage-table-wrap { border:1px solid var(--border); border-radius:16px; background:var(--surface-card-surface); max-height:max(420px,calc(100dvh - 300px)); }
+.table-wrap.triage-table-wrap { border:1px solid var(--border); border-radius:16px; background:var(--surface-card-surface); }
 [data-theme=n8n] .table-wrap.triage-table-wrap { border-radius:12px; }
 .triage-table { font-size:13px; }
 .triage-table th { position:sticky; top:0; z-index:1; padding:10px 12px; white-space:nowrap; border-bottom:0; box-shadow:inset 0 -1px 0 var(--border); }
 .triage-table th.is-sortable { padding:0; }
 .triage-table .table-sort-btn { padding:10px 12px; font-size:13px; }
-.triage-table td { padding:10px 12px; vertical-align:baseline; overflow-wrap:normal; }
+.triage-table td { padding:8px 12px; vertical-align:middle; overflow-wrap:normal; }
 .triage-table tbody tr { height:44px; transition:background-color .15s ease-out; }
 .triage-table tbody tr:hover { background:var(--color-ash-mist); }
 .triage-table tbody tr.is-selected { background:var(--selection-fill); }
@@ -91,12 +91,19 @@
 .triage-title { display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 8px; }
 .triage-title strong { color:var(--color-ink-black); font-weight:600; overflow-wrap:anywhere; }
 .triage-title .triage-node { color:var(--color-smoke); overflow-wrap:anywhere; }
-.triage-table .triage-message { margin:2px 0 0; max-width:72ch; color:var(--color-graphite); overflow-wrap:anywhere; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; overflow:hidden; }
+.triage-table .triage-message { margin:2px 0 0; max-width:72ch; color:var(--color-graphite); overflow-wrap:anywhere; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:1; line-clamp:1; overflow:hidden; }
 .triage-table .triage-message.triage-missing { color:var(--color-smoke); }
-.triage-full { margin-top:4px; font-size:12px; }
-.triage-full summary { width:fit-content; cursor:pointer; color:var(--selection-text); font-weight:500; }
-.triage-full p { margin:6px 0 0; max-width:72ch; font-size:13px; color:var(--color-graphite); white-space:pre-wrap; overflow-wrap:anywhere; }
-.triage-subject:has(.triage-full[open]) .triage-message { display:none; }
+/* The row title opens the details panel. */
+.triage-open { display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 8px; padding:0; border:0; background:none; color:inherit; font:inherit; text-align:left; cursor:pointer; }
+.triage-open strong { color:var(--color-ink-black); font-weight:600; overflow-wrap:anywhere; }
+.triage-open .triage-node { color:var(--color-smoke); overflow-wrap:anywhere; }
+.triage-open:hover strong { text-decoration:underline; text-underline-offset:3px; }
+.triage-open:focus-visible { outline:2px solid var(--focus); outline-offset:2px; border-radius:4px; }
+.triage-count-unit { display:none; }
+.triage-table td.triage-actions { width:1%; text-align:right; padding-block:4px; }
+.undo-bar { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; margin:0 0 8px; padding:6px 8px 6px 14px; border-radius:10px; background:var(--color-ash-mist); color:var(--color-ink-black); font-size:13px; }
+.undo-bar[hidden] { display:none; }
+.undo-bar .button { min-height:32px; margin:0; }
 .triage-instance { min-width:7rem; overflow-wrap:anywhere; }
 .triage-action-group { display:flex; justify-content:flex-end; gap:6px; }
 .triage-table td .triage-action-group .button { margin:0; white-space:nowrap; }
@@ -108,9 +115,8 @@
   .triage-command-main { flex-direction:column; align-items:stretch; gap:10px; }
   .triage-status-group .field { width:100%; }
   .triage-status-group select { flex:1; min-height:44px; }
-  .triage-filters { flex-wrap:nowrap; overflow-x:auto; overscroll-behavior-x:contain; scrollbar-width:none; padding-bottom:2px; }
-  .triage-filters::-webkit-scrollbar { display:none; }
-  .triage-filters .triage-chip { min-height:44px; flex:none; }
+  .triage-filters { flex-wrap:wrap; }
+  .triage-filters .triage-chip { min-height:44px; }
   .triage-command-actions { width:100%; display:flex; gap:8px; }
   .triage-command-actions .button,
   .triage-saved-dropdown summary.triage-saved-toggle { min-height:44px; flex:1; }
@@ -119,6 +125,7 @@
   .triage-bulk-strip { flex-direction:column; align-items:stretch; }
   .triage-bulk-actions { width:100%; }
   .triage-bulk-actions .button { min-height:44px; flex:1; }
+  .undo-bar .button { min-height:44px; }
   /* Each row becomes a stacked card of label/value pairs. */
   .table-wrap:not(.table-scroll) { max-height:none; overflow:visible; scrollbar-gutter:auto; }
   .table-wrap.triage-table-wrap { border:0; border-radius:0; background:transparent; }
@@ -145,6 +152,23 @@
   :is(.triage-table, .table-wrap:not(.table-scroll) table:not(.table-scroll)) td :is(.toolbar, .actions) .button,
   :is(.triage-table, .table-wrap:not(.table-scroll) table:not(.table-scroll)) td>.button { margin:0; }
 }
+/* Error rows on a phone: severity, time and menu on the first line, then the title and message, then
+   instance and count. Written against the generic stacked-table rules above, at equal specificity. */
+@media(max-width:700px) {
+  .table-wrap.triage-table-wrap table.triage-table tbody tr { display:grid; grid-template-columns:auto minmax(0,1fr) auto auto; grid-template-areas:"select sev when menu" "select subject subject subject" "select meta meta count"; align-items:center; gap:4px 8px; padding:8px 4px 10px 12px; }
+  .table-wrap.triage-table-wrap table.triage-table td { display:block; padding:0; border:0; min-width:0; width:auto; }
+  .table-wrap.triage-table-wrap table.triage-table td::before { content:none; }
+  .table-wrap.triage-table-wrap table.triage-table td.triage-select-cell { grid-area:select; align-self:start; margin:-8px 0 0 -12px; }
+  .table-wrap.triage-table-wrap table.triage-table td.triage-severity { grid-area:sev; }
+  .table-wrap.triage-table-wrap table.triage-table td.triage-when { grid-area:when; font-size:12px; color:var(--color-smoke); }
+  .table-wrap.triage-table-wrap table.triage-table td.triage-actions { grid-area:menu; padding:0; }
+  .table-wrap.triage-table-wrap table.triage-table td.triage-subject { grid-area:subject; }
+  .table-wrap.triage-table-wrap table.triage-table td.triage-instance { grid-area:meta; font-size:12px; color:var(--color-smoke); }
+  .table-wrap.triage-table-wrap table.triage-table td.triage-num { grid-area:count; font-size:12px; color:var(--color-smoke); text-align:right; }
+  .triage-table .triage-count-unit { display:inline; }
+  .triage-table .triage-message { -webkit-line-clamp:2; line-clamp:2; }
+  .triage-open { min-height:32px; }
+}
 /* A result list and its "older" control in one card. Nested empty states drop their own frame;
    the footer disappears when there is nothing older to load. */
 .result-card { padding:0; overflow:hidden; }
@@ -168,3 +192,4 @@
 .state-cell .button>.icon,.row-actions .button>.icon { width:14px; height:14px; }
 .row-actions { margin:0; align-items:center; }
 .workflows-table td { padding-block:10px; }
+@media (pointer:coarse),(max-width:700px) { .state-cell .button,.row-actions .button { min-height:44px; } }

@@ -1,20 +1,22 @@
 import {api} from '../api.js';
 import {state,can,pageSize} from '../state.js';
 import {el,button,field,heading,table,notice,empty} from '../lib/html.js';
-import {severityOf,severityPill,relativeTime,instanceName,explainHref,repairHref,TRIAGE_FILTERS,getSavedViews,saveView,deleteSavedView,registerShortcuts} from '../lib/triage.js';
+import {icon} from '../lib/icons.js';
+import {severityOf,severityPill,relativeTime,parseTimestamp,instanceName,explainHref,repairHref,n8nUrl,TRIAGE_FILTERS,getSavedViews,saveView,deleteSavedView,registerShortcuts} from '../lib/triage.js';
 import {askText,confirmAction} from '../lib/confirm.js';
+import {rowMenu} from '../lib/row-menu.js';
+import {openPeek,peekFacts,peekSection,peekCopy,closePeek} from '../lib/peek.js';
 
-const COLUMNS=[['Severity'],['When'],['Workflow / node'],['Instance'],['Count','triage-num'],['Execution'],['Actions','triage-actions-head']];
-const LONG_MESSAGE=100;
-const SORT_COL_KEYS = ['severity', 'when', 'workflow', 'instance', 'count', 'execution'];
+const SORT_COL_KEYS = ['severity', 'workflow', 'instance', 'count', 'when'];
+// Severity sorts by weight, not by its label: execution errors, silent failures, then warnings.
+const SEVERITY_RANK = {execution:4, silent:3, zero_output:2, other:1};
+const rowParts = row => {const workflow=row.workflow_name||'Workflow name unavailable',node=row.node_name||'Workflow';return {workflow,node,name:`${workflow} · ${node}`};};
+const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 
-// Message text stays a text node; long messages keep the full text in a disclosure.
+// The row shows the first line of the message; the details panel shows all of it.
 function message(text) {
   const value=text===null||text===undefined?'':String(text);
-  if(!value)return el('p',{class:'triage-message triage-missing'},'Message unavailable');
-  const clamped=el('p',{class:'triage-message'},value);
-  if(value.length<=LONG_MESSAGE&&!value.includes('\n'))return clamped;
-  return [clamped,el('details',{class:'triage-full'},el('summary',{},'Full message'),el('p',{},value))];
+  return value?el('p',{class:'triage-message'},value):el('p',{class:'triage-message triage-missing'},'Message unavailable');
 }
 
 export async function render(container){
@@ -48,6 +50,9 @@ export async function render(container){
   const next=button('Older errors',()=>load(cursor),'button ghost');next.disabled=true;
   const savedViewsContainer = el('details', { class: 'triage-saved-dropdown triage-saved-bar', role: 'group', 'aria-label': 'Saved filter views' });
   const bulkBar = el('div', { class: 'triage-bulk-strip triage-bulk-bar', role: 'region', 'aria-label': 'Bulk actions' });
+  // After a resolve the row leaves the list; this bar offers it back until the next change.
+  const undoBar = el('div', { class: 'undo-bar', role: 'status' });
+  undoBar.hidden = true;
   bulkBar.hidden = true;
   const contextStrip = el('div', { class: 'triage-context-strip' });
 
@@ -214,7 +219,7 @@ export async function render(container){
     }
   });
 
-  const shortcutsBtn = button('Shortcuts (?)', () => window.openShortcutsDialog ? window.openShortcutsDialog(shortcutsBtn) : null, 'button ghost');
+  const shortcutsBtn = button('Shortcuts (?)', () => window.openShortcutsDialog ? window.openShortcutsDialog(shortcutsBtn) : null, 'button ghost hide-on-touch');
   shortcutsBtn.setAttribute('aria-label', 'Keyboard shortcuts');
   shortcutsBtn.setAttribute('title', 'Keyboard shortcuts (?)');
 
@@ -234,6 +239,7 @@ export async function render(container){
     heading('Error triage', 'Confirmed errors and evidence-based findings, newest first.'),
     commandStrip,
     contextStrip,
+    undoBar,
     announcer, feedback,
     // The list and its pagination live in one card, so "Older errors" belongs visibly to the list.
     el('section', { class: 'card result-card' }, content, el('div', { class: 'result-card-foot' }, next))
@@ -253,8 +259,8 @@ export async function render(container){
       handler: () => load()
     },
     {
-      key: ['j', 'ArrowDown'],
-      display: 'j / ↓',
+      key: ['j', 'J'],
+      display: 'j',
       description: 'Focus next error row',
       handler: () => {
         const cur = getFocusedRowIndex();
@@ -262,8 +268,8 @@ export async function render(container){
       }
     },
     {
-      key: ['k', 'ArrowUp'],
-      display: 'k / ↑',
+      key: ['k', 'K'],
+      display: 'k',
       description: 'Focus previous error row',
       handler: () => {
         const cur = getFocusedRowIndex();
@@ -287,24 +293,20 @@ export async function render(container){
       }
     },
     {
+      key: ['o', 'O'],
+      display: 'o',
+      description: 'Open details of focused error',
+      handler: () => { const row = focusedRow(); if (row) openDetails(row); }
+    },
+    {
       key: ['e', 'E'],
       display: 'e',
-      description: 'Resolve selected errors (or focused error)',
+      description: 'Resolve selected errors (or focused error); Undo brings them back',
       handler: () => {
-        if (can('operator') && loadedStatus === 'open') {
-          if (selectedIds.size > 0) {
-            bulkResolve();
-          } else {
-            const cur = getFocusedRowIndex();
-            if (cur !== -1) {
-              const tr = getRowElements()[cur];
-              const resolveBtn = tr?.querySelector('button[data-action="resolve"]');
-              if (resolveBtn && !resolveBtn.disabled) {
-                resolveBtn.click();
-              }
-            }
-          }
-        }
+        if (!can('operator') || loadedStatus !== 'open') return;
+        if (selectedIds.size > 0) { bulkResolve(); return; }
+        const row = focusedRow();
+        if (row) resolveRows([row]);
       }
     }
   ], 'Error triage');
@@ -372,63 +374,160 @@ export async function render(container){
     updateContextStrip();
   }
 
-  async function bulkResolve() {
-    if (!can('operator') || loadedStatus !== 'open') return;
-    const toResolve = rows.filter(r => selectedIds.has(r.id));
-    if (!toResolve.length) return;
-    const count = toResolve.length;
-    const ok = await confirmAction({
-      title: 'Resolve selected errors',
-      target: `${count} error${count === 1 ? '' : 's'}`,
-      consequence: 'Marking these errors resolved removes them from the open triage queue.',
-      confirmLabel: `Resolve ${count} error${count === 1 ? '' : 's'}`,
-      danger: false
-    });
-    if (!ok) return;
+  function bulkResolve() {
+    return resolveRows(rows.filter(r => selectedIds.has(r.id)), { confirm: true });
+  }
 
+  const rowFor = row => content.querySelector(`.triage-open[data-id="${CSS.escape(String(row.id))}"]`)?.closest('tr');
+  function focusAt(position) {
+    const trList = getRowElements();
+    if (!trList.length) { (content.querySelector('.triage-table-wrap') || content).focus(); return; }
+    trList[Math.max(0, Math.min(position, trList.length - 1))].querySelector('.triage-open')?.focus();
+  }
+  function failureNotice(failures, verb, done) {
+    if (!failures.length) return;
+    const names = failures.map(f => `${rowParts(f.row).name} (${f.error?.message || `Could not ${verb}`})`).join('; ');
+    notice(feedback, Object.assign(new Error(done
+      ? `${plural(done, 'error')} ${verb === 'resolve' ? 'marked resolved' : 'reopened'}, but ${failures.length} failed: ${names}.`
+      : `Could not ${verb} ${plural(failures.length, 'error')}: ${names}.`), { code: 'PARTIAL_BULK_FAILURE' }));
+  }
+
+  // Resolving removes rows from the open list and offers Undo; nothing is deleted.
+  async function resolveRows(list, { confirm = false } = {}) {
+    if (!can('operator') || loadedStatus !== 'open' || !list.length) return;
+    if (confirm && list.length > 1) {
+      const ok = await confirmAction({
+        title: 'Resolve selected errors',
+        target: plural(list.length, 'error'),
+        consequence: 'They leave the open queue. You can undo this right after.',
+        confirmLabel: `Resolve ${plural(list.length, 'error')}`,
+        danger: false
+      });
+      if (!ok) return;
+    }
+    const firstTr = rowFor(list[0]), position = firstTr ? getRowElements().indexOf(firstTr) : 0;
     content.setAttribute('aria-busy', 'true');
     feedback.replaceChildren();
-    announcer.textContent = `Resolving ${count} error${count === 1 ? '' : 's'}…`;
-
-    const successes = [];
-    const failures = [];
-
-    for (const item of toResolve) {
+    const done = [], failures = [];
+    for (const row of list) {
       if (signal.aborted) return;
       try {
-        await api(`/api/errors/${encodeURIComponent(item.id)}/resolve`, { method: 'POST', signal });
-        successes.push(item);
-      } catch (err) {
-        failures.push({ item, error: err });
+        await api(`/api/errors/${encodeURIComponent(row.id)}/resolve`, { method: 'POST', signal });
+        done.push({ row, index: rows.indexOf(row) });
+      } catch (error) {
+        if (signal.aborted) return;
+        failures.push({ row, error });
       }
     }
-
     if (signal.aborted) return;
     content.removeAttribute('aria-busy');
-
-    if (successes.length > 0) {
-      const successIds = new Set(successes.map(s => s.id));
-      rows = rows.filter(r => !successIds.has(r.id));
-      successes.forEach(s => selectedIds.delete(s.id));
-    }
-
-    if (failures.length > 0) {
-      const failSummary = failures.map(f => {
-        const name = `${f.item.workflow_name || 'Workflow'} · ${f.item.node_name || 'Node'}`;
-        return `${name} (${f.error?.message || 'Failed to resolve'})`;
-      }).join('; ');
-      const msg = successes.length > 0
-        ? `Marked ${successes.length} error${successes.length === 1 ? '' : 's'} resolved, but ${failures.length} failed: ${failSummary}.`
-        : `Failed to resolve ${failures.length} error${failures.length === 1 ? '' : 's'}: ${failSummary}.`;
-      const err = new Error(msg);
-      err.code = 'PARTIAL_BULK_FAILURE';
-      notice(feedback, err);
-      announcer.textContent = `${successes.length} resolved, ${failures.length} failed.`;
-    } else {
-      announcer.textContent = `${successes.length} error${successes.length === 1 ? '' : 's'} marked resolved.`;
-    }
-
+    const ids = new Set(done.map(d => d.row.id));
+    rows = rows.filter(r => !ids.has(r.id));
+    for (const d of done) { selectedIds.delete(d.row.id); d.row.status = 'resolved'; }
+    failureNotice(failures, 'resolve', done.length);
     draw();
+    focusAt(position);
+    if (!done.length) { announcer.textContent = ''; return; }
+    const label = done.length === 1 ? `${rowParts(done[0].row).name} marked resolved.` : `${plural(done.length, 'error')} marked resolved.`;
+    const what = done.length === 1 ? rowParts(done[0].row).name : plural(done.length, 'error');
+    undoBar.replaceChildren(el('span', {}, label), button('Undo', () => reopenRows(done.map(d => d.row), { restore: done }), 'ghost', { 'aria-label': `Undo: reopen ${what}` }));
+    undoBar.hidden = false;
+  }
+
+  // Reopen is Undo on the open list (rows return where they were) and a row action on the resolved list.
+  async function reopenRows(list, { restore = null } = {}) {
+    if (!can('operator') || !list.length) return;
+    content.setAttribute('aria-busy', 'true');
+    feedback.replaceChildren();
+    const done = [], failures = [];
+    for (const row of list) {
+      if (signal.aborted) return;
+      try {
+        await api(`/api/errors/${encodeURIComponent(row.id)}/reopen`, { method: 'POST', signal });
+        done.push(row);
+      } catch (error) {
+        if (signal.aborted) return;
+        failures.push({ row, error });
+      }
+    }
+    if (signal.aborted) return;
+    content.removeAttribute('aria-busy');
+    undoBar.hidden = true;
+    undoBar.replaceChildren();
+    for (const row of done) { row.status = 'open'; row.resolved_at = null; }
+    const back = new Set(done.map(r => r.id));
+    if (restore && loadedStatus === 'open') {
+      for (const item of restore.filter(i => back.has(i.row.id)).sort((a, b) => a.index - b.index)) rows.splice(Math.min(Math.max(item.index, 0), rows.length), 0, item.row);
+    } else if (loadedStatus === 'resolved') {
+      rows = rows.filter(r => !back.has(r.id));
+    }
+    failureNotice(failures, 'reopen', done.length);
+    draw();
+    if (done.length && restore && loadedStatus === 'open') rowFor(done[0])?.querySelector('.triage-open')?.focus();
+    if (done.length) announcer.textContent = done.length === 1 ? `${rowParts(done[0]).name} reopened.` : `${plural(done.length, 'error')} reopened.`;
+  }
+
+  // Secondary actions for a row; the row's own title opens the details panel.
+  function menuItems(row) {
+    const execution = row.execution_id ? n8nUrl(row.instance_id, row.workflow_id, row.execution_id) : null;
+    const workflowLink = n8nUrl(row.instance_id, row.workflow_id);
+    return [
+      execution ? { label: 'Open execution in n8n', href: execution, external: true } : null,
+      workflowLink ? { label: 'Open workflow in n8n', href: workflowLink, external: true } : null,
+      { label: 'Explain with AI', href: explainHref(row) },
+      can('operator') ? { label: 'Repair with AI', href: repairHref(row) } : null,
+      can('operator') && loadedStatus === 'open' ? { label: 'Mark resolved', onSelect: () => resolveRows([row]) } : null,
+      can('operator') && loadedStatus === 'resolved' ? { label: 'Reopen', onSelect: () => reopenRows([row]) } : null,
+    ];
+  }
+
+  // The evidence for one error: full message, when and how often, and the way back into n8n.
+  function openDetails(row) {
+    const { workflow, node } = rowParts(row);
+    const execution = row.execution_id ? n8nUrl(row.instance_id, row.workflow_id, row.execution_id) : null;
+    const workflowLink = n8nUrl(row.instance_id, row.workflow_id);
+    const external = (href, label, className) => el('a', { class: className, href, target: '_blank', rel: 'noopener noreferrer' }, label, icon('external'));
+    const related = el('div', { class: 'peek-related' }, el('p', { class: 'muted' }, 'Looking for notes…'));
+    const resolvedAt = parseTimestamp(row.resolved_at);
+    let triage = null;
+    if (can('operator') && loadedStatus === 'open') triage = button('Mark resolved', () => { closePeek(); return resolveRows([row]); }, 'ghost');
+    else if (can('operator') && loadedStatus === 'resolved') triage = button('Reopen', () => { closePeek(); return reopenRows([row]); }, 'ghost');
+    openPeek({
+      eyebrow: severityPill(row.error_type),
+      title: workflow,
+      meta: `${node} · ${instanceName(row.instance_id)}`,
+      sections: [
+        el('p', { class: 'peek-message' }, row.error_message ? String(row.error_message) : el('span', { class: 'triage-missing' }, 'Message unavailable')),
+        peekFacts([
+          ['Last seen', relativeTime(row.occurred_at)],
+          ['Occurrences', row.count === null || row.count === undefined ? null : String(row.count)],
+          ['Execution', row.execution_id ? peekCopy(row.execution_id, 'execution ID') : 'Not recorded'],
+          ['Workflow', row.workflow_id ? el('span', { class: 'peek-inline' }, peekCopy(row.workflow_id, 'workflow ID'), workflowLink ? external(workflowLink, 'Open in n8n', 'peek-link') : null) : null],
+          ['Status', row.status === 'resolved' ? (resolvedAt ? `Resolved ${resolvedAt.toLocaleString()}` : 'Resolved') : 'Open'],
+        ]),
+        peekSection('Notes about this workflow', related),
+      ],
+      actions: [
+        execution ? external(execution, 'Open execution in n8n', 'button') : workflowLink ? external(workflowLink, 'Open workflow in n8n', 'button') : null,
+        el('a', { class: 'button ghost', href: explainHref(row) }, 'Explain with AI'),
+        can('operator') ? el('a', { class: 'button ghost', href: repairHref(row) }, 'Repair with AI') : null,
+        triage,
+      ],
+    });
+    // Runbooks and past incidents that name the workflow.
+    api('/api/notes/search?q=' + encodeURIComponent(workflow), { signal }).then(result => {
+      const notes = (result.data || []).slice(0, 3);
+      related.replaceChildren(notes.length
+        ? el('ul', { class: 'peek-links' }, notes.map(n => el('li', {}, el('a', { href: '#notes?' + new URLSearchParams({ path: n.path }) }, n.path))))
+        : el('p', { class: 'muted' }, 'No notes mention this workflow.'));
+    }, () => { if (!signal.aborted) related.replaceChildren(el('p', { class: 'muted' }, 'Notes could not be searched.')); });
+  }
+
+  function focusedRow() {
+    const cur = getFocusedRowIndex();
+    if (cur === -1) return null;
+    const id = getRowElements()[cur]?.querySelector('.triage-open')?.dataset.id;
+    return rows.find(r => String(r.id) === id) || null;
   }
 
   function draw(){
@@ -453,7 +552,7 @@ export async function render(container){
 
     const sortable = {};
     SORT_COL_KEYS.forEach((k, idx) => {
-      sortable[idx + colOffset] = k === 'when' ? 'date' : (k === 'count' ? 'number' : 'text');
+      sortable[idx + colOffset] = k === 'when' ? 'date' : k === 'count' ? 'number' : k === 'severity' ? 'rank' : 'text';
     });
 
     let selectAllBox = null;
@@ -480,9 +579,9 @@ export async function render(container){
         draw();
       });
       const selectAllHead = el('label', { class: 'triage-checkbox-label', title: 'Select all visible errors' }, selectAllBox);
-      headers = [selectAllHead, 'Severity', 'When', 'Workflow / node', 'Instance', 'Count', 'Execution', 'Actions'];
+      headers = [selectAllHead, 'Severity', 'Error', 'Instance', 'Count', 'Last seen', el('span', { class: 'sr-only' }, 'Actions')];
     } else {
-      headers = ['Severity', 'When', 'Workflow / node', 'Instance', 'Count', 'Execution', 'Actions'];
+      headers = ['Severity', 'Error', 'Instance', 'Count', 'Last seen', el('span', { class: 'sr-only' }, 'Actions')];
     }
 
     const tableNode = table(
@@ -492,9 +591,9 @@ export async function render(container){
         className: 'triage-table',
         wrapClass: 'triage-table-wrap',
         ariaLabel: 'Errors table',
-        numeric: [4 + colOffset],
+        numeric: [3 + colOffset],
         sortable,
-        initialSort: { column: sortColIndex >= 0 ? sortColIndex : (1 + colOffset), direction: currentSort.direction },
+        initialSort: { column: sortColIndex >= colOffset ? sortColIndex : (4 + colOffset), direction: currentSort.direction },
         onSort: ({ column, direction }) => {
           const normalized = column - colOffset;
           const key = SORT_COL_KEYS[normalized] || 'when';
@@ -512,16 +611,13 @@ export async function render(container){
   }
 
   function renderRow(row, canSelect){
-    const workflow=row.workflow_name||'Workflow name unavailable',node=row.node_name||'Workflow',name=`${workflow} · ${node}`;
+    const {workflow,node,name}=rowParts(row);
     const cell=(label,className,...children)=>el('td',{class:className,'data-label':label},children);
-    const actions=el('div',{class:'triage-action-group'},el('a',{class:'button ghost',href:explainHref(row)},'Explain with AI'));
-    // Repair pins this error's workflow as the AI target; applying any change still needs an operator's approval.
-    if(can('operator'))actions.append(el('a',{class:'button ghost',href:repairHref(row)},'Repair with AI'));
-    if(loadedStatus==='open'&&can('operator')){
-      const resolve=button('Mark resolved',()=>resolveRow(row,resolve,name),'button ghost');
-      resolve.dataset.action='resolve';
-      actions.append(resolve);
-    }
+    // The title is the row's one inline action: it opens the evidence. Everything else is in the menu.
+    const open=el('button',{type:'button',class:'triage-open','data-id':String(row.id),'aria-label':`Details for ${name}`},el('strong',{},workflow),el('span',{class:'triage-node'},node));
+    // el() adds an action glyph to buttons whose text starts with a verb ("Send webinar email"); a title has none.
+    open.querySelector(':scope > svg')?.remove();
+    open.addEventListener('click',()=>openDetails(row));
 
     const isRowSelected = selectedIds.has(row.id);
     const cells = [];
@@ -548,18 +644,19 @@ export async function render(container){
       );
     }
 
-    const severityLabel = severityOf(row.error_type).label;
-    const subjectCell = cell('Workflow / node','triage-subject',el('div',{class:'triage-subject-body'},el('div',{class:'triage-title'},el('strong',{},workflow),el('span',{class:'triage-node'},node)),message(row.error_message)));
-    subjectCell._rowMeta = { workflow, node, severity: severityLabel };
+    const severity = severityOf(row.error_type);
+    const subjectCell = cell('Error','triage-subject',el('div',{class:'triage-subject-body'},open,message(row.error_message)));
+    subjectCell._rowMeta = { workflow, node, severity: severity.label };
+    const occurred = parseTimestamp(row.occurred_at);
+    const known = row.count !== null && row.count !== undefined;
 
     cells.push(
-      {sortValue:severityLabel,content:cell('Severity','triage-severity',severityPill(row.error_type))},
-      {sortValue:row.occurred_at?new Date(row.occurred_at).getTime():0,content:cell('When','triage-when',relativeTime(row.occurred_at))},
-      {sortValue:`${workflow} · ${node}`,content:subjectCell},
+      {sortValue:SEVERITY_RANK[severity.kind]??0,content:cell('Severity','triage-severity',severityPill(row.error_type))},
+      {sortValue:name,content:subjectCell},
       {sortValue:instanceName(row.instance_id),content:cell('Instance','triage-instance',instanceName(row.instance_id))},
-      {sortValue:row.count??0,content:cell('Count','triage-num',row.count===null||row.count===undefined?el('span',{class:'triage-missing'},'Unavailable'):String(row.count))},
-      {sortValue:row.execution_id?String(row.execution_id):'',content:cell('Execution','triage-execution',row.execution_id?String(row.execution_id):el('span',{class:'triage-missing'},'Unavailable'))},
-      cell('Actions','triage-actions',actions)
+      {sortValue:known?row.count:0,content:cell('Count','triage-num',known?[String(row.count),el('span',{class:'triage-count-unit'},row.count===1?' occurrence':' occurrences')]:el('span',{class:'triage-missing'},'Unavailable'))},
+      {sortValue:occurred?occurred.getTime():0,content:cell('Last seen','triage-when',relativeTime(row.occurred_at))},
+      cell('Actions','triage-actions',rowMenu(menuItems(row),`More actions for ${name}`))
     );
 
     return {
@@ -567,33 +664,6 @@ export async function render(container){
       className: isRowSelected ? 'is-selected' : '',
       selected: isRowSelected
     };
-  }
-
-  async function resolveRow(row,control,name){
-    control.disabled=true;feedback.replaceChildren();announcer.textContent='';
-    try{await api(`/api/errors/${encodeURIComponent(row.id)}/resolve`,{method:'POST'});}
-    catch(error){
-      if(signal.aborted)return;
-      control.disabled=false;
-      notice(feedback,Object.assign(new Error(`Could not mark ${name} resolved. ${error.message}`),{status:error.status,code:error.code}));
-      control.focus();return;
-    }
-    if(signal.aborted)return;
-    selectedIds.delete(row.id);
-    // Remove only this row; the rest of the loaded page, filters and cursor stay as they are.
-    rows=rows.filter(item=>item!==row);
-    const tr=control.closest('tr');
-    const siblings=tr?.isConnected?[...tr.parentElement.children]:[];
-    const position=tr?siblings.indexOf(tr):-1;
-    draw();
-    const trList=getRowElements();
-    if(trList.length){
-      const target=position<0?trList[0]:trList[Math.min(position,trList.length-1)];
-      (target.querySelector('[data-action=resolve]')||target.querySelector('a,button'))?.focus();
-    }else{
-      (content.querySelector('.triage-table-wrap')||content).focus();
-    }
-    announcer.textContent=`${name} marked resolved.`;
   }
   async function load(before=null){
     if(busy){if(!before)queued=true;return;}
@@ -604,7 +674,7 @@ export async function render(container){
       if(instance)params.set('instance_id',instance);
       if(before)params.set('before',before);
       const result=await api('/api/errors?'+params,{signal});
-      if(!before){feedback.replaceChildren();announcer.textContent='';}
+      if(!before){feedback.replaceChildren();announcer.textContent='';undoBar.hidden=true;undoBar.replaceChildren();}
       loadedStatus=requested;rows=before?rows.concat(result.data):result.data;cursor=result.next_cursor;
       draw();
     }catch(error){if(!signal.aborted)notice(feedback,error);}

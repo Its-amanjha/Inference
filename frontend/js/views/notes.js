@@ -76,5 +76,9 @@ export async function render(container){
     links);
   container.append(heading('Notes','Runbooks and linked notes for your fleet.'),messages,el('div',{class:'notes-shell'},library,workspace));
   showPreview();
-  await act(load);return()=>{selection++;clearTimeout(previewTimer);controller.abort();};
+  await act(load);
+  // #notes?path=… opens that note, e.g. from an error's details panel.
+  const linked=new URLSearchParams(location.hash.split('?')[1]||'').get('path');
+  if(linked)await act(()=>open(linked));
+  return()=>{selection++;clearTimeout(previewTimer);controller.abort();};
 }

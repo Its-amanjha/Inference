@@ -292,3 +292,64 @@ td.num { overflow-wrap:normal; white-space:nowrap; }
  .coverage-details summary,.assistant-disclosure summary,.auth-card summary { padding-block:12px; }
  .assistant-disclosure { padding-block:4px; }
 }
+
+/* Row menu: one "More actions" button per row. The list is a popover in the top layer, so no
+   scrolling table clips it; row-menu.js places it under the button. */
+.row-menu-wrap { display:inline-flex; }
+.row-menu-trigger { display:inline-grid; place-items:center; width:36px; height:36px; padding:0; border:0; border-radius:8px; background:transparent; color:var(--color-smoke); cursor:pointer; }
+.row-menu-trigger:hover,.row-menu-trigger[aria-expanded=true] { background:var(--color-ash-mist); color:var(--color-ink-black); }
+.row-menu-trigger:focus-visible { outline:2px solid var(--focus); outline-offset:1px; }
+.row-menu-trigger .icon { width:18px; height:18px; }
+.row-menu-trigger circle { fill:currentColor; }
+.row-menu { position:fixed; inset:auto; margin:0; min-width:220px; max-width:min(320px,calc(100vw - 16px)); padding:6px; border:1px solid var(--border); border-radius:12px; background:var(--surface-card-surface); color:var(--color-ink-black); box-shadow:0 12px 32px rgba(0,0,0,.18); }
+.row-menu:popover-open { display:flex; flex-direction:column; }
+.row-menu-item { display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; min-height:36px; padding:0 10px; border:0; border-radius:8px; background:transparent; color:inherit; font:inherit; font-size:13px; text-align:left; text-decoration:none; cursor:pointer; white-space:nowrap; }
+.row-menu-item:hover,.row-menu-item:focus-visible { background:var(--color-ash-mist); outline:none; }
+.row-menu-item:focus-visible { box-shadow:inset 0 0 0 2px var(--focus); }
+.row-menu-item .icon { width:14px; height:14px; flex:none; color:var(--color-smoke); }
+.row-menu-item.is-danger { color:var(--color-danger); }
+.row-menu-item:disabled { color:var(--color-smoke); cursor:not-allowed; }
+@media (pointer:coarse),(max-width:700px) { .row-menu-trigger { width:44px; height:44px; } .row-menu-item { min-height:44px; } }
+
+/* Details panel: a sheet on the right over the list it came from; the whole screen on a phone. */
+dialog.peek { position:fixed; inset:0 0 0 auto; margin:0; width:min(480px,100vw); max-width:none; height:100dvh; max-height:none; padding:0; border:0; border-left:1px solid var(--border); border-radius:0; background:var(--surface-card-surface); color:var(--color-graphite); flex-direction:column; box-shadow:var(--shadow-card); }
+dialog.peek[open] { display:flex; }
+dialog.peek::backdrop { background:rgba(10,12,16,.35); }
+.peek-head { display:flex; align-items:flex-start; gap:12px; padding:20px 20px 16px; }
+.peek-heading { flex:1; min-width:0; display:flex; flex-direction:column; align-items:flex-start; gap:6px; }
+.peek-title { margin:0; font-size:20px; line-height:1.3; color:var(--color-ink-black); overflow-wrap:anywhere; }
+.peek-title:focus { outline:none; }
+.peek-meta { margin:0; color:var(--color-smoke); font-size:13px; overflow-wrap:anywhere; }
+.peek-close { flex:none; display:inline-grid; place-items:center; width:40px; height:40px; padding:0; border:0; border-radius:10px; background:transparent; color:var(--color-smoke); cursor:pointer; }
+.peek-close:hover { background:var(--color-ash-mist); color:var(--color-ink-black); }
+.peek-close:focus-visible,.peek-copy:focus-visible { outline:2px solid var(--focus); outline-offset:1px; }
+.peek-body { flex:1; overflow:auto; padding:0 20px 20px; display:flex; flex-direction:column; gap:20px; }
+.peek-message { margin:0; padding:12px 14px; border-radius:10px; background:var(--color-ash-mist); color:var(--color-ink-black); font-size:14px; line-height:1.55; white-space:pre-wrap; overflow-wrap:anywhere; }
+.peek-facts { display:grid; grid-template-columns:max-content minmax(0,1fr); gap:10px 20px; margin:0; font-size:13px; }
+.peek-facts>div { display:contents; }
+.peek-facts dt { color:var(--color-smoke); }
+.peek-facts dd { margin:0; min-width:0; color:var(--color-ink-black); }
+.peek-id { display:inline-flex; align-items:center; gap:2px; max-width:100%; }
+.peek-id code { font-family:var(--font-mono); font-size:12px; overflow-wrap:anywhere; }
+.peek-copy { display:inline-grid; place-items:center; flex:none; width:28px; height:28px; padding:0; border:0; border-radius:6px; background:transparent; color:var(--color-smoke); cursor:pointer; }
+.peek-copy .icon { width:14px; height:14px; }
+.peek-copy:hover { background:var(--color-ash-mist); color:var(--color-ink-black); }
+.peek-copy[data-copied] { color:var(--color-success); }
+.peek-inline { display:inline-flex; flex-wrap:wrap; align-items:center; gap:4px 12px; }
+.peek-link { display:inline-flex; align-items:center; gap:4px; }
+.peek-link .icon,.peek-foot .icon { width:14px; height:14px; }
+.peek-section h3 { margin:0 0 8px; font-size:13px; font-weight:600; color:var(--color-ink-black); }
+.peek-section p { margin:0; font-size:13px; }
+.peek-links { margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:6px; font-size:13px; }
+.peek-foot { display:flex; flex-wrap:wrap; gap:8px; padding:16px 20px 20px; }
+.peek-foot .button { margin:0; min-height:36px; padding-inline:14px; font-size:13px; }
+@media (prefers-reduced-motion:no-preference) { dialog.peek[open] { animation:peek-in .18s ease-out; } }
+@keyframes peek-in { from { transform:translateX(24px); opacity:0; } }
+@media (max-width:700px) {
+  dialog.peek { width:100vw; border-left:0; }
+  .peek-close,.peek-copy { width:44px; height:44px; }
+  .peek-foot .button { flex:1 1 100%; min-height:44px; }
+}
+
+/* Controls that only make sense with a keyboard. */
+@media (pointer:coarse) { .hide-on-touch { display:none !important; } }

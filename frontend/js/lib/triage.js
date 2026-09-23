@@ -66,6 +66,17 @@ export function relativeTime(value,now=Date.now()) {
 }
 
 export const instanceName=id=>state.instances.find(item=>item.id===id)?.name||id||'Unavailable';
+// A link into the n8n editor: the execution when there is one, otherwise the workflow. It uses the URL the
+// instance was connected with, so it opens wherever that URL is reachable from this browser.
+export function n8nUrl(instanceId,workflowId,executionId=null){
+  const base=state.instances.find(item=>item.id===instanceId)?.url;
+  if(!base||!workflowId)return null;
+  let root;try{root=new URL(base);}catch{return null;}
+  if(root.protocol!=='http:'&&root.protocol!=='https:')return null;
+  const origin=root.origin+root.pathname.replace(/\/+$/,'').replace(/\/api\/v1$/,'');
+  const workflow=`${origin}/workflow/${encodeURIComponent(workflowId)}`;
+  return executionId?`${workflow}/executions/${encodeURIComponent(executionId)}`:workflow;
+}
 export const explainHref=row=>'#assistant?'+new URLSearchParams({error_id:row.id,instance_id:row.instance_id});
 // Repair links pin a target for a person to review; error rows pass their id, workflow rows pass only instance_id and workflow_id.
 export const repairHref=row=>'#assistant?'+new URLSearchParams([['mode','repair'],['instance_id',row?.instance_id],['workflow_id',row?.workflow_id],['error_id',row?.id]]

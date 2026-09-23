@@ -112,6 +112,8 @@ def exercise_design(page: Page, artifacts: Path) -> None:
         page.route('**/api/errors?*', lambda route: route.fulfill(json=triage))
         page.route('**/api/errors/*/resolve', lambda route: route.fulfill(
             json={'id': 'fixture-error', 'status': 'resolved'}))
+        page.route('**/api/errors/*/reopen', lambda route: route.fulfill(
+            json={'id': 'fixture-error', 'status': 'open'}))
         page.set_viewport_size({'width': 1440, 'height': 1000})
         page.evaluate("location.hash = 'errors'")
         errors_table = page.get_by_role('region', name='Errors table')
@@ -120,7 +122,8 @@ def exercise_design(page: Page, artifacts: Path) -> None:
         expect(errors_table.locator('.severity-pill.error').first).to_have_text('Silent failure')
         expect(errors_table.get_by_text('Execution error', exact=True)).to_be_visible()
         expect(errors_table.locator('time[datetime]').first).to_contain_text(re.compile(r'\d+ min ago'))
-        expect(errors_table.get_by_text('Unavailable', exact=True)).to_have_count(1)
+        # Execution IDs live in the details panel and the row menu, not in a column of their own.
+        expect(errors_table.get_by_text('Unavailable', exact=True)).to_have_count(0)
         expect(errors_table.locator('img')).to_have_count(0)
         filters = page.get_by_role('group', name='Filter loaded errors by type')
         filters.get_by_role('button', name='Silent failures', exact=True).click()
@@ -129,12 +132,23 @@ def exercise_design(page: Page, artifacts: Path) -> None:
         expect(errors_table.locator('tbody tr')).to_have_count(1)
         filters.get_by_role('button', name='All', exact=True).click()
         expect(page.get_by_text('Showing 2 of 2 loaded', exact=True)).to_be_visible()
-        errors_table.get_by_role('button', name='Mark resolved').first.click()
-        expect(page.locator('.triage-announce[role=status]')).to_have_text(
-            'Order synchronization · Update inventory marked resolved.')
+        # One inline control per row (the title opens the details panel); resolve is in the row menu.
+        name = 'Order synchronization · Update inventory'
+        errors_table.get_by_role('button', name=f'More actions for {name}').click()
+        page.get_by_role('menuitem', name='Mark resolved').click()
+        expect(page.locator('.undo-bar[role=status]')).to_contain_text(f'{name} marked resolved.')
         expect(errors_table.locator('tbody tr')).to_have_count(1)
-        expect(errors_table.get_by_role('button', name='Mark resolved')).to_be_focused()
+        expect(errors_table.locator('.triage-open')).to_be_focused()
         expect(page.get_by_text('Showing 1 of 1 loaded', exact=True)).to_be_visible()
+        page.get_by_role('button', name=f'Undo: reopen {name}').click()
+        expect(errors_table.locator('tbody tr')).to_have_count(2)
+        expect(errors_table.get_by_role('button', name=f'Details for {name}')).to_be_focused()
+        errors_table.get_by_role('button', name=f'Details for {name}').click()
+        details = page.get_by_role('dialog', name='Order synchronization')
+        expect(details).to_be_visible()
+        page.keyboard.press('Escape')
+        expect(details).to_have_count(0)
+        expect(errors_table.get_by_role('button', name=f'Details for {name}')).to_be_focused()
         page.set_viewport_size({'width': 390, 'height': 844})
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         page.screenshot(path=str(artifacts / 'inference-errors-mobile.png'), full_page=True)
