@@ -964,6 +964,13 @@ export async function render(container) {
     const showForm = () => { addingModel = true; setupForm.hidden = false; addModel.hidden = true; setupForm.querySelector('input')?.focus(); };
     listen(addModel, 'click', showForm);
     listen(setupForm, 'input', () => { addingModel = true; });
+    const cancelModel = el('button', {type: 'button', className: 'button button-ghost'}, 'Cancel');
+    setupForm.querySelector('.form-actions')?.prepend(cancelModel);
+    listen(cancelModel, 'click', () => {
+      addingModel = false; setupForm.reset();
+      setupForm.querySelector('select')?.dispatchEvent(new Event('change'));
+      paintModels(); addModel.focus();
+    });
     const rowAction = (label, name, handler) => {
       const node = el('button', {type: 'button', className: 'button button-ghost', 'aria-label': `${label} for ${name}`}, label);
       listen(node, 'click', async () => {
@@ -988,7 +995,7 @@ export async function render(container) {
       if (changed) { modelList.querySelector(`[data-id="${CSS.escape(changed.id)}"] .tool-calling-badge`)?.replaceWith(toolBadge(changed)); return; }
       modelsSection.hidden = !providerRows.length;
       const formShown = !providerRows.length || addingModel;
-      setupForm.hidden = !formShown; addModel.hidden = formShown;
+      setupForm.hidden = !formShown; addModel.hidden = formShown; cancelModel.hidden = !providerRows.length;
       modelList.replaceChildren(...providerRows.map(modelRow));
     };
     paintModels();
@@ -997,15 +1004,17 @@ export async function render(container) {
       if (!allowErrorText) renderRepairSettings();
       (setupForm.hidden ? addModel : setupForm.querySelector('input'))?.focus();
     };
-    const serverId = el('input', {required: true, pattern: '[A-Za-z0-9_-]{1,64}', maxLength: 64});
+    const serverId = el('input', {required: true, pattern: '[A-Za-z0-9_\\-]{1,64}', maxLength: 64});
     const url = el('input', {type: 'url', required: true});
     const mcpKey = el('input', {placeholder: '$MCP_KEY', autocomplete: 'off'});
     const mcpSave = el('button', {type: 'submit', className: 'button button-primary'}, 'Save MCP server');
+    const mcpCancel = el('button', {type: 'button', className: 'button button-ghost'}, 'Cancel');
+    const mcpFeedback = el('div', {'aria-live': 'polite'});
     const mcpForm = formCard({title: 'Add an MCP server', heading: 'h3', flat: true,
       body: [el('div', {className: 'form-row'}, field('Server ID', serverId, {hint: 'Letters, numbers, dashes and underscores.'}),
         field('Streamable HTTP endpoint', url, {})),
         field('Key reference (optional)', mcpKey, {hint: 'Optional.'})],
-      actions: [mcpSave]});
+      actions: [mcpCancel, mcpSave]});
     const catalogs = el('div', {className: 'stack'});
     const loadServers = async () => {
       const result = await request('/config/mcp');
@@ -1024,17 +1033,25 @@ export async function render(container) {
     };
     listen(mcpForm, 'submit', async event => {
       event.preventDefault(); mcpSave.disabled = true;
-      try { await request('/config/mcp', {method: 'PUT', json: {id: serverId.value, config: {url: url.value, api_key_ref: mcpKey.value || null}}}); mcpKey.value = ''; await loadServers(); }
-      catch (error) { if (!signal.aborted) notice(messages, error); }
+      mcpFeedback.replaceChildren();
+      try {
+        await request('/config/mcp', {method: 'PUT', json: {id: serverId.value, config: {url: url.value, api_key_ref: mcpKey.value || null}}});
+        const saved = serverId.value; await loadServers(); closeServerForm();
+        if (!signal.aborted) notice(mcpFeedback, `MCP server ${saved} saved. Discover its tools below.`);
+      }
+      catch (error) { if (!signal.aborted) notice(mcpFeedback, error); }
       finally { mcpSave.disabled = false; }
     });
     const addServer = el('button', {type: 'button', className: 'button button-ghost'}, actionIcon('Add server'), 'Add server');
     mcpForm.hidden = true;
-    listen(addServer, 'click', () => { mcpForm.hidden = false; addServer.hidden = true; serverId.focus(); });
+    // Cancel closes the form and forgets what was typed; saving closes it once the server is listed.
+    const closeServerForm = () => { mcpForm.hidden = true; addServer.hidden = false; mcpForm.reset(); };
+    listen(addServer, 'click', () => { mcpFeedback.replaceChildren(); mcpForm.hidden = false; addServer.hidden = true; serverId.focus(); });
+    listen(mcpCancel, 'click', () => { closeServerForm(); addServer.focus(); });
     settings.append(el('section', {className: 'drawer-section'},
       el('div', {className: 'saved-models-head'}, el('h3', {}, 'Remote MCP tools'), addServer),
       el('p', {className: 'muted'}, 'Optional. Add a server to let the assistant propose its tools; every MCP call waits for your confirmation.'),
-      catalogs, mcpForm));
+      catalogs, mcpFeedback, mcpForm));
     // Repair conversations: installation-wide switches for what repair turns may send to providers.
     // Built when settings first open, after the provider form, so the controls only exist where they can be seen.
     const renderRepairSettings = () => {

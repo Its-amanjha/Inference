@@ -9,7 +9,7 @@ export const providerLabel=kind=>presets[kind]?.[0]||String(kind||'Unknown servi
 // Appends the Connect a model form to host and returns it, so the caller can show it on request.
 export function providerSetup(host,onSaved,signal){
   const kind=el('select',{},Object.entries(presets).map(([value,[label]])=>el('option',{value},label)));
-  const id=el('input',{required:true,value:'main-config',pattern:'[A-Za-z0-9_\-]{1,64}',autocomplete:'off',spellcheck:'false'});
+  const id=el('input',{required:true,value:'main-config',pattern:'[A-Za-z0-9_\\-]{1,64}',autocomplete:'off',spellcheck:'false'});
   // Once someone names the connection themselves, changing the provider must not overwrite it.
   id.addEventListener('input',()=>{id.dataset.edited='true';});
   const base=el('input',{type:'url',required:true,placeholder:'https://your-provider.example/v1',autocomplete:'off',spellcheck:'false'}),model=el('input',{required:true,maxLength:256,autocomplete:'off',spellcheck:'false'});

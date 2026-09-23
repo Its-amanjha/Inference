@@ -48,7 +48,7 @@ def workflow_action(page, scope, name, instance, item):
 
 
 def expect_workflow_state(page, scope, name, instance, label):
-    row = scope.get_by_role('row').filter(has=page.get_by_role('button', name=f'Details for workflow {name} on {instance}', exact=True))
+    row = scope.get_by_role('row').filter(has=page.get_by_role('button', name=f'{name} on {instance}', exact=True))
     expect(row.locator('.workflow-state')).to_have_text(label)
 
 def _iso(moment):
@@ -455,7 +455,7 @@ def exercise_fleet(page, fixture_url, state):
     page.reload(wait_until='domcontentloaded')
     choose_instance(page, ids['source'])
     page.evaluate("location.hash = 'workflows'")
-    page.get_by_role('button', name='Details for workflow Browser workflow on source', exact=True).wait_for()
+    page.get_by_role('button', name='Browser workflow on source', exact=True).wait_for()
     accept = lambda dialog: dialog.accept()
     page.on('dialog', accept)
     try:
@@ -608,14 +608,14 @@ def exercise_fleet_search(page, ids, state):
     page.evaluate("location.hash = 'workflows'")
     source = page.get_by_role('region', name='Workflows on source', exact=True)
     target = page.get_by_role('region', name='Workflows on target', exact=True)
-    expect(source.get_by_role('button', name='Details for workflow Source searchable on source', exact=True)).to_have_count(1)
-    expect(target.get_by_role('button', name='Details for workflow Target searchable on target', exact=True)).to_have_count(1)
+    expect(source.get_by_role('button', name='Source searchable on source', exact=True)).to_have_count(1)
+    expect(target.get_by_role('button', name='Target searchable on target', exact=True)).to_have_count(1)
     # Results follow the typing: the field is the only search control.
     expect(page.get_by_role('button', name='Search', exact=True)).to_have_count(0)
     expect(page.get_by_label('Find workflows', exact=True)).to_be_enabled()
     target.get_by_role('button', name='Next workflow page on target', exact=True).click()
-    expect(target.get_by_role('button', name='Details for workflow Second page workflow on target', exact=True)).to_have_count(1)
-    expect(source.get_by_role('button', name='Details for workflow Source searchable on source', exact=True)).to_have_count(1)
+    expect(target.get_by_role('button', name='Second page workflow on target', exact=True)).to_have_count(1)
+    expect(source.get_by_role('button', name='Source searchable on source', exact=True)).to_have_count(1)
     page.get_by_label('Find workflows', exact=True).fill('Target searchable')
     suggestions = page.get_by_role('listbox', name='Workflow suggestions')
     expect(suggestions.get_by_role('option')).to_have_count(1)
@@ -625,7 +625,7 @@ def exercise_fleet_search(page, ids, state):
     page.get_by_label('Find workflows', exact=True).press('Enter')
     expect(page.get_by_label('Find workflows', exact=True)).to_have_attribute('aria-expanded', 'false')
     expect(source.get_by_role('heading', name='No matching workflows', exact=True)).to_have_count(1)
-    expect(target.get_by_role('button', name='Details for workflow Target searchable on target', exact=True)).to_have_count(1)
+    expect(target.get_by_role('button', name='Target searchable on target', exact=True)).to_have_count(1)
     before = len(state['writes'])
     workflow_action(page, target, 'Target searchable', 'target', 'Activate')
     # The dialog is attached to the document body, outside the target section.
@@ -642,7 +642,7 @@ def exercise_fleet_search(page, ids, state):
     expect(page.get_by_role('button', name='Load workflow', exact=True)).to_be_enabled()
     expect(page.get_by_role('textbox', name='Code editor', exact=True)).to_have_value('return [];')
     page.evaluate("location.hash = 'workflows'")
-    expect(source.get_by_role('button', name='Details for workflow Source searchable on source', exact=True)).to_have_count(1)
+    expect(source.get_by_role('button', name='Source searchable on source', exact=True)).to_have_count(1)
     expect(page.get_by_label('Find workflows', exact=True)).to_be_enabled()
     checked_at = source.locator('.load-as-of time').get_attribute('datetime')
     state['unavailable'] = 'source'
@@ -652,12 +652,12 @@ def exercise_fleet_search(page, ids, state):
         # offer recovery, and do not interrupt screen readers with an assertive alert.
         expect(source.locator('.coverage-partial.load-notice[role="status"]')).to_have_count(1)
         expect(source.get_by_role('alert')).to_have_count(0)
-        expect(source.get_by_role('button', name='Details for workflow Source searchable on source', exact=True)).to_have_count(1)
+        expect(source.get_by_role('button', name='Source searchable on source', exact=True)).to_have_count(1)
         expect(source.locator('.load-as-of time')).to_have_attribute('datetime', checked_at)
         expect(source.get_by_role('button', name='Retry', exact=True)).to_be_enabled()
     finally:
         state.pop('unavailable', None)
-    expect(target.get_by_role('button', name='Details for workflow Target searchable on target', exact=True)).to_have_count(1)
+    expect(target.get_by_role('button', name='Target searchable on target', exact=True)).to_have_count(1)
 
     # The n8n fixture's unavailable switch only emits 503. Intercept this one read
     # to exercise the distinct confirmed-failure contract without changing the server.
@@ -677,7 +677,7 @@ def exercise_fleet_search(page, ids, state):
         expect(source.locator('.error.load-notice[role="alert"]')).to_have_count(1)
         expect(source.get_by_role('alert')).to_contain_text('Confirmed fixture failure.')
         expect(source.locator('.coverage-partial.load-notice')).to_have_count(0)
-        expect(source.get_by_role('button', name='Details for workflow Source searchable on source', exact=True)).to_have_count(1)
+        expect(source.get_by_role('button', name='Source searchable on source', exact=True)).to_have_count(1)
         expect(source.locator('.load-as-of time')).to_have_attribute('datetime', checked_at)
         expect(source.get_by_role('button', name='Retry', exact=True)).to_be_enabled()
     finally:
@@ -686,7 +686,7 @@ def exercise_fleet_search(page, ids, state):
     expect(source.get_by_role('button', name='Refresh workflows on source', exact=True)).to_be_enabled()
     expect(source.locator('.load-notice')).to_have_count(0)
     expect(source.locator('.load-as-of time')).not_to_have_attribute('datetime', checked_at)
-    expect(source.get_by_role('button', name='Details for workflow Source searchable on source', exact=True)).to_have_count(1)
+    expect(source.get_by_role('button', name='Source searchable on source', exact=True)).to_have_count(1)
     print('PASS: fleet-wide search, independent pagination, same-ID target isolation, CodeLab target links, partial failure and recovery.', flush=True)
     state['pagination'] = False
     page.evaluate("location.hash = 'dashboard'")

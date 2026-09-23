@@ -4,7 +4,7 @@ import {icon} from './lib/icons.js';
 
 export function renderAuth(root, setup, onSuccess) {
   const controller = new AbortController();
-  const username = el('input',{name:'username',autocomplete:'username',required:true,maxLength:64,pattern:'[A-Za-z0-9_.\-]+'});
+  const username = el('input',{name:'username',autocomplete:'username',required:true,maxLength:64,pattern:'[A-Za-z0-9_.\\-]+'});
   const password = el('input',{name:'password',type:'password',autocomplete:setup?'new-password':'current-password',required:true,minLength:setup?14:1,maxLength:256});
   const code = el('input',{name:'code',autocomplete:'one-time-code',maxLength:64});
   const token = el('input',{name:'bootstrap',type:'password',autocomplete:'off'});

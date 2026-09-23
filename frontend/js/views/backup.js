@@ -67,7 +67,7 @@ export async function render(container){
   function scheduleCard(s){
     const id=encodeURIComponent(s.id);
     const main=s.enabled
-      ?button('Run now',()=>act(async()=>{const result=await api('/api/backups/schedules/'+id+'/run',{method:'POST'});notice(messages,'Backup outcome: '+humanize(result.status)+'.');await runs();await load();}),'ghost',{'aria-label':`Run backup now: ${s.name}`})
+      ?button('Run now',()=>act(async()=>{const result=await api('/api/backups/schedules/'+id+'/run',{method:'POST'});notice(messages,'Backup outcome: '+humanize(result.status)+'.');await runs();await load();}),'ghost',{'aria-label':`Run now: ${s.name}`})
       :button('Enable',()=>act(async()=>{await api('/api/backups/schedules/'+id,{method:'PUT',json:{name:s.name,interval_minutes:s.interval_minutes,passphrase_ref:s.passphrase_ref,enabled:true,s3:s.s3?Object.fromEntries(S3_KEYS.map(key=>[key,s.s3[key]||''])):null}});await load();await runs();notice(messages,`Schedule ${s.name} enabled (${frequencyLabel(s.interval_minutes).toLowerCase()}).`);}),'ghost',{'aria-label':`Enable schedule ${s.name}`});
     // Deletion is secondary, so it sits behind the row's More actions menu and confirms.
     const remove={label:'Delete schedule',danger:true,onSelect:()=>act(async()=>{
@@ -113,7 +113,7 @@ export async function render(container){
   const copyRestore=button('Copy command',()=>act(async()=>{
     try{await navigator.clipboard.writeText(restoreCmd);notice(messages,'Restore command copied.');}
     catch{notice(messages,new Error('Copying is not available in this browser.'));}
-  }),'ghost',{'aria-label':'Copy restore command'});
+  }),'ghost');
   // Schedules and Run history share one section-heading style.
   const sectionTitle=(text,extra={})=>el('h2',{class:'backup-section-title',...extra},text);
   container.append(el('div',{class:'page-heading-row'},heading('Backups','Encrypted recovery copies of your Inference data, secrets and notes.'),el('div',{class:'actions'},button('Refresh',()=>act(async()=>{await load();await runs();}),'ghost'),addSchedule)),messages,sectionTitle('Schedules',{id:'backup-schedules'}),editor,schedules,sectionTitle('Run history'),history,exportForm,el('section',{class:'card stack'},el('h2',{class:'backup-card-title'},'Restore offline'),el('p',{},'Stop Inference, choose an empty destination, and run this command from the project environment. It prompts for your passphrase.'),el('div',{class:'restore-command-row'},el('code',{},restoreCmd),copyRestore),el('p',{class:'muted'},'After verification, set INFERENCE_DATA_DIR to the restored destination. External n8n databases and Docker volumes are not included.')));

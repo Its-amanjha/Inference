@@ -176,7 +176,7 @@ export async function render(container){
     ].map(([label,value])=>[el('dt',{},label),el('dd',{},value)]));
   }
   function userEditor(user,host,refresh){
-    const username=el('input',{required:true,value:user?.username||'',pattern:'[A-Za-z0-9_.\-]+',readOnly:Boolean(user)}),password=el('input',{type:'password',minLength:14,maxLength:256,required:!user,autocomplete:'new-password'});
+    const username=el('input',{required:true,value:user?.username||'',pattern:'[A-Za-z0-9_.\\-]+',readOnly:Boolean(user)}),password=el('input',{type:'password',minLength:14,maxLength:256,required:!user,autocomplete:'new-password'});
     let mark=()=>{};
     const role=segmented({label:'Role',options:[
       {value:'viewer',label:'Viewer'},{value:'operator',label:'Operator'},{value:'admin',label:'Administrator'}],

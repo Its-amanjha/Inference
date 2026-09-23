@@ -154,7 +154,7 @@ export async function render(container) {
         await paint();
         paintRows();
       }finally{create.disabled=false;}
-    }),'ghost',{'aria-label':`Create telemetry token for ${item.name}`});
+    }),'ghost',{'aria-label':`Create token for ${item.name}`});
     async function paint(){
       try{
         const rows=await tokenList(item);
@@ -242,7 +242,8 @@ export async function render(container) {
     const {workflows,active,runs,failed}=numbers(entry);
     const rank=entry.probe?CLASS_RANK[classifyProbe(entry.probe)]??3:entry.failed?2:3;
     // The name is the row's one inline action: it opens the details panel, like Errors and Workflows.
-    const open=el('button',{type:'button',class:'workflow-open','aria-label':`Details for ${entry.item.name}`},entry.item.name);
+    // The label repeats the name so a repaint can find the focused row again by it.
+    const open=el('button',{type:'button',class:'workflow-open','aria-label':entry.item.name},entry.item.name);
     open.addEventListener('click',()=>openDetails(entry));
     return [
       {sortValue:entry.item.name.toLowerCase(),content:el('div',{class:'fleet-instance-cell'},open,el('span',{class:'muted fleet-instance-url'},entry.item.url))},

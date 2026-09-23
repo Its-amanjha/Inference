@@ -78,7 +78,7 @@ export async function render(container) {
     const entry={instance,list,messages,stamp,bulk,rows:[],selected:new Set(),cursor:null,loading:false,loaded:false};
     entry.next=button('Next page',()=>load(entry,entry.cursor),'ghost');entry.next.hidden=true;
     entry.next.setAttribute('aria-label',`Next workflow page on ${instance.name}`);
-    entry.retry=button('Refresh instance',()=>load(entry),'ghost',{'aria-label':`Refresh workflows on ${instance.name}`});
+    entry.retry=button('Refresh workflows',()=>load(entry),'ghost',{'aria-label':`Refresh workflows on ${instance.name}`});
     // One head line per instance (name, when it was read, refresh), then the list; empty parts take no space.
     entry.retry.classList.add('workflow-refresh');
     sections.append(el('section',{class:'card stack workflow-card','aria-label':`Workflows on ${instance.name}`},
@@ -208,7 +208,7 @@ export async function render(container) {
     const rows=entry.rows.map(row=>{
       const name=row.name??row.id;
       // The name is the row's one inline action: it opens the details panel. The rest is in the menu.
-      const open=el('button',{type:'button',class:'workflow-open','data-id':row.id,'aria-label':`Details for workflow ${name} on ${instance.name}`},name);
+      const open=el('button',{type:'button',class:'workflow-open','data-id':row.id,'aria-label':`${name} on ${instance.name}`},name);
       open.querySelector(':scope > svg')?.remove();
       open.addEventListener('click',()=>openDetails(entry,row));
       const link=n8nUrl(instance.id,row.id);

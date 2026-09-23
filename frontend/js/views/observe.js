@@ -142,7 +142,9 @@ export async function render(container) {
 
     const workflowName = meta?.workflow || 'Workflow unknown';
     // The name is the row's one inline action, styled as a title like Errors and Workflows (no pill, no glyph).
-    const open = el('button', {type: 'button', class: 'workflow-open', 'aria-label': `Open trace details for ${workflowName}`}, workflowName);
+    // Several runs of one workflow share its name, so the name adds when the run started.
+    const open = el('button', {type: 'button', class: 'workflow-open',
+      'aria-label': `${workflowName}, started ${Number.isNaN(startDate.getTime()) ? 'at an unknown time' : relativeLabel(startDate).toLowerCase()}`}, workflowName);
     open.querySelector(':scope > svg')?.remove();
     open.addEventListener('click', () => openTrace(row, meta));
     const execution = meta?.execution || null;

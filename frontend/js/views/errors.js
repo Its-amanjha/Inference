@@ -615,7 +615,8 @@ export async function render(container){
     const {workflow,node,name}=rowParts(row);
     const cell=(label,className,...children)=>el('td',{class:className,'data-label':label},children);
     // The title is the row's one inline action: it opens the evidence. Everything else is in the menu.
-    const open=el('button',{type:'button',class:'triage-open','data-id':String(row.id),'aria-label':`Details for ${name}`},el('strong',{},workflow),el('span',{class:'triage-node'},node));
+    // Named by its own text (workflow, then node); the space keeps the two words apart when read aloud.
+    const open=el('button',{type:'button',class:'triage-open','data-id':String(row.id)},el('strong',{},workflow),' ',el('span',{class:'triage-node'},node));
     // el() adds an action glyph to buttons whose text starts with a verb ("Send webinar email"); a title has none.
     open.querySelector(':scope > svg')?.remove();
     open.addEventListener('click',()=>openDetails(row));
