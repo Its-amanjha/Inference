@@ -258,7 +258,7 @@ export async function render(container) {
     const feedback=el('div'),probeDetail=el('div');
     const paint=result=>health.replaceChildren(reachabilityBadge(result),el('p',{class:'muted',title:result?.checked_at},checkedLine(result)));
     paint(entry.probe||{reachable:null});
-    const actions=[button('Re-check connection',()=>checkEntry(entry,{paint,feedback,probeDetail}),{'aria-label':`Re-check connection ${item.name}`})];
+    const actions=[button('Re-check connection',()=>checkEntry(entry,{paint,feedback,probeDetail}),'button',{'aria-label':`Re-check connection ${item.name}`})];
     if(can('admin')){
       actions.push(button('Edit',()=>{closePeek();edit(item);},'ghost',{'aria-label':`Edit connection ${item.name}`}),
         actionMenu([button('Remove',()=>{closePeek();act(async()=>{

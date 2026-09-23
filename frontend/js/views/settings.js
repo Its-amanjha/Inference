@@ -161,11 +161,12 @@ export async function render(container){
     // group's card before appending a fresh one; otherwise every save duplicates
     // the deployment, users and audit cards and their headings.
     for(const key of ['deployment','users','audit'])for(const node of [...groups[key].children])if(!node.matches('h2.settings-group-title'))node.remove();
-    groups.security.append(factor);
     const [policy,users,audit]=await Promise.all([loadPolicy(),loadUsers(),loadAudit()]);
     groups.deployment.append(policy);groups.users.append(users);groups.audit.append(audit);
   }
   container.append(heading('Settings','Your preferences, account protection and application administration.'),messages,nav,groups.account,groups.security);
+  // Two-factor belongs to everyone with an account, not only administrators.
+  groups.security.append(factor);
   if(can('admin'))container.append(groups.deployment,groups.users,groups.audit);
   const adminLoaded=can('admin')?act(loadAdmin).then(()=>{if(factorEnabled===undefined){factorEnabled=null;renderFactor();}}):null;
   await Promise.allSettled([act(loadPreferences),adminLoaded]);return()=>{controller.abort();password.value='';code.value='';factorResult.replaceChildren();};

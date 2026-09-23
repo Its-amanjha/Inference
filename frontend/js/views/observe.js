@@ -161,9 +161,10 @@ export async function render(container) {
   }
 
   function paintSummary(values) {
+    // values is null when the request failed: Unavailable, never 0.
     const cells = [[tracesNum, values?.traces], [spansNum, values?.spans], [errorSpansNum, values?.errors], [errorRateNum, values?.rate]];
     for (const [node, value] of cells) {
-      node.textContent = value === null || value === undefined ? (values ? 'Unavailable' : '—') : String(value);
+      node.textContent = value === null || value === undefined ? 'Unavailable' : String(value);
       node.classList.toggle('is-missing', value === null || value === undefined);
     }
     errorSpansNum.classList.toggle('is-zero', !values || Number(values.errors) === 0);
