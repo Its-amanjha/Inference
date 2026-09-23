@@ -11,6 +11,14 @@
 .telemetry-tokens { display:flex; flex-direction:column; gap:8px; }
 .telemetry-tokens h3 { margin:0; font-size:13px; }
 .telemetry-create-row { display:flex; flex-wrap:wrap; align-items:flex-end; gap:8px; }
+
+/* Merged fleet table: one row per instance, management on demand below. */
+.fleet-instance-cell { display:flex; flex-direction:column; gap:2px; min-width:0; }
+.fleet-instance-url { overflow-wrap:anywhere; }
+.fleet-detail { margin-top:16px; }
+.fleet-detail[hidden] { display:none; }
 @media(max-width:700px) {
   .telemetry-body .button { min-height:44px; }
+  .fleet-toolbar .button,
+  .fleet-filter-btn { min-height:44px; }
 }

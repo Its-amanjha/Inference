@@ -98,8 +98,8 @@
 [data-theme=dark] .latency-pill.latency-slow,
 [data-theme=n8n] .latency-pill.latency-slow { color:#ffafc1; }
 
-.instance-diagnostic-box { display:flex; align-items:flex-start; gap:10px; padding:12px; border-radius:10px; background:var(--color-ash-mist); border-left:4px solid #815000; font-size:13px; line-height:1.45; }
-.instance-diagnostic-box.is-unreachable { border-left-color:#a80b30; }
+.instance-diagnostic-box { display:flex; align-items:flex-start; gap:10px; padding:12px; border-radius:10px; background:var(--color-ash-mist); border-left:4px solid var(--color-warning); font-size:13px; line-height:1.45; }
+.instance-diagnostic-box.is-unreachable { border-left-color:var(--color-danger); }
 .instance-diagnostic-box .icon { width:16px; height:16px; margin-top:2px; flex:none; }
 .instance-actions-row { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding-top:10px; border-top:1px solid var(--border); }
 .instance-actions-row .button { min-height:32px; font-size:12px; padding:0 10px; }
