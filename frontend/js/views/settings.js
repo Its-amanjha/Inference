@@ -4,6 +4,7 @@ import {api as request} from '../api.js';
 import {el,button,field,formCard,notice,heading,table,empty} from '../lib/html.js';
 import {state,can,pageSize} from '../state.js';
 import {confirmAction,stateBadge,humanize} from '../lib/confirm.js';
+import {segmented} from '../lib/select-menu.js';
 
 const OUTCOMES={success:['success','Succeeded'],succeeded:['success','Succeeded'],deployed:['success','Deployed'],activated:['success','Activated'],restored:['success','Restored'],supported:['success','Supported'],failure:['error','Failed'],failed:['error','Failed'],rejected:['error','Rejected'],denied:['error','Denied'],error:['error','Error'],partial:['warning','Partial'],unknown:['warning','Unknown'],uncertain:['warning','Uncertain'],stale:['warning','Stale'],intent:['info','In progress'],pending:['info','In progress'],executing:['info','In progress'],validating:['info','In progress'],provisioning:['info','In progress'],writing:['info','In progress'],activating:['info','In progress'],restoring:['info','In progress'],expired:['','Expired'],cancelled:['','Cancelled'],untested:['','Untested'],unsupported:['','Unsupported'],removed:['','Removed']};
 function outcomeBadge(value){
@@ -69,8 +70,33 @@ export async function render(container){
     try{return await request(path,options);}finally{if(write)writing=false;}
   };
   const act=async fn=>{try{messages.replaceChildren();await fn();}catch(e){if(!signal.aborted)notice(messages,e);}};
-  function preferenceFields(value,subhead=true){const theme=el('select',{},el('option',{value:'light'},'Light'),el('option',{value:'dark'},'Dark'),el('option',{value:'n8n'},'n8n inspired'));theme.value=value.theme;const size=el('input',{type:'number',min:10,max:100,value:value.page_size,required:true,class:'control-narrow'}),notifications=el('input',{type:'checkbox',checked:value.error_notifications});const display=[el('div',{class:'form-row'},field('Theme',theme),field('Rows per page',size,{hint:'Between 10 and 100.'})),field('Error notifications',notifications,{})];return {nodes:[...(subhead?[el('h3',{id:'settings-display',class:'settings-subhead',tabindex:-1},'Display')]:[]),...display],value:()=>({theme:theme.value,page_size:Number(size.value),error_notifications:notifications.checked})};}
-  async function loadPreferences(){const fields=preferenceFields(await api('/api/admin/preferences',{signal}));const form=formCard({title:'Your preferences',description:'Only for you, on every device you sign in from. They override the system defaults.',body:fields.nodes,actions:[el('button',{type:'submit',class:'button'},icon('save'),'Save preferences')]});form.addEventListener('submit',e=>{e.preventDefault();act(async()=>{const result=await api('/api/admin/preferences',{method:'PUT',json:fields.value()});window.dispatchEvent(new CustomEvent('preferences-changed',{detail:result}));notice(messages,'Preferences saved.');});});groups.account.append(form);}
+  function preferenceFields(value,subhead=true,onDirty=null){
+    // Three themes that switch often sit side by side instead of in a dropdown.
+    const theme=segmented({label:'Theme',options:[
+      {value:'light',label:'Light'},{value:'dark',label:'Dark'},{value:'n8n',label:'n8n inspired'}],
+      value:value.theme,onChange:()=>onDirty?.()});
+    const size=el('input',{type:'number',min:10,max:100,value:value.page_size,required:true,class:'control-narrow'}),notifications=el('input',{type:'checkbox',checked:value.error_notifications});
+    // The visible label is hidden from assistive technology: the toggle already names itself.
+    const themeField=el('div',{class:'codelab-field'},el('span',{class:'codelab-field-label','aria-hidden':'true'},'Theme'),theme.node);
+    const display=[el('div',{class:'form-row'},themeField,field('Rows per page',size,{hint:'Between 10 and 100.'})),field('Error notifications',notifications,{})];
+    return {nodes:[...(subhead?[el('h3',{id:'settings-display',class:'settings-subhead',tabindex:-1},'Display')]:[]),...display],value:()=>({theme:theme.value,page_size:Number(size.value),error_notifications:notifications.checked})};}
+  // One primary at a time: a card's save stays secondary and disabled until that
+  // card is edited, and only the edited card's save turns primary.
+  function armSave(form,save){
+    save.classList.remove('button');save.classList.add('ghost');save.disabled=true;
+    let dirty=false;
+    const mark=()=>{if(dirty)return;dirty=true;save.classList.add('button');save.classList.remove('ghost');save.disabled=false;};
+    form.addEventListener('input',mark);
+    form.addEventListener('change',mark);
+    return mark;
+  }
+  async function loadPreferences(){
+    let mark=()=>{};
+    const fields=preferenceFields(await api('/api/admin/preferences',{signal}),true,()=>mark());
+    const save=el('button',{type:'submit',class:'button'},icon('save'),'Save preferences');
+    const form=formCard({title:'Your preferences',description:'Only for you, on every device you sign in from. They override the system defaults.',body:fields.nodes,actions:[save]});
+    mark=armSave(form,save);
+    form.addEventListener('submit',e=>{e.preventDefault();act(async()=>{const result=await api('/api/admin/preferences',{method:'PUT',json:fields.value()});window.dispatchEvent(new CustomEvent('preferences-changed',{detail:result}));notice(messages,'Preferences saved.');});});groups.account.append(form);}
 
   // Same words as the account menu: Administrator, Operator, Viewer.
   const ROLE_LABELS={admin:'Administrator',operator:'Operator',viewer:'Viewer'};
@@ -115,7 +141,12 @@ export async function render(container){
   }
   renderFactor();
 
-  async function loadPolicy(){const result=await api('/api/admin/settings',{signal}),fields=preferenceFields(result.saved.default_preferences,false),hours=el('input',{type:'number',min:1,max:168,required:true,value:result.saved.session_hours,disabled:result.environment_locked_fields.includes('session_hours')}),form=formCard({title:'System defaults',description:'What every user starts with until they save their own preferences, plus how long new sessions last.',actions:[el('button',{type:'submit',class:'button'},icon('save'),'Save system defaults')],body:[field('New session lifetime (hours)',hours,{hint:result.environment_locked_fields.includes('session_hours')?'Set by the deployment environment.':'Between 1 and 168. Existing sessions keep their current expiry.'}),...fields.nodes,el('details',{class:'form-disclosure'},el('summary',{},icon('chevron'),'Deployment configuration (read only)'),deploymentFacts(result))]});
+  async function loadPolicy(){const result=await api('/api/admin/settings',{signal});
+    let mark=()=>{};
+    const fields=preferenceFields(result.saved.default_preferences,false,()=>mark()),hours=el('input',{type:'number',min:1,max:168,required:true,value:result.saved.session_hours,disabled:result.environment_locked_fields.includes('session_hours')});
+    const save=el('button',{type:'submit',class:'button'},icon('save'),'Save system defaults');
+    const form=formCard({title:'System defaults',description:'What every user starts with until they save their own preferences, plus how long new sessions last.',actions:[save],body:[field('New session lifetime (hours)',hours,{hint:result.environment_locked_fields.includes('session_hours')?'Set by the deployment environment.':'Between 1 and 168. Existing sessions keep their current expiry.'}),...fields.nodes,el('details',{class:'form-disclosure'},el('summary',{},icon('chevron'),'Deployment configuration (read only)'),deploymentFacts(result))]});
+    mark=armSave(form,save);
     form.addEventListener('submit',e=>{e.preventDefault();act(async()=>{await api('/api/admin/settings',{method:'PUT',json:{expected_revision:result.revision,session_hours:Number(hours.value),default_preferences:fields.value()}});await loadAdmin();notice(messages,'System defaults saved. Existing sessions keep their current expiry.');});});return form;}
   // Set by the server's environment; shown as plain facts rather than raw JSON.
   function deploymentFacts(result){
@@ -128,15 +159,26 @@ export async function render(container){
       ['Fixed by the environment',list(result.environment_locked_fields)],
     ].map(([label,value])=>[el('dt',{},label),el('dd',{},value)]));
   }
-  function userEditor(user,host,refresh){const username=el('input',{required:true,value:user?.username||'',pattern:'[A-Za-z0-9_.\-]+',readOnly:Boolean(user)}),password=el('input',{type:'password',minLength:14,maxLength:256,required:!user,autocomplete:'new-password'}),role=el('select',{},...['viewer','operator','admin'].map(r=>el('option',{value:r},roleLabel(r)))),disabled=el('input',{type:'checkbox',checked:Boolean(user?.disabled)});role.value=user?.role||'viewer';const form=el('form',{class:'form user-editor'},el('div',{class:'form-row'},field('Username',username),field('Role',role)),field(user?'New password (optional)':'Password',password,{hint:'At least 14 characters.'}),...(user?[field('Disabled',disabled,{})]:[]),el('div',{class:'form-actions'},button('Cancel',()=>host.replaceChildren(),'ghost'),el('button',{type:'submit',class:'button'},'Save user')));form.addEventListener('submit',e=>{e.preventDefault();act(async()=>{const body={role:role.value};if(user)body.disabled=disabled.checked;else body.username=username.value;if(password.value)body.password=password.value;await api('/api/admin/users'+(user?'/'+encodeURIComponent(user.username):''),{method:user?'PATCH':'POST',json:body});password.value='';host.replaceChildren();await refresh();});});host.replaceChildren(form);}
+  function userEditor(user,host,refresh){
+    const username=el('input',{required:true,value:user?.username||'',pattern:'[A-Za-z0-9_.\-]+',readOnly:Boolean(user)}),password=el('input',{type:'password',minLength:14,maxLength:256,required:!user,autocomplete:'new-password'});
+    let mark=()=>{};
+    const role=segmented({label:'Role',options:[
+      {value:'viewer',label:'Viewer'},{value:'operator',label:'Operator'},{value:'admin',label:'Administrator'}],
+      value:user?.role||'viewer',onChange:()=>mark()});
+    const roleField=el('div',{class:'codelab-field'},el('span',{class:'codelab-field-label','aria-hidden':'true'},'Role'),role.node);
+    const disabled=el('input',{type:'checkbox',checked:Boolean(user?.disabled)});
+    const save=el('button',{type:'submit',class:'button'},'Save user');
+    const form=el('form',{class:'form user-editor'},el('div',{class:'form-row'},field('Username',username),roleField),field(user?'New password (optional)':'Password',password,{hint:'At least 14 characters.'}),...(user?[field('Disabled',disabled,{})]:[]),el('div',{class:'form-actions'},button('Cancel',()=>host.replaceChildren(),'ghost'),save));
+    mark=armSave(form,save);
+    form.addEventListener('submit',e=>{e.preventDefault();act(async()=>{const body={role:role.value};if(user)body.disabled=disabled.checked;else body.username=username.value;if(password.value)body.password=password.value;await api('/api/admin/users'+(user?'/'+encodeURIComponent(user.username):''),{method:user?'PATCH':'POST',json:body});password.value='';host.replaceChildren();await refresh();});});host.replaceChildren(form);}
   async function loadUsers(){const section=el('section',{class:'card form-card'}),host=el('div'),rows=el('div');async function refresh(){const result=await api('/api/admin/users',{signal});rows.replaceChildren(table(['User','Role','Status','2FA',''],result.data.map(u=>[u.username,stateBadge('',roleLabel(u.role),u.role),u.disabled?el('span',{class:'badge warning'},icon('errors'),'Disabled'):el('span',{class:'badge success'},icon('check'),'Enabled'),u.totp_enabled?stateBadge('success','On'):stateBadge('','Off'),button('Edit',()=>userEditor(u,host,refresh),'ghost',{'aria-label':`Edit user ${u.username}`})])));
     const me=result.data.find(u=>u.username===state.user?.username);
     if(me&&!factorPending&&factorEnabled!==Boolean(me.totp_enabled)){factorEnabled=Boolean(me.totp_enabled);renderFactor();}}
-    section.append(el('div',{class:'form-card-head card-head-row'},el('h2',{},'Users'),button('Add user',()=>userEditor(null,host,refresh),'ghost')),el('div',{class:'form-card-body is-wide'},host,rows));await refresh();return section;}
+    section.append(el('div',{class:'form-card-head card-head-row'},button('Add user',()=>userEditor(null,host,refresh),'ghost')),el('div',{class:'form-card-body is-wide'},host,rows));await refresh();return section;}
   // Ten events per page, newest first. The API pages backwards with a cursor, so Previous
   // reuses the cursors already passed rather than asking for a total the log does not keep.
   async function loadAudit(){
-    const section=el('section',{class:'card form-card audit-card'},el('div',{class:'form-card-head'},el('h2',{},'Audit history')));
+    const section=el('section',{class:'card form-card audit-card'});
     const rows=el('div'),position=el('span',{class:'audit-position','aria-live':'polite'});
     const cursors=[null];let page=0,next=null;
     const when=value=>{const date=parseTimestamp(value);return date?el('time',{dateTime:date.toISOString(),title:date.toLocaleString()},
