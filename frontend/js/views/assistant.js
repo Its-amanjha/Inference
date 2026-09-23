@@ -1,4 +1,4 @@
-import {providerSetup} from '../lib/provider-setup.js';
+import {providerSetup,providerLabel} from '../lib/provider-setup.js';
 import {api} from '../api.js';
 import {can, state} from '../state.js';
 import {el, field, formCard, heading, notice} from '../lib/html.js';
@@ -205,45 +205,40 @@ export async function render(container) {
     ...(can('operator') ? [{value: 'create', label: 'Create workflow', glyph: 'add', detail: 'Plans a new inactive workflow for your review.'}] : [])];
   let mode = 'ask';
   const composerWarning = el('p', {className: 'composer-warning', role: 'status', hidden: true});
-  const toolBadge = el('span', {className: 'badge tool-calling-badge', hidden: true});
-  const toolCheck = can('admin') ? action('Check tool calling', () => checkToolCalling()) : null;
-  if (toolCheck) toolCheck.hidden = true;
+  const toolStatus = row => Object.hasOwn(TOOL_SUPPORT, row?.tool_calling?.status ?? '') ? row.tool_calling.status : 'untested';
+  const toolBadge = row => {
+    const status = toolStatus(row), [label, tone] = TOOL_SUPPORT[status];
+    return el('span', {className: `badge tool-calling-badge${tone ? ` ${tone}` : ''}`, 'data-status': status,
+      title: row?.tool_calling?.checked_at ? `Checked ${formatTime(row.tool_calling.checked_at)}` : 'Not checked yet'}, label);
+  };
+  let paintModels = () => {};
   const paintToolSupport = () => {
     const row = selectedProvider();
-    const reported = row?.tool_calling?.status;
-    const status = Object.hasOwn(TOOL_SUPPORT, reported ?? '') ? reported : 'untested';
-    const [label, tone] = TOOL_SUPPORT[status];
-    toolBadge.hidden = !row;
+    const status = toolStatus(row);
     // In the composer, only a limit is worth a line: an untested or unsupported model in a change mode.
     const limits = Boolean(row && status !== 'supported' && mode !== 'ask');
     composerWarning.hidden = !limits;
     composerWarning.replaceChildren(...(limits ? [icon('info'), el('span', {}, status === 'unsupported' ? UNSUPPORTED_TEXT : UNTESTED_TEXT)] : []));
-    toolBadge.className = `badge tool-calling-badge${tone ? ` ${tone}` : ''}`;
-    toolBadge.dataset.status = status;
-    toolBadge.textContent = label;
-    toolBadge.title = row?.tool_calling?.checked_at ? `Checked ${formatTime(row.tool_calling.checked_at)}` : 'Not checked yet';
-    if (toolCheck) toolCheck.hidden = !row;
     // Diagnosis stays available either way; the notice only sets expectations about proposals.
     const show = Boolean(target && row && status !== 'supported');
     modelNotice.hidden = !show;
     modelNotice.replaceChildren(...(show ? [icon('info'), el('p', {}, status === 'unsupported' ? UNSUPPORTED_TEXT : UNTESTED_TEXT)] : []));
   };
-  const checkToolCalling = async () => {
-    const row = selectedProvider();
+  const checkToolCalling = async (row, feedback = messages) => {
     if (!row) return;
-    messages.replaceChildren();
+    feedback.replaceChildren();
     let result;
     try { result = await request(`/providers/${encodeURIComponent(row.id)}/tool-test`, {method: 'POST'}); }
-    catch (error) { if (error.code !== 'provider_rate_limited') throw error; if (!signal.aborted) notice(messages, RATE_LIMITED_TEXT); return; }
+    catch (error) { if (error.code !== 'provider_rate_limited') throw error; if (!signal.aborted) notice(feedback, RATE_LIMITED_TEXT); return; }
     if (signal.aborted) return;
     // The result may be nested under tool_calling or sent at the top level; a failed check never changes the stored result.
     const checked = result?.tool_calling && typeof result.tool_calling === 'object' ? result.tool_calling : result;
     const status = typeof checked?.status === 'string' ? checked.status : 'untested';
     row.tool_calling = {status, checked_at: checked?.checked_at ?? null};
-    paintToolSupport();
+    paintToolSupport(); paintModels(row);
     const summary = {supported: 'Tool calling works with this model, so it can propose repairs.', unsupported: 'This model did not pass the tool-calling check, so it cannot propose repairs.',
       untested: 'The tool-calling check did not finish; this model is still untested.'}[status] || `The tool-calling check returned ${status}.`;
-    notice(messages, result?.detail ? `${summary} ${result.detail}` : summary);
+    notice(feedback, result?.detail ? `${summary} ${result.detail}` : summary);
   };
 
   const paintTarget = () => { chip.set(target); repairBar.hidden = !target; resetContext(); if (target) { resolveTargetName(); loadContext(); } paintToolSupport(); };
@@ -273,7 +268,7 @@ export async function render(container) {
     send.disabled = !modelsAvailable||busy;
     input.disabled = !modelsAvailable;
     provider.disabled = !modelsAvailable||busy;
-    paintToolSupport();
+    paintToolSupport(); paintModels();
     if(!transcript.querySelector('.chat-message'))showWelcome();
   };
   // Names are for readability only; the approval stays bound to the IDs shown. They come from the approval's own
@@ -957,15 +952,51 @@ export async function render(container) {
     // Models, remote tools and repair switches in one drawer: configured here, chosen in the composer.
     settings = el('div', {className: 'assistant-settings'});
     const drawer = makeDrawer('assistant-settings-title', 'Assistant settings', 'Models, remote tools and what repair conversations may send.', settings, 'settings-drawer');
+    const modelList = el('ul', {className: 'saved-models'}), modelFeedback = el('div', {'aria-live': 'polite'});
+    let addingModel = false;
+    const addModel = el('button', {type: 'button', className: 'button button-ghost'}, actionIcon('Add connection'), 'Add connection');
+    const modelsSection = el('section', {className: 'drawer-section', hidden: true},
+      el('div', {className: 'saved-models-head'}, el('h3', {}, 'Models'), addModel),
+      el('p', {className: 'muted'}, 'A model must pass the tool-calling check to propose changes. Each check sends one short request to the provider.'),
+      modelList, modelFeedback);
+    settings.append(modelsSection);
+    const setupForm = providerSetup(settings, refreshProviders, signal);
+    const showForm = () => { addingModel = true; setupForm.hidden = false; addModel.hidden = true; setupForm.querySelector('input')?.focus(); };
+    listen(addModel, 'click', showForm);
+    listen(setupForm, 'input', () => { addingModel = true; });
+    const rowAction = (label, name, handler) => {
+      const node = el('button', {type: 'button', className: 'button button-ghost', 'aria-label': `${label} for ${name}`}, label);
+      listen(node, 'click', async () => {
+        node.disabled = true;
+        try { await handler(); } catch (error) { if (!signal.aborted) notice(modelFeedback, error); }
+        finally { if (!signal.aborted) node.disabled = false; }
+      });
+      return node;
+    };
+    const modelRow = row => el('li', {className: 'saved-model', 'data-id': row.id},
+      el('div', {className: 'saved-model-name'}, el('strong', {}, row.id), el('span', {className: 'muted'}, [providerLabel(row.kind), row.model].filter(Boolean).join(' · '))),
+      toolBadge(row),
+      el('div', {className: 'saved-model-actions'},
+        rowAction('Test connection', row.id, async () => {
+          modelFeedback.replaceChildren();
+          const result = await request(`/providers/${encodeURIComponent(row.id)}/test`, {method: 'POST'});
+          if (!signal.aborted) notice(modelFeedback, `Connected to ${result?.model || row.model}.`);
+        }),
+        rowAction('Check tool calling', row.id, () => checkToolCalling(row, modelFeedback))));
+    // A check updates its own row in place, so focus stays on the button that ran it.
+    paintModels = changed => {
+      if (changed) { modelList.querySelector(`[data-id="${CSS.escape(changed.id)}"] .tool-calling-badge`)?.replaceWith(toolBadge(changed)); return; }
+      modelsSection.hidden = !providerRows.length;
+      const formShown = !providerRows.length || addingModel;
+      setupForm.hidden = !formShown; addModel.hidden = formShown;
+      modelList.replaceChildren(...providerRows.map(modelRow));
+    };
+    paintModels();
     openSettings = () => {
       if (!drawer.open) drawer.showModal();
       if (!allowErrorText) renderRepairSettings();
-      settings.querySelector('input')?.focus();
+      (setupForm.hidden ? addModel : setupForm.querySelector('input'))?.focus();
     };
-    providerSetup(settings,refreshProviders,signal);
-    settings.append(el('section', {className: 'drawer-section'}, el('h3', {}, 'Selected model'),
-      el('p', {className: 'muted'}, 'A model must pass the tool-calling check to propose changes. The check sends one short request to the provider.'),
-      el('div', {className: 'tool-calling'}, toolBadge, toolCheck)));
     const serverId = el('input', {required: true, pattern: '[A-Za-z0-9_-]{1,64}', maxLength: 64});
     const url = el('input', {type: 'url', required: true});
     const mcpKey = el('input', {placeholder: '$MCP_KEY', autocomplete: 'off'});

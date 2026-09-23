@@ -6,6 +6,12 @@ def exercise_setup(page, artifacts):
     page.evaluate("location.hash='assistant'")
     page.locator('.assistant-chat').wait_for()
     page.get_by_role('button',name='Assistant settings',exact=True).click()
+    # Saved models are listed first; the form opens from Add connection (it is already open when none exist).
+    add=page.get_by_role('button',name='Add connection',exact=True)
+    if add.is_visible():
+        expect(add).to_be_focused()
+        add.click()
+        expect(page.get_by_label('Connection name',exact=True)).to_be_focused()
     page.get_by_label('Provider',exact=True).select_option('custom')
     page.get_by_label('Connection name',exact=True).fill('guided-browser')
     page.get_by_label('API base URL',exact=True).fill('https://model.example/v1/chat/completions')

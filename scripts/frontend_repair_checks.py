@@ -334,14 +334,12 @@ def expect_badges(page, text):
 
 def tool_check_button(page):
     main = page.locator('#main')
-    buttons = main.get_by_role('button', name=UI['check_tool_calling'], exact=True)
+    # Each saved model has its own check, named for the model: "Check tool calling for <connection>".
+    buttons = main.get_by_role('button', name=f"{UI['check_tool_calling']} for {PROVIDER_ID}", exact=True)
     if not (buttons.count() and buttons.first.is_visible()):
         control(main, UI['settings_button']).click()
     expect(buttons.first).to_be_visible()
-    # A `has` locator is resolved inside each candidate, so it must be built from the page root.
-    rows = main.locator('li, tr, article, section, div').filter(has_text=PROVIDER_ID).filter(
-        has=page.get_by_role('button', name=UI['check_tool_calling'], exact=True))
-    return (rows.last.get_by_role('button', name=UI['check_tool_calling'], exact=True) if rows.count() else buttons).first
+    return buttons.first
 
 
 def is_tool_test(response):

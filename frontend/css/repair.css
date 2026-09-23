@@ -276,7 +276,18 @@ dialog.peek.review-drawer { width:min(480px,100vw); }
 .settings-drawer .assistant-settings h3 { margin:0 0 8px; font-size:15px; }
 .assistant-page .settings-drawer .assistant-settings .provider-setup>h3:first-child { margin-top:0; }
 .settings-drawer .drawer-section p { margin:0 0 10px; font-size:13px; }
-.settings-drawer .tool-calling { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+/* Saved models, listed before the form that adds another. */
+.settings-drawer .assistant-settings>[hidden],.saved-models-head>[hidden] { display:none; }
+.saved-models-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px; }
+.settings-drawer .saved-models-head h3 { margin:0; }
+.saved-models { list-style:none; margin:0 0 8px; padding:0; display:flex; flex-direction:column; gap:8px; }
+.saved-model { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:8px 12px; padding:12px 14px; border-radius:10px; background:var(--surface-page-canvas); }
+.saved-model-name { display:flex; flex-direction:column; gap:2px; min-width:0; overflow-wrap:anywhere; }
+.saved-model-name .muted { font-size:12px; }
+.saved-model .tool-calling-badge { justify-self:end; }
+.saved-model-actions { grid-column:1 / -1; display:flex; flex-wrap:wrap; gap:8px; }
+.saved-model-actions .button { min-height:32px; padding:4px 12px; font-size:13px; }
+@media (max-width:700px) { .saved-model-actions .button { min-height:44px; } }
 .mcp-server { display:flex; flex-direction:column; align-items:flex-start; gap:8px; }
 .mcp-server-head { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 10px; }
 .mcp-server-head h4 { margin:0; }

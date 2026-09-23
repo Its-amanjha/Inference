@@ -2,8 +2,12 @@ import {el,button,field,formCard,notice} from './html.js';
 import {icon} from './icons.js';
 import {api} from '../api.js';
 
+const presets={custom:['OpenAI-compatible','','Exact model name from your provider'],openai:['OpenAI','https://api.openai.com/v1','Exact model ID'],openrouter:['OpenRouter','https://openrouter.ai/api/v1','provider/model'],groq:['Groq','https://api.groq.com/openai/v1','Exact model ID'],anthropic:['Anthropic','https://api.anthropic.com/v1','Exact model ID'],ollama:['Local Ollama','http://127.0.0.1:11434/v1','Installed model, e.g. qwen2.5:3b']};
+// The service a saved connection uses, by the name the form shows for it.
+export const providerLabel=kind=>presets[kind]?.[0]||String(kind||'Unknown service');
+
+// Appends the Connect a model form to host and returns it, so the caller can show it on request.
 export function providerSetup(host,onSaved,signal){
-  const presets={custom:['OpenAI-compatible','','Exact model name from your provider'],openai:['OpenAI','https://api.openai.com/v1','Exact model ID'],openrouter:['OpenRouter','https://openrouter.ai/api/v1','provider/model'],groq:['Groq','https://api.groq.com/openai/v1','Exact model ID'],anthropic:['Anthropic','https://api.anthropic.com/v1','Exact model ID'],ollama:['Local Ollama','http://127.0.0.1:11434/v1','Installed model, e.g. qwen2.5:3b']};
   const kind=el('select',{},Object.entries(presets).map(([value,[label]])=>el('option',{value},label)));
   const id=el('input',{required:true,value:'main-config',pattern:'[A-Za-z0-9_\-]{1,64}',autocomplete:'off',spellcheck:'false'});
   // Once someone names the connection themselves, changing the provider must not overwrite it.
@@ -111,4 +115,5 @@ export function providerSetup(host,onSaved,signal){
     finally{saving=false;save.disabled=false;}
   },{signal});
   host.append(form);
+  return form;
 }
