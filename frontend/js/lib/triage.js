@@ -66,6 +66,19 @@ export function relativeTime(value,now=Date.now()) {
 }
 
 export const instanceName=id=>state.instances.find(item=>item.id===id)?.name||id||'Unavailable';
+// An n8n execution status as a badge: icon, word and tone together.
+const RUN_STATES={success:['success','Succeeded','check'],error:['error','Failed','errors'],crashed:['error','Crashed','errors'],
+  running:['info','Running','refresh'],waiting:['info','Waiting','clock'],new:['info','Queued','clock'],canceled:['','Canceled','close']};
+export function runBadge(status){
+  const [tone,label,glyph]=RUN_STATES[status]||['',status?String(status):'Unknown','info'];
+  return el('span',{class:`badge run-badge${tone?` ${tone}`:''}`},icon(glyph),label);
+}
+export function runDuration(started,stopped,status){
+  const from=Date.parse(started),to=Date.parse(stopped);
+  if(!Number.isFinite(from)||!Number.isFinite(to)||to<from)return ['running','waiting','new'].includes(status)?'In progress':'—';
+  const ms=to-from;
+  return ms<1000?`${ms} ms`:ms<60000?`${(ms/1000).toFixed(ms<10000?1:0)} s`:ms<3600000?`${Math.round(ms/60000)} min`:`${(ms/3600000).toFixed(1)} h`;
+}
 // A link into the n8n editor: the execution when there is one, otherwise the workflow. It uses the URL the
 // instance was connected with, so it opens wherever that URL is reachable from this browser.
 export function n8nUrl(instanceId,workflowId,executionId=null){

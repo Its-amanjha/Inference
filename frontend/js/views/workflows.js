@@ -1,8 +1,8 @@
 import {api} from '../api.js';
 import {state,can,pageSize} from '../state.js';
 import {el,button,field,heading,table,notice,empty} from '../lib/html.js';
-import {confirmAction,stateBadge} from '../lib/confirm.js';
-import {repairHref,relativeTime,n8nUrl,registerShortcuts} from '../lib/triage.js';
+import {confirmAction,stateBadge,humanize} from '../lib/confirm.js';
+import {repairHref,relativeTime,n8nUrl,registerShortcuts,runBadge,runDuration,severityPill,instanceName} from '../lib/triage.js';
 import {loadingState,loadFailure,asOf} from '../lib/payload.js';
 import {icon} from '../lib/icons.js';
 import {rowMenu} from '../lib/row-menu.js';
@@ -126,17 +126,24 @@ export async function render(container) {
     for(const box of entry.list.querySelectorAll('input.workflow-select'))box.closest('tr')?.classList.toggle('is-selected',box.checked);
   }
 
-  // The workflow in one place: its steps in run order, what starts it, and the way into n8n.
+  // The workflow in one place: its steps, its latest runs, open errors, traces, promotions and notes,
+  // and the way into n8n. Each section loads on its own and says so when it cannot.
   function openDetails(entry,row){
-    const name=row.name??row.id,link=n8nUrl(entry.instance.id,row.id);
+    const {instance}=entry,name=row.name??row.id,link=n8nUrl(instance.id,row.id);
     const steps=flowOrder(row),starts=[...new Set(steps.filter(step=>step.trigger).map(step=>step.kind))];
     const tags=(row.tags??[]).map(tag=>tag?.name).filter(Boolean);
+    const part=title=>{const body=el('div',{class:'peek-related','aria-busy':'true'},el('p',{class:'muted'},'Loading…'));return {title,body,node:peekSection(title,body)};};
+    const runs=part('Latest runs'),errors=part('Open errors'),traces=part('Traces'),promotions=can('operator')?part('Your promotions'):null,notes=part('Notes about this workflow');
+    const fill=(target,request,draw)=>request.then(result=>draw(result),error=>el('p',{class:'muted'},error?.status===403?'Not available for your role.':`Could not load ${target.title.toLowerCase()}.`))
+      .then(node=>{if(!signal.aborted){target.body.removeAttribute('aria-busy');target.body.replaceChildren(node);}});
+    const when=ns=>{const ms=Math.floor(Number(ns)/1e6);return Number.isFinite(ms)&&ms>0?relativeTime(new Date(ms).toISOString()):'—';};
     openPeek({
       eyebrow:stateOf(row),
       title:name,
-      meta:[entry.instance.name,row.updatedAt?' · updated ':null,row.updatedAt?relativeTime(row.updatedAt):null],
+      meta:[instance.name,row.updatedAt?' · updated ':null,row.updatedAt?relativeTime(row.updatedAt):null],
       sections:[
         peekSection(steps.length?`Steps (${steps.length})`:'Steps',flowList(row)),
+        runs.node,errors.node,traces.node,promotions?.node,notes.node,
         peekFacts([
           ['Starts with',starts.length?starts.join(', '):null],
           ['Workflow ID',peekCopy(row.id,'workflow ID')],
@@ -151,6 +158,39 @@ export async function render(container) {
         can('operator')?el('a',{class:'button ghost',href:repairHref({instance_id:entry.instance.id,workflow_id:row.id})},'Repair with AI'):null,
         can('operator')&&typeof row.active==='boolean'?button(row.active?'Deactivate':'Activate',()=>{closePeek();return setActive(entry,[row],!row.active);},row.active?'danger':'ghost',{'aria-label':`${row.active?'Deactivate':'Activate'} workflow ${name} on ${entry.instance.name}`}):null,
       ],
+    });
+    fill(runs,api('/api/n8n_proxy/executions?'+new URLSearchParams({instance_id:instance.id,workflow_id:row.id,limit:'5'}),{signal}),result=>{
+      const list=(result.data||[]).slice(0,5);
+      return list.length?el('ul',{class:'peek-runs'},list.map(run=>{const href=n8nUrl(instance.id,row.id,run.id);
+        return el('li',{},runBadge(run.status),relativeTime(run.startedAt),el('span',{class:'peek-run-meta'},runDuration(run.startedAt,run.stoppedAt,run.status)),
+          href?el('a',{href,target:'_blank',rel:'noopener noreferrer','aria-label':`Open execution ${run.id} in n8n`},`#${run.id}`,icon('external')):el('span',{class:'peek-run-meta'},`#${run.id}`));}))
+        :el('p',{class:'muted'},'No saved runs. n8n keeps only the executions its save settings allow.');
+    });
+    fill(errors,api('/api/errors?'+new URLSearchParams({status:'open',instance_id:instance.id,limit:'100'}),{signal}),result=>{
+      const mine=(result.data||[]).filter(item=>String(item.workflow_id)===String(row.id));
+      return mine.length?el('div',{class:'peek-stack'},el('ul',{class:'peek-links'},mine.slice(0,3).map(item=>el('li',{class:'peek-error'},severityPill(item.error_type),
+          el('span',{},`${item.node_name||'Workflow'}: ${String(item.error_message||'Message unavailable')}`)))),
+          el('a',{href:'#errors'},mine.length>3?`All ${mine.length} in Errors`:'Triage in Errors'))
+        :el('p',{class:'muted'},'None open.');
+    });
+    fill(traces,api('/api/otel/traces?'+new URLSearchParams({instance_id:instance.id,workflow_id:row.id,limit:'5'}),{signal}),result=>{
+      const list=result.data||[];
+      return list.length?el('div',{class:'peek-stack'},el('ul',{class:'peek-runs'},list.map(trace=>el('li',{},when(trace.start_ns),
+          el('span',{class:'peek-run-meta'},`${trace.span_count} step${trace.span_count===1?'':'s'} traced`),
+          trace.error_spans?el('span',{class:'badge error'},`${trace.error_spans} failed`):null))),el('a',{href:'#observe'},'Open Observability'))
+        :el('p',{class:'muted'},'No telemetry from this workflow yet.');
+    });
+    if(promotions)fill(promotions,api('/api/n8n_promote/runs?limit=100',{signal}),result=>{
+      const mine=(result.data||[]).filter(run=>run.source_instance_id===instance.id&&String(run.workflow_id)===String(row.id));
+      return mine.length?el('ul',{class:'peek-runs'},mine.slice(0,3).map(run=>el('li',{},el('span',{},`To ${instanceName(run.target_instance_id)}`),
+          stateBadge(run.status==='deployed'?'success':['failed','rejected'].includes(run.status)?'error':['uncertain','partial'].includes(run.status)?'warning':'',humanize(run.status),run.status),
+          run.created_at?relativeTime(run.created_at):null)))
+        :el('p',{class:'muted'},'You have not promoted this workflow.');
+    });
+    fill(notes,api('/api/notes/search?q='+encodeURIComponent(name),{signal}),result=>{
+      const list=(result.data||[]).slice(0,3);
+      return list.length?el('ul',{class:'peek-links'},list.map(note=>el('li',{},el('a',{href:'#notes?'+new URLSearchParams({path:note.path})},note.path))))
+        :el('p',{class:'muted'},'No notes mention this workflow.');
     });
   }
 
@@ -233,6 +273,18 @@ export async function render(container) {
     {key:['k','K'],display:'k',description:'Focus previous workflow',handler:()=>move(-1)},
     {key:['o','O'],display:'o',description:'Open details of focused workflow',handler:()=>{if(document.activeElement?.classList.contains('workflow-open'))document.activeElement.click();}},
   ],'Workflows');
+  // #workflows?instance_id=…&workflow_id=… opens that workflow's page (from the command palette or a link).
+  const linked=new URLSearchParams(location.hash.split('?')[1]||''),linkedId=linked.get('workflow_id');
+  const linkedEntry=entries.find(entry=>entry.instance.id===linked.get('instance_id'));
   // Return cleanup immediately so navigation can cancel even the first slow load.
-  searchFleet();return()=>{unregister();controller.abort();};
+  searchFleet().then(async()=>{
+    if(!linkedEntry||!linkedId||signal.aborted)return;
+    let row=linkedEntry.rows.find(item=>String(item.id)===linkedId);
+    if(!row){
+      try{row=await api(`/api/n8n_proxy/workflows/${encodeURIComponent(linkedId)}?instance_id=${encodeURIComponent(linkedEntry.instance.id)}`,{signal});}
+      catch(error){if(!signal.aborted)notice(linkedEntry.messages,error);return;}
+    }
+    if(!signal.aborted)openDetails(linkedEntry,row);
+  });
+  return()=>{unregister();controller.abort();};
 }

@@ -353,3 +353,13 @@ dialog.peek::backdrop { background:rgba(10,12,16,.35); }
 
 /* Controls that only make sense with a keyboard. */
 @media (pointer:coarse) { .hide-on-touch { display:none !important; } }
+
+/* A workflow's page in the details panel: short lists of runs, traces and promotions. */
+.peek-runs { display:flex; flex-direction:column; gap:6px; margin:0; padding:0; list-style:none; font-size:13px; }
+.peek-runs li { display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; }
+.peek-runs a { display:inline-flex; align-items:center; gap:3px; margin-left:auto; font-variant-numeric:tabular-nums; }
+.peek-runs .icon { width:13px; height:13px; }
+.peek-run-meta { color:var(--color-smoke); font-variant-numeric:tabular-nums; }
+.peek-stack { display:flex; flex-direction:column; align-items:flex-start; gap:8px; font-size:13px; }
+.peek-error { display:flex; flex-direction:column; align-items:flex-start; gap:4px; }
+.peek-error>span:last-child { color:var(--color-graphite); overflow-wrap:anywhere; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; overflow:hidden; }

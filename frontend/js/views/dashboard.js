@@ -2,7 +2,7 @@ import {api} from '../api.js';
 import {state,can} from '../state.js';
 import {el,button,heading,table,empty} from '../lib/html.js';
 import {icon,registerIcons} from '../lib/icons.js';
-import {severityPill,relativeTime,instanceName,explainHref,repairHref,n8nUrl} from '../lib/triage.js';
+import {severityPill,relativeTime,instanceName,explainHref,repairHref,n8nUrl,runBadge,runDuration as duration} from '../lib/triage.js';
 import {loadingState,loadFailure,asOf,cachedProbe,fleetMetrics} from '../lib/payload.js';
 
 
@@ -70,16 +70,6 @@ export async function render(container) {
       const result=await api('/api/n8n_proxy/workflows?'+new URLSearchParams({instance_id:instance,limit:'250'}),{signal:controller.signal});
       for(const row of result.data||[])names.set(String(row.id),row.name||String(row.id));
     }catch{/* Names are a convenience: without them the row still shows its workflow ID. */}
-  }
-  const RUN_STATES={success:['success','Succeeded','check'],error:['error','Failed','errors'],crashed:['error','Crashed','errors'],
-    running:['info','Running','refresh'],waiting:['info','Waiting','clock'],new:['info','Queued','clock'],canceled:['','Canceled','close']};
-  const runBadge=status=>{const [tone,label,glyph]=RUN_STATES[status]||['',status?String(status):'Unknown','info'];
-    return el('span',{class:`badge run-badge${tone?` ${tone}`:''}`},icon(glyph),label);};
-  function duration(started,stopped,status){
-    const from=Date.parse(started),to=Date.parse(stopped);
-    if(!Number.isFinite(from)||!Number.isFinite(to)||to<from)return ['running','waiting','new'].includes(status)?'In progress':'—';
-    const ms=to-from;
-    return ms<1000?`${ms} ms`:ms<60000?`${(ms/1000).toFixed(ms<10000?1:0)} s`:ms<3600000?`${Math.round(ms/60000)} min`:`${(ms/3600000).toFixed(1)} h`;
   }
   function emptyExecutions(){return state.instances.length?empty('Choose an instance','Pick one in the switcher at the top of the page to see its runs.',[],'play'):empty('No instances connected',can('admin')?'Connect an n8n instance in Instances, then pick it in the switcher at the top of the page to see its recent executions.':'An administrator needs to connect an n8n instance before recent executions can appear.',can('admin')?[el('a',{class:'button ghost',href:'#instances'},'Open instances')]:[],'instances');}
   renderFleet();
