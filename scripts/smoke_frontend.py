@@ -108,7 +108,8 @@ def main() -> None:
                     page.get_by_role('article', name='Total workflows', exact=True).wait_for()
                     assert page.evaluate('getComputedStyle(document.body).backgroundColor') == 'rgb(245, 247, 249)'
                     expect(page.get_by_role('navigation', name='All views')).to_be_visible()
-                    expect(page.get_by_role('navigation', name='All views').get_by_role('link')).to_have_count(13)
+                    # Fleet health merged into Instances: one sidebar entry for the fleet page.
+                    expect(page.get_by_role('navigation', name='All views').get_by_role('link')).to_have_count(12)
                     expect(page.get_by_role('navigation', name='All views').get_by_role('link', name='Workflows', exact=True)).to_have_attribute('href', '#workflows')
                     page.screenshot(path=str(artifacts / 'frontend-dashboard.png'), full_page=True)
                     # Sidebar group names label their links; they are not headings ahead of the page h1.
