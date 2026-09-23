@@ -129,7 +129,7 @@ function updateJsonText(rawText,key,newValue){
 
 export async function render(container){
   const controller=new AbortController();container.append(heading('Promote workflows','Preview exact changes, deploy inactive, then activate separately.'));
-  if(!can('operator')){container.append(empty('Operator access required','Ask an administrator for permission to promote workflows.'));return()=>controller.abort();}
+  if(!can('operator')){container.append(empty('Operator access required','Ask an administrator for permission to promote workflows.',[],'promote'));return()=>controller.abort();}
   const route=new URLSearchParams(location.hash.split('?')[1]||'');
   const source=el('select'),target=el('select');
   const previewBody=el('div',{className:'stack'});
@@ -552,7 +552,7 @@ export async function render(container){
     try{
       const result=await api('/api/n8n_promote/runs',{signal:controller.signal});
       history.replaceChildren(el('h2',{className:'wizard-step'},'3. Deployment history'),button('Refresh runs',runs,'button ghost'),...result.data.map(runCard));
-      if(!result.data.length)history.append(empty('No promotions yet','Your deployment results and recovery actions will appear here.',[button('Start a promotion',()=>{source.scrollIntoView();source.focus({preventScroll:true});},'ghost')]));
+      if(!result.data.length)history.append(empty('No promotions yet','Your deployment results and recovery actions will appear here.',[button('Start a promotion',()=>{source.scrollIntoView();source.focus({preventScroll:true});},'ghost')],'promote'));
     }catch(error){
       if(!controller.signal.aborted)notice(history,error);
     }

@@ -54,8 +54,8 @@ export async function render(container){
   const act=async fn=>{try{await fn();}catch(e){if(!signal.aborted)notice(messages,e);}};
   function emptyInventory(){
     return engineAvailable
-      ? empty('No owned bundles','Provision a matching n8n and task runner pair. Existing host containers remain outside this inventory.',[button('Provision your first bundle',provision)])
-      : empty('No owned bundles','Remote n8n connections are managed in Instances. This inventory only lists Docker bundles created by Inference.',[el('a',{class:'button ghost',href:'#instances'},'Open instances')]);
+      ? empty('No owned bundles','Provision a matching n8n and task runner pair. Existing host containers remain outside this inventory.',[button('Provision your first bundle',provision)],'containers')
+      : empty('No owned bundles','Remote n8n connections are managed in Instances. This inventory only lists Docker bundles created by Inference.',[el('a',{class:'button ghost',href:'#instances'},'Open instances')],'containers');
   }
   async function checkEngine(){
     try{

@@ -128,18 +128,12 @@
 .observe-waterfall-title h2 { font-size:20px; margin:0; }
 .observe-ai-strip { display:flex; flex-wrap:wrap; align-items:center; gap:12px 20px; padding:12px 16px; background:var(--color-ash-mist); border-radius:12px; margin:12px 0 16px; font-size:13px; }
 .observe-ai-stat { display:flex; flex-direction:column; gap:2px; }
-.observe-ai-stat .stat-label { font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--color-smoke); }
+.observe-ai-stat .stat-label { font-size:12px; color:var(--color-smoke); }
 .observe-ai-stat .stat-value { font-weight:600; color:var(--color-ink-black); }
 
 /* Waterfall ruler & track */
-.waterfall-ruler-wrap { position:relative; height:24px; margin:16px 0 8px; border-bottom:1px solid var(--border); font-size:11px; font-variant-numeric:tabular-nums; color:var(--color-smoke); }
+.waterfall-ruler-wrap { position:relative; height:24px; margin:16px 0 8px; border-bottom:1px solid var(--border); font-size:12px; font-variant-numeric:tabular-nums; color:var(--color-smoke); }
 .waterfall-ruler-ticks { display:flex; justify-content:space-between; position:relative; width:100%; }
-.waterfall-span-row { display:flex; flex-direction:column; gap:6px; padding:10px 0; border-bottom:1px solid var(--border); }
-.waterfall-span-row:last-child { border-bottom:none; }
-.waterfall-span-row.is-failed { background:rgba(194, 28, 69, 0.04); }
-.waterfall-span-header { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
-.waterfall-span-summary { display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; color:var(--color-ink-black); }
-.waterfall-span-details { margin-top:8px; padding:12px; border-radius:10px; background:var(--color-ash-mist); font-size:12px; }
 /* One span per compact row: name left, time bar right. Details open below on demand. */
 .waterfall-span { border-radius:6px; }
 .waterfall-span:hover,.waterfall-span[open] { background:var(--color-ash-mist); }
@@ -164,7 +158,10 @@
 [data-theme=n8n] .span-failed { color:#ffafc1; }
 
 .span-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:8px; }
-.span-actions .button { min-height:28px; font-size:11px; padding:0 8px; }
+.span-actions .button { min-height:28px; font-size:12px; padding:0 8px; }
+@media(max-width:700px) {
+  .trace-id-line .button, .span-actions .button { min-height:44px; }
+}
 
 /* Fleet health card: numbers first, API access as inline chips, one quiet "last checked" line. */
 .instance-card .instance-body { gap:16px; }

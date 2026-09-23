@@ -34,7 +34,7 @@ export function renderAuth(root, setup, onSuccess) {
   root.replaceChildren(el('main',{id:'main',class:'auth-layout'},
     el('section',{class:'auth-intro'},el('a',{class:'brand',href:'/'},el('span',{class:'brand-mark','aria-hidden':'true'}),'Inference'),
       el('h1',{},'Execution',el('br'), 'Anomaly System'),
-      el('div',{class:'auth-rule'}),el('p',{},'A little clarity. Across your fleet.')),
+      el('div',{class:'auth-rule'}),el('p',{},'Monitor n8n workflows, errors and telemetry from one place.')),
     el('section',{class:'card auth-card'},
       el('h2',{},setup?'Create your workspace':'Sign in to Inference'),el('p',{class:'muted'},setup?'Set up your administrator account.':'Enter your credentials to continue.'),form)));
   username.focus();
