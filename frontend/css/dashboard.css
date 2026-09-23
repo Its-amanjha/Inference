@@ -1,5 +1,10 @@
 /* Dashboard refinement: keep section feedback inside the same content gutters. */
-.dashboard .dashboard-columns { align-items:start; }
+/* Side-by-side panels share one height, so the row reads as one band; content stays at the top. */
+.dashboard .dashboard-columns { align-items:stretch; }
+.queue-clear { display:flex; align-items:flex-start; gap:12px; }
+.queue-clear>.icon { flex:none; width:20px; height:20px; margin-top:2px; color:var(--color-success); }
+.queue-clear p { margin:0; font-size:13px; }
+.queue-clear .queue-clear-title { font-size:14px; font-weight:600; color:var(--color-ink-black); }
 .dashboard .dashboard-columns>.panel { display:flex; flex-direction:column; min-width:0; }
 .dashboard .dashboard-columns .panel-body { padding:20px 24px; flex:1; }
 .dashboard .dashboard-investigation { display:flex; flex-direction:column; gap:8px; }

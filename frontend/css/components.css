@@ -142,7 +142,7 @@ tbody tr:hover { background:var(--color-ash-mist); }
  .auth-layout { grid-template-columns:1fr; width:calc(100% - 32px); max-width:460px; gap:24px; margin:28px auto; }
  .auth-intro h1 { font-size:36px; margin:24px 0 12px; } .auth-intro p { font-size:14px; } .auth-rule { display:none; } .auth-card { padding:24px; }
  .toolbar { align-items:stretch; } .toolbar>* { max-width:100%; }
- .finding-title { align-items:flex-start; } .finding-title .badge { white-space:normal; }
+ .finding-title { align-items:flex-start; } .finding-title .badge { flex:none; white-space:nowrap; } .finding-title .finding-link { flex:1; min-width:0; }
 }
 
 /* Assistant is a workspace, not a right-aligned drawer. */
@@ -271,6 +271,8 @@ td.num { overflow-wrap:normal; white-space:nowrap; }
    scrolling table clips it; row-menu.js places it under the button. */
 .row-menu-wrap { display:inline-flex; }
 .row-menu-trigger { display:inline-grid; place-items:center; width:36px; height:36px; padding:0; border:0; border-radius:8px; background:transparent; color:var(--color-smoke); cursor:pointer; }
+.peek-foot .row-menu-trigger { border:1px solid var(--control-border,var(--border)); border-radius:999px; color:var(--color-ink-black); }
+.peek-foot .row-menu-trigger:hover { background:var(--color-ash-mist); }
 .row-menu-trigger:hover,.row-menu-trigger[aria-expanded=true] { background:var(--color-ash-mist); color:var(--color-ink-black); }
 .row-menu-trigger:focus-visible { outline:2px solid var(--focus); outline-offset:1px; }
 .row-menu-trigger .icon { width:18px; height:18px; }

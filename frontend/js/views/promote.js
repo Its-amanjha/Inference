@@ -518,7 +518,7 @@ export async function render(container){
     field('Subworkflow IDs: source → target',subflows),jsonStatus(subflows),
     el('div',{className:'confirm-actions'},jsonDone));
   jsonDone.addEventListener('click',()=>jsonDialog.close());
-  const editJson=el('button',{type:'button',className:'button ghost mapping-json-button'},icon('codelab'),'Edit mappings as JSON');
+  const editJson=el('button',{type:'button',className:'button ghost mapping-json-button'},icon('codelab'),'Edit as JSON');
   editJson.addEventListener('click',()=>{jsonChecks.forEach(check=>check());jsonDialog.showModal();credential.focus();});
   const rawDisclosureNode=el('div',{className:'mapping-json-row'},editJson,jsonDialog);
 
@@ -526,10 +526,11 @@ export async function render(container){
     title:'1. Choose source and target',
     description:'Preflight compares a fresh snapshot of both instances.',
     body:[
-      el('div',{className:'form-row'},labeledMenu('Source instance',source),labeledMenu('Target instance',target)),
-      workflowPicker.node,
-      mappingBox,
-      rawDisclosureNode
+      // One grid, so every edge lines up: source and target side by side, and under each the source
+      // workflow and the mappings to the target.
+      el('div',{className:'form-row promote-grid'},labeledMenu('Source instance',source),labeledMenu('Target instance',target),
+        workflowPicker.node,el('div',{className:'codelab-field promote-mappings'},el('span',{className:'codelab-field-label'},'Credential and workflow mappings'),rawDisclosureNode)),
+      mappingBox
     ],
     actions:[preflight]
   });
@@ -574,7 +575,7 @@ export async function render(container){
     try{
       const result=await api('/api/n8n_promote/runs',{signal:controller.signal});
       history.replaceChildren(el('h2',{className:'wizard-step'},'3. Deployment history'),button('Refresh runs',runs,'button ghost'),...result.data.map(runCard));
-      if(!result.data.length)history.append(empty('No promotions yet','Your deployment results and recovery actions will appear here.',[button('Start a promotion',()=>{source.scrollIntoView();source.focus({preventScroll:true});},'ghost')],'promote'));
+      if(!result.data.length)history.append(el('p',{className:'muted'},'No promotions yet. Each deployment, its result and any recovery steps appear here.'));
     }catch(error){
       if(!controller.signal.aborted)notice(history,error);
     }

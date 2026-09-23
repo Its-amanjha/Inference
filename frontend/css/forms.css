@@ -200,7 +200,9 @@ form.stack { gap:16px; }
 .codelab-bar .codelab-load { margin-top:26px; min-height:40px; }
 .codelab-field { display:flex; flex-direction:column; gap:6px; min-width:0; }
 .codelab-field-label { font-size:13px; font-weight:500; line-height:20px; color:var(--color-ink-black); }
-.codelab-field .select-menu,.codelab-field .select-menu-button { width:100%; min-height:40px; }
+/* A menu in a labelled field is as tall as the text fields beside it; CodeLab's bar uses 40px throughout. */
+.codelab-field .select-menu,.codelab-field .select-menu-button { width:100%; min-height:var(--control-height); }
+.codelab-bar .codelab-field .select-menu-button { min-height:40px; }
 .codelab-language { display:inline-flex; align-items:center; min-height:40px; font-size:14px; color:var(--color-graphite); }
 .codelab-intro { margin:0; }
 .codelab-intro[hidden],.codelab-foot[hidden] { display:none; }
@@ -219,6 +221,10 @@ form.stack { gap:16px; }
 
 /* Promote: mappings as JSON open in a dialog with a validity line under each map. */
 .mapping-json-row { display:flex; }
+/* Promote: one grid for source, target, source workflow and mappings; every control is one height. */
+.promote-grid .picker .field { margin:0; }
+.promote-mappings .mapping-json-row,.promote-mappings .mapping-json-button { width:100%; }
+.promote-mappings .mapping-json-button { min-height:var(--control-height); margin:0; }
 dialog.json-dialog { width:min(640px,calc(100vw - 32px)); }
 .json-dialog textarea { min-height:96px; font-family:var(--font-mono); font-size:13px; }
 .json-dialog .field { margin:12px 0 4px; }

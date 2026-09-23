@@ -46,8 +46,9 @@ def exercise_themes(page: Page, artifacts: Path) -> None:
     expect(save.locator('svg')).to_have_count(1)
     # A saved card has nothing left to save: its Save stays secondary and disabled until the next edit.
     expect(save).to_be_disabled()
-    rows = preferences.get_by_label('Rows per page', exact=True)
-    rows.fill(rows.input_value())
+    notifications = preferences.get_by_label('Error notifications', exact=True)
+    notifications.set_checked(not notifications.is_checked())
+    notifications.set_checked(not notifications.is_checked())
     expect(save).to_be_enabled()
     save.click()
     expect(page.get_by_text('Preferences saved.', exact=True)).to_have_count(1)

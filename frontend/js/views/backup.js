@@ -63,7 +63,7 @@ export async function render(container){
       hasFile?button('Download',()=>act(()=>download('/api/backups/runs/'+id+'/download')),'ghost',{'aria-label':`Download backup from ${when}`}):null,
       more.length?rowMenu(more,`More actions for backup from ${when}`):null);
   }
-  async function runs(append=false){const result=await api('/api/backups/runs?limit='+pageSize()+(append&&next?'&before='+encodeURIComponent(next):''),{signal});next=result.next_cursor;if(!append)history.replaceChildren();history.querySelector('[data-more]')?.remove();if(result.data.length){const page=table(['Created','Status','Remote','Actions'],result.data.map(r=>[new Date(r.created_at*1000).toLocaleString(),runStatus(r),r.remote_status?humanize(r.remote_status):'—',runActions(r)]));const existing=append?history.querySelector('table'):null;if(existing)existing.querySelector('tbody').append(...page.querySelector('tbody').children);else history.append(page);}if(!result.data.length&&!append){const scheds=await api('/api/backups/schedules',{signal});const runnable=scheds.data.find(s=>s.enabled);history.append(empty('No backups yet',runnable?'The first run appears here. Use Run now on a schedule to start one.':'Runs appear here once a schedule exists.',[],'backup'));}if(next){const more=button('Load older runs',()=>act(()=>runs(true)),'ghost');more.dataset.more='true';history.append(more);}}
+  async function runs(append=false){const result=await api('/api/backups/runs?limit='+pageSize()+(append&&next?'&before='+encodeURIComponent(next):''),{signal});next=result.next_cursor;if(!append)history.replaceChildren();history.querySelector('[data-more]')?.remove();if(result.data.length){const page=table(['Created','Status','Remote','Actions'],result.data.map(r=>[new Date(r.created_at*1000).toLocaleString(),runStatus(r),r.remote_status?humanize(r.remote_status):'—',runActions(r)]));const existing=append?history.querySelector('table'):null;if(existing)existing.querySelector('tbody').append(...page.querySelector('tbody').children);else history.append(page);}if(!result.data.length&&!append){const scheds=await api('/api/backups/schedules',{signal});const runnable=scheds.data.find(s=>s.enabled);history.append(el('p',{class:'muted history-empty'},runnable?'No backups yet. Use Run now on a schedule to make the first one.':'No backups yet. Add a schedule, or download a snapshot below.'));}if(next){const more=button('Load older runs',()=>act(()=>runs(true)),'ghost');more.dataset.more='true';history.append(more);}}
   function scheduleCard(s){
     const id=encodeURIComponent(s.id);
     const main=s.enabled
@@ -76,9 +76,8 @@ export async function render(container){
     })};
     return el('section',{class:'card stack'},
       el('div',{class:'title-row'},el('h3',{},s.name),stateBadge(s.enabled?'success':'',s.enabled?'Enabled':'Paused')),
-      el('p',{},frequencyLabel(s.interval_minutes)),
-      s.enabled?el('p',{class:'muted'},nextRunIn(s.next_run_at))
-        :el('p',{class:'muted'},'Paused schedules do not run. Enable this schedule to run a backup.'),
+      el('p',{class:'schedule-when'},el('span',{},frequencyLabel(s.interval_minutes)),el('span',{class:'muted','aria-hidden':'true'},' · '),
+        s.enabled?el('span',{class:'muted'},nextRunIn(s.next_run_at)):el('span',{class:'muted'},'Paused: it does not run until you enable it')),
       el('div',{class:'toolbar'},main,button('Edit',()=>edit(s),'ghost',{'aria-label':`Edit schedule ${s.name}`}),rowMenu([remove],`More actions for ${s.name}`)));
   }
   let scheduleCount=0;

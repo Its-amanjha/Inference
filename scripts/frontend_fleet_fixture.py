@@ -610,7 +610,9 @@ def exercise_fleet_search(page, ids, state):
     target = page.get_by_role('region', name='Workflows on target', exact=True)
     expect(source.get_by_role('button', name='Details for workflow Source searchable on source', exact=True)).to_have_count(1)
     expect(target.get_by_role('button', name='Details for workflow Target searchable on target', exact=True)).to_have_count(1)
-    expect(page.get_by_role('button', name='Search', exact=True)).to_be_enabled()
+    # Results follow the typing: the field is the only search control.
+    expect(page.get_by_role('button', name='Search', exact=True)).to_have_count(0)
+    expect(page.get_by_label('Find workflows', exact=True)).to_be_enabled()
     target.get_by_role('button', name='Next workflow page on target', exact=True).click()
     expect(target.get_by_role('button', name='Details for workflow Second page workflow on target', exact=True)).to_have_count(1)
     expect(source.get_by_role('button', name='Details for workflow Source searchable on source', exact=True)).to_have_count(1)
@@ -641,7 +643,7 @@ def exercise_fleet_search(page, ids, state):
     expect(page.get_by_role('textbox', name='Code editor', exact=True)).to_have_value('return [];')
     page.evaluate("location.hash = 'workflows'")
     expect(source.get_by_role('button', name='Details for workflow Source searchable on source', exact=True)).to_have_count(1)
-    expect(page.get_by_role('button', name='Search', exact=True)).to_be_enabled()
+    expect(page.get_by_label('Find workflows', exact=True)).to_be_enabled()
     checked_at = source.locator('.load-as-of time').get_attribute('datetime')
     state['unavailable'] = 'source'
     try:

@@ -161,13 +161,14 @@ export async function render(container) {
         const partial={workflows:metrics.workflows===null&&wfDone.length?cover(wfDone):null,
           executions:metrics.executions_24h===null&&exDone.length?cover(exDone):null};
         const incomplete=metrics.data.filter(row=>!row.workflows_complete||!row.executions_complete);
+        const about=['Failures that the instances’ telemetry reported in the last 24 hours.','Executions started in the last 24 hours.',
+          'Finished runs that succeeded. Running and waiting runs are not counted.','Workflows on the instances in view.'];
         for(const [index,[label,value,glyph,hint]] of [['Silent failures · 24h',metrics.confirmed_silent_error_spans_24h,'errors'],['Runs · 24h',executions,'play',partial.executions],['Success rate',rate,'check',partial.executions],['Total workflows',workflows,'workflows',partial.workflows]].entries()){
           const unknown=value===null,text=unknown?'Unavailable':String(value),labelId=`metric-label-${index}`,valueId=`metric-value-${index}`;
           const detail=unknown?(incomplete.length?'Coverage incomplete':'Not reported'):hint;
           // The label names the metric via an h2 heading; the value is associated with it via aria-describedby.
-          stats.append(el('article',{class:`card metric-cell${unknown?' metric-unknown':''}`,'aria-labelledby':labelId,'aria-describedby':valueId},el('div',{class:'metric-label'},icon(glyph),el('h3',{class:'muted metric-title',id:labelId,'aria-describedby':valueId},label)),el('p',{class:`metric-number${unknown||text.length>12?' metric-text':''}`,id:valueId},text),detail?el('p',{class:'metric-hint'},detail):null));
+          stats.append(el('article',{class:`card metric-cell${unknown?' metric-unknown':''}`,'aria-labelledby':labelId,'aria-describedby':valueId,title:about[index]},el('div',{class:'metric-label'},icon(glyph),el('h3',{class:'muted metric-title',id:labelId,'aria-describedby':valueId},label)),el('p',{class:`metric-number${unknown||text.length>12?' metric-text':''}`,id:valueId},text),detail?el('p',{class:'metric-hint'},detail):null));
         }
-        coverage.append(el('details',{class:'coverage-details'},el('summary',{},'How these metrics are counted'),el('p',{},`${metrics.scope} Success rate counts finished runs only, not running or waiting ones. Silent failures count only what an instance's telemetry reported. Window ends ${new Date(metrics.window_end).toLocaleString()}.`)));
         if(incomplete.length){
           const missing=row=>!row.workflows_complete&&!row.executions_complete?'workflow and execution history incomplete':!row.workflows_complete?'workflow list incomplete':'execution history incomplete';
           coverage.prepend(el('section',{class:'coverage-partial',role:'status'},icon('info'),el('div',{},
@@ -180,7 +181,9 @@ export async function render(container) {
       }
       if(index===2&&results[2].status==='fulfilled'){
         const rows=results[2].value.data;
-        if(!rows.length){const blank=empty('No open findings',scoped.length?'Nothing needs attention right now.':'Connect an instance to start investigating.',[el('a',{class:'button ghost',href:scoped.length?'#errors':'#instances'},scoped.length?'Open errors':'Open instances',icon('arrow'))]);blank.querySelector(':scope > .icon')?.replaceWith(icon('overview-empty'));findings.append(blank);}
+        // All clear is one quiet line; the panel's own View all errors link is the way on.
+        if(!rows.length)findings.append(el('div',{class:'queue-clear',role:'status'},icon('check'),
+          el('div',{},el('p',{class:'queue-clear-title'},'No open findings'),el('p',{class:'muted'},'Nothing needs attention right now.'))));
         for(const row of rows){
           const occurrences=row.count===null||row.count===undefined?'Occurrences unavailable':`${row.count} ${row.count===1?'occurrence':'occurrences'}`;
           // Time and execution are shown only when the record carries them.

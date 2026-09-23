@@ -113,7 +113,8 @@
   .triage-command-main { flex-direction:column; align-items:stretch; gap:10px; }
   .triage-status-group .field { width:100%; }
   .triage-status-group select { flex:1; min-height:44px; }
-  .triage-filters { flex-wrap:wrap; }
+  .triage-filters { flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; margin-inline:-16px; padding:2px 16px; }
+  .triage-filters>* { flex:none; }
   .triage-filters .triage-chip { min-height:44px; }
   .triage-command-actions { width:100%; display:flex; gap:8px; }
   .triage-command-actions .button,

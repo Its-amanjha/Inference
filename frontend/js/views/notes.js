@@ -67,8 +67,10 @@ export async function render(container){
       const item=el('li',{class:'notes-item','data-path':n.path},el('button',{type:'button',class:'notes-item-button','aria-label':n.path},
         el('span',{class:'notes-item-name'},name),meta?el('span',{class:'notes-item-folder'},meta):null,n.excerpt?el('span',{class:'notes-item-excerpt'},n.excerpt):null));
       item.firstChild.addEventListener('click',()=>act(()=>open(n.path)));return item;}));
-    if(!data.data.length)list.append(el('li',{class:'notes-list-empty'},empty(search.value?'No matching notes':'No notes yet',search.value?'Try another search.':'Runbooks and fleet notes live here.',
-      search.value?[button('Clear search',()=>{search.value='';act(load);},'ghost')]:[],search.value?'search':'notes')));
+    // An empty library is a short line in the list, not a second empty state beside the editor's.
+    if(!data.data.length)list.append(el('li',{class:'notes-list-empty'},
+      el('p',{},search.value?'No notes match.':'No notes yet.'),
+      search.value?button('Clear search',()=>{search.value='';act(load);},'ghost'):null));
     markActive();syncDelete();
   }
   const startNote=async()=>{if(await keepText())return;selection++;showEditor(true);editing=true;savedText=null;loadedPath=null;revision=null;path.value='';content.value='';showPreview();links.replaceChildren();markActive();syncDelete();path.focus();};
@@ -104,14 +106,16 @@ export async function render(container){
     history.replaceState(history.state,'','#notes');await load();
   });
 
-  const searchForm=el('form',{class:'notes-search',role:'search'},search,button('Search',()=>act(load),'ghost'));
+  const searchForm=el('form',{class:'notes-search',role:'search'},icon('search'),search);
   searchForm.addEventListener('submit',event=>{event.preventDefault();act(load);});
   // The library filters as you type, after a short pause.
   let searchTimer=0;
   search.addEventListener('input',()=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>act(load),300);},{signal});
+  const newNote=el('button',{type:'button',class:'button ghost icon-only','aria-label':'New note',title:'New note'},icon('add'));
+  newNote.addEventListener('click',()=>startNote(),{signal});
   const library=el('aside',{class:'notes-library','aria-label':'Notes library'},
-    el('div',{class:'notes-library-head'},el('h2',{},'Your notes'),can('operator')?button('New note',startNote,'ghost',{'aria-label':'New note'}):null),
-    searchForm,list);
+    el('h2',{class:'sr-only'},'Your notes'),
+    el('div',{class:'notes-library-top'},searchForm,can('operator')?newNote:null),list);
   // Enter in the title saves instead of reloading the page.
   const head=el('form',{class:'notes-head'},
     el('label',{class:'sr-only',for:'note-path'},'Markdown path'),path,title,

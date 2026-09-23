@@ -1001,8 +1001,7 @@ export async function render(container) {
     const url = el('input', {type: 'url', required: true});
     const mcpKey = el('input', {placeholder: '$MCP_KEY', autocomplete: 'off'});
     const mcpSave = el('button', {type: 'submit', className: 'button button-primary'}, 'Save MCP server');
-    const mcpForm = formCard({title: 'Remote MCP tools', heading: 'h3', flat: true,
-      description: 'Discover a server’s tools here, then ask the assistant to propose an invocation. Every MCP call requires your confirmation.',
+    const mcpForm = formCard({title: 'Add an MCP server', heading: 'h3', flat: true,
       body: [el('div', {className: 'form-row'}, field('Server ID', serverId, {hint: 'Letters, numbers, dashes and underscores.'}),
         field('Streamable HTTP endpoint', url, {})),
         field('Key reference (optional)', mcpKey, {hint: 'Optional.'})],
@@ -1029,7 +1028,13 @@ export async function render(container) {
       catch (error) { if (!signal.aborted) notice(messages, error); }
       finally { mcpSave.disabled = false; }
     });
-    settings.append(mcpForm, catalogs);
+    const addServer = el('button', {type: 'button', className: 'button button-ghost'}, actionIcon('Add server'), 'Add server');
+    mcpForm.hidden = true;
+    listen(addServer, 'click', () => { mcpForm.hidden = false; addServer.hidden = true; serverId.focus(); });
+    settings.append(el('section', {className: 'drawer-section'},
+      el('div', {className: 'saved-models-head'}, el('h3', {}, 'Remote MCP tools'), addServer),
+      el('p', {className: 'muted'}, 'Optional. Add a server to let the assistant propose its tools; every MCP call waits for your confirmation.'),
+      catalogs, mcpForm));
     // Repair conversations: installation-wide switches for what repair turns may send to providers.
     // Built when settings first open, after the provider form, so the controls only exist where they can be seen.
     const renderRepairSettings = () => {

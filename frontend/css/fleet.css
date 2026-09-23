@@ -5,13 +5,23 @@
 .telemetry-body { display:flex; flex-direction:column; gap:12px; padding-top:12px; min-width:0; }
 .telemetry-body p { margin:0; font-size:13px; }
 .telemetry-snippet { margin:0; padding:12px; max-height:220px; font-size:12px; }
-.telemetry-snippet-row { display:flex; flex-direction:column; align-items:flex-start; gap:8px; min-width:0; }
-.telemetry-snippet-row .telemetry-snippet { align-self:stretch; }
+/* The settings block carries its copy button in its corner. */
+.telemetry-snippet-wrap { position:relative; min-width:0; }
+.telemetry-snippet-wrap .telemetry-snippet { padding-right:44px; }
+.telemetry-snippet-wrap>.peek-copy { position:absolute; top:6px; right:6px; }
+/* Reachability uses the partial-data treatment: something to fix, not a failure. */
+.telemetry-reach { gap:8px; padding:10px 12px; border-radius:10px; }
+.telemetry-reach>.icon { flex:none; width:16px; height:16px; margin-top:2px; }
+.telemetry-body .field { margin:0; }
 .telemetry-token-row { display:flex; flex-wrap:wrap; align-items:center; gap:8px; font-size:13px; }
 .telemetry-token { overflow-wrap:anywhere; }
 .telemetry-tokens { display:flex; flex-direction:column; gap:8px; }
 .telemetry-tokens h3 { margin:0; font-size:13px; }
-.telemetry-create-row { display:flex; flex-wrap:wrap; align-items:flex-end; gap:8px; }
+.telemetry-create { display:flex; flex-direction:column; gap:6px; }
+.telemetry-create>label { font-size:13px; font-weight:500; }
+.telemetry-create-row { display:flex; align-items:stretch; gap:8px; }
+.telemetry-create-row>input { flex:1; min-width:0; }
+.telemetry-create-row>.button { flex:none; min-height:0; margin:0; }
 
 /* Merged fleet table: one row per instance, management on demand below. */
 .fleet-instance-cell { display:flex; flex-direction:column; gap:2px; min-width:0; }

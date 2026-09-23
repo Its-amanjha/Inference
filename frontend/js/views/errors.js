@@ -221,8 +221,7 @@ export async function render(container){
     }
   });
 
-  const shortcutsBtn = button('Shortcuts (?)', () => window.openShortcutsDialog ? window.openShortcutsDialog(shortcutsBtn) : null, 'button ghost hide-on-touch');
-  shortcutsBtn.setAttribute('aria-label', 'Keyboard shortcuts');
+  const shortcutsBtn = button('Shortcuts', () => window.openShortcutsDialog?.(), 'button ghost hide-on-touch');
   shortcutsBtn.setAttribute('title', 'Keyboard shortcuts (?)');
 
   const commandStrip = el('div', { class: 'triage-command-strip' },

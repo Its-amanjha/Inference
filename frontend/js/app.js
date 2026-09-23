@@ -7,7 +7,7 @@ import {icon} from './lib/icons.js';
 import {openPalette} from './lib/palette.js';
 import {selectMenu} from './lib/select-menu.js';
 import {cachedProbe} from './lib/payload.js';
-import {closePeek} from './lib/peek.js';
+import {closePeek,openPeek,peekSection} from './lib/peek.js';
 
 const routes = {'dashboard':'Overview','workflows':'Workflows','promote':'Promote','errors':'Errors','observe':'Observability','codelab':'CodeLab','assistant':'AI workspace','containers':'Containers','notes':'Notes','backup':'Backups','secrets':'Secrets','instances':'Instances','settings':'Settings'};
 const adminOnly = new Set(['containers','backup','secrets']);
@@ -213,74 +213,40 @@ function formatKeyNodes(displayStr) {
   return nodes;
 }
 
-export function openShortcutsDialog(invoker) {
-  if (document.querySelector('dialog.shortcuts-dialog[open]')) return;
-  const trigger = invoker instanceof HTMLElement ? invoker : (document.activeElement instanceof HTMLElement ? document.activeElement : null);
-  const id = `shortcuts-dialog-${Date.now()}`;
-  const closeBtn = button('Close', () => dialog.close(), 'button ghost');
-  closeBtn.setAttribute('aria-label', 'Close keyboard shortcuts dialog');
-
-  const sections = [];
-
-  if (currentViewShortcuts.length > 0) {
-    sections.push(
-      el('h3', {}, currentViewTitle ? `Active view (${currentViewTitle})` : 'Active view'),
-      el('dl', { class: 'shortcuts-list' },
-        ...currentViewShortcuts.map(s => [
-          el('dt', {}, ...formatKeyNodes(s.display)),
-          el('dd', {}, s.description)
-        ]).flat()
-      )
-    );
-  }
-
-  const globalShortcuts = [
-    { display: '?', description: 'Show keyboard shortcuts overlay' },
-    { display: '/', description: 'Focus search or primary filter' },
-    { display: 'Ctrl+K', description: 'Open command palette' },
-    { display: 'g d', description: 'Go to Overview' },
-    { display: 'g e', description: 'Go to Errors' },
-    { display: 'g w', description: 'Go to Workflows' },
-    { display: 'g o', description: 'Go to Observability' },
-    { display: 'g a', description: 'Go to AI workspace' },
-    { display: 'g f', description: 'Go to Instances (fleet health)' },
-    { display: 'g s', description: 'Go to Settings' },
-    { display: 'g i', description: 'Go to Instances' },
-    { display: 'g n', description: 'Go to Notes' },
-    { display: 'g b', description: 'Go to Backups' },
-    { display: 'g c', description: 'Go to CodeLab' }
-  ];
-
-  sections.push(
-    el('h3', {}, 'Global'),
-    el('dl', { class: 'shortcuts-list' },
-      ...globalShortcuts.map(s => [
-        el('dt', {}, ...formatKeyNodes(s.display)),
-        el('dd', {}, s.description)
-      ]).flat()
-    )
-  );
-
-  const dialog = el('dialog', {
-    class: 'shortcuts-dialog',
-    'aria-labelledby': `${id}-title`
-  },
-    el('h2', { id: `${id}-title` }, 'Keyboard shortcuts'),
-    ...sections,
-    el('div', { class: 'confirm-actions' }, closeBtn)
-  );
-
-  dialog.addEventListener('cancel', () => dialog.close());
-  dialog.addEventListener('close', () => {
-    dialog.remove();
-    if (trigger?.isConnected) trigger.focus();
-  }, { once: true });
-
-  document.body.append(dialog);
-  dialog.showModal();
-  closeBtn.focus();
+const GLOBAL_SHORTCUTS = [
+  { display: '?', description: 'Show this list' },
+  { display: '/', description: 'Search or filter this page' },
+  { display: 'Ctrl+K', description: 'Jump to a page, workflow or instance' },
+  { display: 'g d', description: 'Go to Overview' },
+  { display: 'g e', description: 'Go to Errors' },
+  { display: 'g o', description: 'Go to Observability' },
+  { display: 'g w', description: 'Go to Workflows' },
+  { display: 'g a', description: 'Go to AI workspace' },
+  { display: 'g c', description: 'Go to CodeLab' },
+  { display: 'g i', description: 'Go to Instances' },
+  { display: 'g n', description: 'Go to Notes' },
+  { display: 'g b', description: 'Go to Backups' },
+  { display: 'g s', description: 'Go to Settings' }
+];
+export function openShortcutsDialog() {
+  if (document.querySelector('dialog.shortcuts-panel[open]')) return;
+  const list = rows => el('dl', { class: 'shortcuts-list' }, rows.map(s =>
+    el('div', { class: 'shortcut-row' }, el('dt', {}, ...formatKeyNodes(s.display)), el('dd', {}, s.description))));
+  // A key this page gives its own meaning (such as /) is listed once, under the page.
+  const pageKeys = new Set(currentViewShortcuts.map(s => s.display));
+  openPeek({ eyebrow: 'Help', title: 'Keyboard shortcuts', closeLabel: 'Close keyboard shortcuts', className: 'shortcuts-panel',
+    sections: [
+      currentViewShortcuts.length ? peekSection(currentViewTitle || 'This page', list(currentViewShortcuts)) : null,
+      peekSection('Anywhere', list(GLOBAL_SHORTCUTS.filter(s => !pageKeys.has(s.display)))),
+    ] });
 }
 window.openShortcutsDialog = openShortcutsDialog;
+// A page can select an instance the way the switcher does, such as CodeLab offering the instances.
+addEventListener('choose-instance', event => {
+  const id = String(event.detail || '');
+  if (!state.instances.some(item => item.id === id)) return;
+  state.instanceId = id; if (selector) selector.value = id; navigate();
+});
 
 function matchShortcutKey(shortcut, eventKey) {
   const normEvent = String(eventKey).toLowerCase();

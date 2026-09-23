@@ -68,7 +68,9 @@ def exercise_design(page: Page, artifacts: Path) -> None:
         expect(page.locator('.dashboard .panel-head a > svg')).to_have_count(3)
         expect(page.locator('.dashboard .panel-head svg[aria-hidden="true"]')).to_have_count(6)
         assert page.locator('.metric-strip').bounding_box()['y'] < page.locator('.dashboard-columns').bounding_box()['y']
-        expect(page.locator('.coverage-details')).not_to_have_attribute('open', '')
+        # Each metric explains itself on hover; there is no separate "How these metrics are counted" disclosure.
+        expect(page.locator('.coverage-details')).to_have_count(0)
+        expect(page.get_by_role('article', name='Success rate')).to_have_attribute('title', 'Finished runs that succeeded. Running and waiting runs are not counted.')
         # Partial data is a dashed amber status note, never the red failure treatment.
         expect(page.locator('.coverage-partial[role=status]')).to_be_visible()
         expect(page.locator('.coverage-partial')).to_contain_text('Source: workflow and execution history incomplete')
@@ -190,10 +192,10 @@ def exercise_design(page: Page, artifacts: Path) -> None:
             page.get_by_role('button', name='Dismiss notification', exact=True).first.click()
         for width in (1440, 390):
             page.set_viewport_size({'width': width, 'height': 900})
-            for label in ('Saved conversations',):
-                summary = page.get_by_text(label, exact=True)
-                summary.click()
-                summary.click()
+            # Saved conversations opens and closes from its button in the workspace bar.
+            summary = page.locator('.assistant-history > summary')
+            summary.click()
+            summary.click()
             geometry = page.evaluate("""() => {
                 const end = document.querySelector('.assistant-layout').getBoundingClientRect().bottom + scrollY;
                 return {end, height:document.documentElement.scrollHeight, viewport:innerHeight,

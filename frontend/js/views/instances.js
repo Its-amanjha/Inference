@@ -85,38 +85,61 @@ export async function render(container) {
   }
   // Per-instance telemetry setup: exporter URL, env snippet, last received span,
   // and (administrators only) token create-shown-once-copy / list / revoke.
+  // An icon button that copies; the result is announced inside the panel, as for trace IDs.
+  function copyIcon(getText,what){
+    const node=el('button',{type:'button',class:'peek-copy','aria-label':`Copy ${what}`,title:`Copy ${what}`},icon('copy'));
+    node.addEventListener('click',async()=>{
+      await copyText(getText(),null);
+      node.dataset.copied='';setTimeout(()=>delete node.dataset.copied,1500);
+      const status=node.closest('dialog')?.querySelector('.peek-status');if(status)status.textContent=`Copied ${what}.`;
+    });
+    return node;
+  }
+  const hostOf=value=>{try{return new URL(value).hostname.replace(/^\[|\]$/g,'');}catch{return '';}};
+  const loopback=host=>host==='localhost'||host==='::1'||/^127\./.test(host);
   function telemetry(entry){
     const item=entry.item;
-    const base=location.origin+'/api/otel';
     const body=el('div',{class:'telemetry-body'});
     const details=el('details',{class:'telemetry-section',id:`telemetry-${item.id}`},
       el('summary',{},'Telemetry'),body);
     const arrival=el('p',{role:'status'},'Checking for received spans…');
-    const snippet=el('pre',{class:'mono telemetry-snippet'},
-      ['N8N_OTEL_ENABLED=true',
-       `N8N_OTEL_EXPORTER_OTLP_ENDPOINT=${base}`,
-       'N8N_OTEL_EXPORTER_OTLP_TRACING_PATH=/v1/traces',
-       'N8N_OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer PASTE_TOKEN_HERE',
-       `OTEL_EXPORTER_OTLP_ENDPOINT=${base}`,
-       'OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer PASTE_TOKEN_HERE',
-       'OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf'].join('\n'));
-    const copyUrl=button('Copy URL',()=>copyText(base,copyUrl),'ghost');
-    const copySnippet=button('Copy settings',()=>copyText(snippet.textContent,copySnippet),'ghost');
+    // n8n sends traces to this address, so the n8n server must be able to reach it. It starts as the
+    // address this page was opened at; a public URL or a tunnel to Inference goes here instead.
+    const address=el('input',{type:'url',value:location.origin,class:'control-mono',autocomplete:'off',spellcheck:'false'});
+    const reach=el('p',{class:'coverage-partial telemetry-reach',role:'status',hidden:true});
+    const snippet=el('pre',{class:'mono telemetry-snippet'});
+    const paintSnippet=()=>{
+      const base=`${address.value.trim().replace(/\/+$/,'')}/api/otel`;
+      snippet.textContent=['N8N_OTEL_ENABLED=true',
+        `N8N_OTEL_EXPORTER_OTLP_ENDPOINT=${base}`,
+        'N8N_OTEL_EXPORTER_OTLP_TRACING_PATH=/v1/traces',
+        'N8N_OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer PASTE_TOKEN_HERE',
+        `OTEL_EXPORTER_OTLP_ENDPOINT=${base}`,
+        'OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer PASTE_TOKEN_HERE',
+        'OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf'].join('\n');
+      const target=hostOf(address.value),n8n=hostOf(item.url);
+      reach.hidden=!(target&&n8n&&loopback(target)&&!loopback(n8n));
+      if(!reach.hidden)reach.replaceChildren(icon('info'),el('span',{},
+        `n8n at ${n8n} cannot reach ${target}: that address only exists on this computer. Enter an address the n8n server can reach, such as a public URL for Inference.`));
+    };
+    address.addEventListener('input',paintSnippet,{signal});
+    paintSnippet();
     body.append(
-      el('p',{},'Exporter URL: ',el('code',{class:'mono'},base),' ',copyUrl),
-      el('div',{class:'telemetry-snippet-row'},snippet,copySnippet),
+      field('Inference address for n8n',address,{hint:'n8n sends its traces here, so its server must be able to reach this address.'}),
+      reach,
+      el('div',{class:'telemetry-snippet-wrap'},snippet,copyIcon(()=>snippet.textContent,'n8n settings')),
       arrival);
     lastSpan(item).then(when=>{
       if(signal.aborted)return;
-      arrival.replaceChildren(!when?'No spans received yet.':['Last span received ',relativeLabel(when),'.']);
+      arrival.replaceChildren(!when?'No spans received yet.':`Last span received ${relativeLabel(when).toLowerCase()}.`);
     }).catch(()=>{if(!signal.aborted)arrival.replaceChildren('Could not check when spans last arrived. Open this panel again to retry.');});
     if(!can('admin')){
       body.append(el('p',{class:'muted'},'An administrator manages exporter tokens.'));
       return details;
     }
     const created=el('div'),tokens=el('div');
-    const name=el('input',{autocomplete:'off',maxLength:120,placeholder:'Token name'});
-    const copyToken=button('Copy token',()=>copyText(created.querySelector('.telemetry-token')?.textContent||'',copyToken),'ghost');
+    const name=el('input',{autocomplete:'off',maxLength:120,placeholder:'For example: VPS exporter'});
+    const copyToken=copyIcon(()=>created.querySelector('.telemetry-token')?.textContent||'','token');
     const create=button('Create token',()=>act(async()=>{
       const label=name.value.trim();if(!label){name.focus();return;}
       create.disabled=true;
@@ -152,8 +175,10 @@ export async function render(container) {
         if(!rows.length)tokens.append(el('p',{class:'muted'},'No tokens yet.'));
       }catch(error){if(!signal.aborted)tokens.replaceChildren(el('p',{role:'status'},`Could not load tokens. ${error?.message||''}`.trim())); }
     }
-    body.append(el('div',{class:'telemetry-tokens'},el('h3',{},'Exporter tokens'),created,
-      el('div',{class:'telemetry-create-row'},field('Token name',name),create),tokens));
+    // The name and its button form one row of equal height; the label sits above both.
+    name.id=`telemetry-token-${item.id}`;
+    body.append(el('div',{class:'telemetry-tokens'},el('h3',{},'Exporter tokens'),created,tokens,
+      el('div',{class:'telemetry-create'},el('label',{for:name.id},'New token'),el('div',{class:'telemetry-create-row'},name,create))));
     act(paint);
     return details;
   }
@@ -277,7 +302,9 @@ export async function render(container) {
     const item=entry.item;
     const health=el('div',{class:'probe-status'});
     const feedback=el('div'),probeDetail=el('div');
-    const paint=result=>health.replaceChildren(reachabilityBadge(result),el('p',{class:'muted',title:result?.checked_at},checkedLine(result)));
+    // Once a connection test ran, its section says reachable and when; this line is only for "not checked yet".
+    const paint=result=>{health.hidden=typeof result?.reachable==='boolean';
+      health.replaceChildren(reachabilityBadge(result),el('p',{class:'muted',title:result?.checked_at},checkedLine(result)));};
     paint(entry.probe||{reachable:null});
     const actions=[button('Re-check connection',()=>checkEntry(entry,{paint,feedback,probeDetail}),'button',{'aria-label':`Re-check connection ${item.name}`})];
     if(can('admin')){

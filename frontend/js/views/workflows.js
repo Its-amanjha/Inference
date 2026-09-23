@@ -54,7 +54,7 @@ export async function render(container) {
       node.addEventListener('pointerdown',event=>event.preventDefault());node.addEventListener('click',()=>pickSuggestion(index));return node;
     }));
     suggestions.hidden=!suggestionRows.length;input.setAttribute('aria-expanded',String(!suggestions.hidden));
-    suggestionStatus.textContent=`${suggestionRows.length} suggestions.${failed?' Some instances could not be searched.':''} Press Search for full results.`;
+    suggestionStatus.textContent=`${suggestionRows.length} suggestions.${failed?' Some instances could not be searched.':''} Results below update as you type.`;
   }
   function queueSuggestions(){closeSuggestions();suggestionTimer=setTimeout(suggest,300);}
   input.addEventListener('input',queueSuggestions,{signal});
@@ -67,8 +67,10 @@ export async function render(container) {
   },{signal});
   signal.addEventListener('abort',closeSuggestions,{once:true});
   let searching=false, term='';
-  const search=button('Search',()=>searchFleet(),'ghost');
-  container.append(el('form',{class:'toolbar workflow-search',onsubmit:event=>{event.preventDefault();searchFleet();}},el('div',{class:'workflow-search-field'},field('Find workflows',input),suggestions,suggestionStatus),search),sections);
+  const findField=field('Find workflows',input);
+  const searchControl=el('span',{class:'search-control'},icon('search'));
+  input.replaceWith(searchControl);searchControl.append(input);
+  container.append(el('form',{class:'toolbar workflow-search',onsubmit:event=>{event.preventDefault();searchFleet();}},el('div',{class:'workflow-search-field'},findField,suggestions,suggestionStatus)),sections);
   const entries=instances.map(instance=>{
     const list=el('div'),messages=el('div'),stamp=el('div');
     const bulk=el('div',{class:'workflow-bulk',role:'region','aria-label':`Bulk actions on ${instance.name}`,hidden:true});
@@ -155,9 +157,8 @@ export async function render(container) {
       ],
       actions:[
         link?external(link,'Open in n8n','button'):null,
-        el('a',{class:'button ghost',href:promoteHref(entry,row)},'Promote'),
-        el('a',{class:'button ghost',href:codelabHref(entry,row)},'Open in CodeLab'),
         can('operator')?el('a',{class:'button ghost',href:repairHref({instance_id:entry.instance.id,workflow_id:row.id})},'Repair with AI'):null,
+        rowMenu([{label:'Promote',href:promoteHref(entry,row)},{label:'Open in CodeLab',glyph:'codelab',href:codelabHref(entry,row)}],`More actions for ${name}`),
         can('operator')&&typeof row.active==='boolean'?button(row.active?'Deactivate':'Activate',()=>{closePeek();return setActive(entry,[row],!row.active);},row.active?'danger':'ghost',{'aria-label':`${row.active?'Deactivate':'Activate'} workflow ${name} on ${entry.instance.name}`}):null,
       ],
     });
@@ -251,7 +252,11 @@ export async function render(container) {
       if(signal.aborted)return;
       entry.cursor=result.next_cursor;entry.rows=result.data||[];entry.selected.clear();
       entry.messages.replaceChildren();entry.stamp.replaceChildren(asOf());entry.loaded=true;
-      entry.list.replaceChildren(entry.rows.length?renderTable(entry):empty('No matching workflows','Try another name or create a workflow in this instance.',[button('Clear search',()=>{input.value='';searchFleet();},'ghost')],'search'));
+      // An empty instance is one line; a search with no match on it says so and offers to clear.
+      entry.list.replaceChildren(entry.rows.length?renderTable(entry):term
+        ?el('div',{class:'group-empty'},el('h3',{},'No matching workflows'),el('p',{},`Nothing on ${entry.instance.name} matches “${term}”.`),
+          button('Clear search',()=>{input.value='';searchFleet();},'ghost'))
+        :el('div',{class:'group-empty'},el('p',{},`No workflows on ${entry.instance.name} yet. Workflows you create in n8n appear here.`)));
       renderBulk(entry);
     } catch(error){if(!signal.aborted)entry.messages.replaceChildren(loadFailure(error,()=>load(entry,after),`Could not load workflows on ${entry.instance.name}`));}
     // Next page shows only when the instance has another page.
@@ -264,12 +269,12 @@ export async function render(container) {
   async function searchFleet({keepSuggestions=false}={}){
     if(searching||entries.some(entry=>entry.loading)){rerun=true;return;}
     if(!keepSuggestions)closeSuggestions();
-    searching=true;search.disabled=true;term=input.value.trim();
+    searching=true;term=input.value.trim();
     entries.forEach(entry=>{entry.next.disabled=entry.retry.disabled=true;});
     let index=0;
     try {await Promise.all(Array.from({length:Math.min(3,entries.length)},async()=>{
       while(index<entries.length&&!signal.aborted)await load(entries[index++]);
-    }));}finally{searching=false;search.disabled=false;entries.forEach(entry=>{entry.next.disabled=!entry.cursor;entry.retry.disabled=false;});
+    }));}finally{searching=false;entries.forEach(entry=>{entry.next.disabled=!entry.cursor;entry.retry.disabled=false;});
       if(rerun&&!signal.aborted){rerun=false;searchFleet({keepSuggestions:true});}}
   }
   // j and k move between workflows across every instance section; o opens the focused one.

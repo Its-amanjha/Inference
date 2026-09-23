@@ -7,13 +7,13 @@ import {icon} from './icons.js';
 let current=null;
 
 // sections: nodes rendered in order; actions: nodes for the footer (the first one is the primary).
-export function openPeek({title,eyebrow,meta,sections=[],actions=[]}={}){
+export function openPeek({title,eyebrow,meta,sections=[],actions=[],closeLabel='Close details',className=''}={}){
   current?.close();
   const invoker=document.activeElement;
   const heading=el('h2',{class:'peek-title',id:'peek-title'},title);
-  const close=el('button',{type:'button',class:'peek-close','aria-label':'Close details'},icon('close'));
+  const close=el('button',{type:'button',class:'peek-close','aria-label':closeLabel,title:closeLabel},icon('close'));
   const status=el('p',{class:'sr-only peek-status',role:'status'});
-  const dialog=el('dialog',{class:'peek','aria-labelledby':'peek-title'},status,
+  const dialog=el('dialog',{class:`peek${className?` ${className}`:''}`,'aria-labelledby':'peek-title'},status,
     el('header',{class:'peek-head'},
       el('div',{class:'peek-heading'},eyebrow?el('div',{class:'peek-eyebrow'},eyebrow):null,heading,meta?el('p',{class:'peek-meta'},meta):null),
       close),

@@ -98,9 +98,13 @@
 .shortcuts-dialog h2 { margin:0 0 16px; font-size:18px; font-weight:600; color:var(--color-ink-black); }
 .shortcuts-dialog h3 { margin:16px 0 8px; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.05em; color:var(--color-smoke); }
 .shortcuts-dialog h3:first-of-type { margin-top:0; }
-.shortcuts-list { display:grid; grid-template-columns:auto 1fr; gap:10px 16px; margin:0 0 16px; align-items:center; }
-.shortcuts-list dt { font-family:var(--font-mono); text-align:right; white-space:nowrap; }
+/* Keyboard shortcuts panel: keys in one left-aligned column, then what they do. */
+dialog.peek.shortcuts-panel { width:min(440px,100vw); }
+.shortcuts-list { display:flex; flex-direction:column; gap:10px; margin:0; }
+.shortcut-row { display:grid; grid-template-columns:84px minmax(0,1fr); align-items:center; gap:12px; }
+.shortcuts-list dt { display:flex; gap:4px; font-family:var(--font-mono); white-space:nowrap; }
 .shortcuts-list dd { margin:0; font-size:13px; color:var(--color-graphite); }
+.shortcuts-panel kbd { display:inline-block; min-width:24px; padding:2px 7px; font-family:var(--font-mono); font-size:12px; font-weight:600; text-align:center; border:1px solid var(--border); border-radius:6px; background:var(--color-ash-mist); color:var(--color-ink-black); }
 .shortcuts-dialog kbd { display:inline-block; padding:2px 8px; font-family:var(--font-mono); font-size:12px; font-weight:600; border:1px solid var(--border); border-radius:6px; background:var(--color-ash-mist); color:var(--color-ink-black); }
 .shortcuts-dialog .confirm-actions { display:flex; justify-content:flex-end; margin-top:8px; }
 .shortcuts-dialog .confirm-actions .button { min-height:44px; }

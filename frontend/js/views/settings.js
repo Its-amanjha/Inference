@@ -21,16 +21,23 @@ function auditTarget(value, action = ''){
   const raw=String(value??'');if(!raw)return '—';
   if(action==='backups.run_completed')return el('span',{title:raw},`Backup run ${raw}`);
   if(action==='backups.schedule_saved'||action==='backups.schedule_deleted')return el('span',{title:raw},`Backup schedule ${raw}`);
+  if(action.startsWith('telemetry.token_'))return el('span',{title:raw},`Telemetry token ${raw.slice(0,8)}`);
   const [head,...rest]=raw.split(':'),instance=state.instances.find(item=>item.id===head);
   if(!instance)return raw;
   return el('span',{title:raw},rest.length?`${instance.name} · Workflow ${rest[0]}`:instance.name);
 }
+const TELEMETRY_ACTIONS={'telemetry.token_created':'Created a telemetry token','telemetry.token_revoked':'Revoked a telemetry token',
+  'telemetry.polling_configured':'Changed execution polling','telemetry.retention_changed':'Changed telemetry retention',
+  'telemetry.classified':'Checked an execution for silent failures'};
 function actionLabel(action){
   const raw=String(action??'');
   if(ACTIONS[raw])return ACTIONS[raw];
+  if(TELEMETRY_ACTIONS[raw])return TELEMETRY_ACTIONS[raw];
   if(raw.startsWith('promotion.'))return `Promotion ${humanize(raw.slice(10))}`;
   if(raw.startsWith('docker.'))return `Docker ${humanize(raw.slice(7))}`;
-  return humanize(raw);
+  // An action without its own wording reads as "Area: what happened", never as a dotted code.
+  const [area,...rest]=raw.split('.');
+  return rest.length?`${humanize(area)}: ${humanize(rest.join(' ')).toLowerCase()}`:humanize(raw);
 }
 
 export async function render(container){
@@ -70,15 +77,23 @@ export async function render(container){
     try{return await request(path,options);}finally{if(write)writing=false;}
   };
   const act=async fn=>{try{messages.replaceChildren();await fn();}catch(e){if(!signal.aborted)notice(messages,e);}};
-  function preferenceFields(value,subhead=true,onDirty=null){
+  // forEveryone: the administrators' defaults, which each person can override under Your preferences.
+  function preferenceFields(value,subhead=true,onDirty=null,forEveryone=false){
     // Three themes that switch often sit side by side instead of in a dropdown.
     const theme=segmented({label:'Theme',options:[
       {value:'light',label:'Light'},{value:'dark',label:'Dark'},{value:'n8n',label:'n8n inspired'}],
       value:value.theme,onChange:()=>onDirty?.()});
-    const size=el('input',{type:'number',min:10,max:100,value:value.page_size,required:true,class:'control-narrow'}),notifications=el('input',{type:'checkbox',checked:value.error_notifications});
-    // The visible label is hidden from assistive technology: the toggle already names itself.
-    const themeField=el('div',{class:'codelab-field'},el('span',{class:'codelab-field-label','aria-hidden':'true'},'Theme'),theme.node);
-    const display=[el('div',{class:'form-row'},themeField,field('Rows per page',size,{hint:'Between 10 and 100.'})),field('Error notifications',notifications,{})];
+    // A stored size outside the four offered stays selectable as itself.
+    const sizes=[10,25,50,100].includes(Number(value.page_size))?[10,25,50,100]:[10,25,50,100,Number(value.page_size)].sort((a,b)=>a-b);
+    const size=segmented({label:'Rows per list',options:sizes.map(count=>({value:String(count),label:String(count)})),
+      value:String(value.page_size),onChange:()=>onDirty?.()});
+    const notifications=el('input',{type:'checkbox',checked:value.error_notifications});
+    // The visible labels are hidden from assistive technology: each toggle already names itself.
+    const labelled=(text,control,hint)=>el('div',{class:'codelab-field'},el('span',{class:'codelab-field-label','aria-hidden':'true'},text),control.node,
+      hint?el('p',{class:'field-hint'},hint):null);
+    const display=[el('div',{class:'form-row'},labelled(forEveryone?'Default theme':'Theme',theme),
+        labelled(forEveryone?'Default rows per list':'Rows per list',size,'How many errors, traces and backup runs load at a time.')),
+      field(forEveryone?'Error notifications on by default':'Error notifications',notifications,{hint:'Show a notice when a new execution error arrives.'})];
     return {nodes:[...(subhead?[el('h3',{id:'settings-display',class:'settings-subhead',tabindex:-1},'Display')]:[]),...display],value:()=>({theme:theme.value,page_size:Number(size.value),error_notifications:notifications.checked})};}
   // One primary at a time: a card's save stays secondary and disabled until that
   // card is edited, and only the edited card's save turns primary.
@@ -95,7 +110,7 @@ export async function render(container){
     let mark=()=>{};
     const fields=preferenceFields(await api('/api/admin/preferences',{signal}),true,()=>mark());
     const save=el('button',{type:'submit',class:'button'},icon('save'),'Save preferences');
-    const form=formCard({title:'Your preferences',description:'Only for you, on every device you sign in from. They override the system defaults.',body:fields.nodes,actions:[save]});
+    const form=formCard({title:'Your preferences',description:'Only for you, on every device you sign in from. They take the place of the defaults for everyone.',body:fields.nodes,actions:[save]});
     mark=armSave(form,save);
     form.addEventListener('submit',e=>{e.preventDefault();act(async()=>{const result=await api('/api/admin/preferences',{method:'PUT',json:fields.value()});mark.reset();window.dispatchEvent(new CustomEvent('preferences-changed',{detail:result}));notice(messages,'Preferences saved.');});});groups.account.append(form);}
 
@@ -144,9 +159,9 @@ export async function render(container){
 
   async function loadPolicy(){const result=await api('/api/admin/settings',{signal});
     let mark=()=>{};
-    const fields=preferenceFields(result.saved.default_preferences,false,()=>mark()),hours=el('input',{type:'number',min:1,max:168,required:true,value:result.saved.session_hours,disabled:result.environment_locked_fields.includes('session_hours')});
+    const fields=preferenceFields(result.saved.default_preferences,false,()=>mark(),true),hours=el('input',{type:'number',min:1,max:168,required:true,value:result.saved.session_hours,disabled:result.environment_locked_fields.includes('session_hours')});
     const save=el('button',{type:'submit',class:'button'},icon('save'),'Save system defaults');
-    const form=formCard({title:'System defaults',description:'What every user starts with until they save their own preferences, plus how long new sessions last.',actions:[save],body:[field('New session lifetime (hours)',hours,{hint:result.environment_locked_fields.includes('session_hours')?'Set by the deployment environment.':'Between 1 and 168. Existing sessions keep their current expiry.'}),...fields.nodes,el('details',{class:'form-disclosure'},el('summary',{},icon('chevron'),'Deployment configuration (read only)'),deploymentFacts(result))]});
+    const form=formCard({title:'Defaults for everyone',description:'What each person starts with until they choose their own under Your preferences, and how long new sessions last.',actions:[save],body:[field('New session lifetime (hours)',hours,{hint:result.environment_locked_fields.includes('session_hours')?'Set by the deployment environment.':'Between 1 and 168. Existing sessions keep their current expiry.'}),...fields.nodes,el('details',{class:'form-disclosure'},el('summary',{},icon('chevron'),'Deployment configuration (read only)'),deploymentFacts(result))]});
     mark=armSave(form,save);
     form.addEventListener('submit',e=>{e.preventDefault();act(async()=>{await api('/api/admin/settings',{method:'PUT',json:{expected_revision:result.revision,session_hours:Number(hours.value),default_preferences:fields.value()}});await loadAdmin();notice(messages,'System defaults saved. Existing sessions keep their current expiry.');});});return form;}
   // Set by the server's environment; shown as plain facts rather than raw JSON.
