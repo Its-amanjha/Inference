@@ -82,7 +82,7 @@
 .instance-diagnostic-box.is-unreachable .icon { color:var(--color-danger); }
 
 /* Observe & Waterfall Styling */
-.observe-summary-strip { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin:14px 0 20px; }
+.observe-summary-strip { display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:12px; margin:14px 0 20px; }
 .observe-metric-cell { background:var(--surface-card-surface); border:1px solid var(--border); border-radius:14px; padding:14px 16px; display:flex; flex-direction:column; gap:4px; }
 .observe-metric-cell h3 { font-family:var(--font-body); font-size:13px; font-weight:500; line-height:1.35; margin:0; color:var(--color-smoke); }
 .observe-metric-cell .metric-number { font-family:var(--font-display); font-weight:600; color:var(--color-ink-black); font-size:26px; line-height:1.2; margin:0; letter-spacing:-.03em; font-variant-numeric:tabular-nums; }
@@ -111,7 +111,10 @@
 .span-facts dl>div { display:contents; }
 .span-facts dt { color:var(--color-smoke); font-family:var(--font-mono); }
 .span-facts dd { margin:0; color:var(--color-ink-black); font-family:var(--font-mono); overflow-wrap:anywhere; }
-.waterfall-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(120px,1.6fr); align-items:center; gap:12px; min-height:28px; padding:2px 0; list-style:none; cursor:pointer; }
+/* Names and bars share two columns; the ruler sits over the bar column only, so its marks line up with the bars. */
+.waterfall-row { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(120px,1.4fr); align-items:center; gap:12px; min-height:28px; padding:2px 0; list-style:none; cursor:pointer; }
+.waterfall-ruler-wrap { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(120px,1.4fr); column-gap:12px; }
+.waterfall-ruler-wrap>.waterfall-ruler-ticks { grid-column:2; }
 .waterfall-row::-webkit-details-marker { display:none; }
 .waterfall-name { display:flex; align-items:center; gap:8px; min-width:0; font-size:13px; font-weight:500; color:var(--color-ink-black); }
 .waterfall-name>span.waterfall-node { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }

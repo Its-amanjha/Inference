@@ -201,7 +201,7 @@ async def traces(request: Request,instance_id: str | None=Query(default=None,max
     if before:
         params.append(before)
     params.append(limit+1)
-    rows=await request.app.state.db.fetchall(f'SELECT instance_id,trace_id,MIN(start_ns) start_ns,MAX(end_ns) end_ns,COUNT(*) span_count,SUM(status=\'error\' OR health_status=\'error\') error_spans,MAX(id) cursor '
+    rows=await request.app.state.db.fetchall(f'SELECT instance_id,trace_id,MIN(start_ns) start_ns,MAX(end_ns) end_ns,COUNT(*) span_count,{FAILED_STEPS} error_spans,MAX(id) cursor '
         f'FROM otel_spans {where} GROUP BY instance_id,trace_id {having} ORDER BY cursor DESC LIMIT ?',params)
     more=len(rows)>limit
     rows=rows[:limit]
@@ -248,12 +248,23 @@ async def trace(trace_id: str,request: Request,instance_id: str=Query(min_length
             'known_cost_usd':str(known),'unknown_cost_spans':unknown,'cost_scope':'returned_page'}
 
 
+# Failed steps of one trace (used inside GROUP BY instance_id,trace_id). n8n marks both the failing node's
+# span and the workflow's root span as errors, so a workflow-level error counts only when no node failed,
+# the same rule that keeps one error record per failure.
+_FAILED="(status='error' OR health_status='error')"
+_NODE="(COALESCE(node_name,'')<>'' OR COALESCE(node_id,'')<>'')"
+FAILED_STEPS=(f'(SUM({_FAILED} AND {_NODE})+CASE WHEN SUM({_FAILED} AND {_NODE})=0 '
+              f'THEN SUM({_FAILED} AND NOT {_NODE}) ELSE 0 END)')
+
+
 @router.get('/summary')
 async def summary(request: Request,instance_id: str | None=Query(default=None,max_length=128)):
     require_role(request,'viewer')
     where='WHERE instance_id=?' if instance_id else ''
     params=(instance_id,) if instance_id else ()
-    counts=await request.app.state.db.fetchone(f'SELECT COUNT(*) spans,COUNT(DISTINCT instance_id || \':\' || trace_id) traces,COALESCE(SUM(status=\'error\' OR health_status=\'error\'),0) error_spans FROM otel_spans {where}',params)
+    counts=await request.app.state.db.fetchone(f'SELECT COUNT(*) spans,COUNT(DISTINCT instance_id || \':\' || trace_id) traces,'
+        f'(SELECT COALESCE(SUM(steps),0) FROM (SELECT {FAILED_STEPS} steps FROM otel_spans {where} GROUP BY instance_id,trace_id)) error_spans '
+        f'FROM otel_spans {where}',params+params)
     counts['incomplete_is_failure']=False
     return counts
 

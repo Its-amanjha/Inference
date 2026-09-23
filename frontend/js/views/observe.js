@@ -137,7 +137,7 @@ export async function render(container) {
     const errorCount = Number(row.error_spans || 0);
 
     const healthBadge = errorCount > 0
-      ? el('span', {class: 'badge error'}, `${errorCount} error${errorCount === 1 ? '' : 's'}`)
+      ? el('span', {class: 'badge error'}, `${errorCount} failed step${errorCount === 1 ? '' : 's'}`)
       : el('span', {class: 'badge success'}, 'No errors reported');
 
     const workflowName = meta?.workflow || 'Workflow unknown';
@@ -258,13 +258,12 @@ export async function render(container) {
   // The root span names the whole run, so it reads as the panel's header bar;
   // only its child steps expand below. A trace with no single root keeps every span as a step.
   function rootHeader(root) {
-    const label = root.node_name || root.name || 'Workflow run';
     const duration = elapsed(BigInt(root.end_ns) - BigInt(root.start_ns));
-    const status = root.health_status || root.status || 'Unknown';
-    const summary = `${label} · ${duration} · ${status}`;
-    return el('div', {class: 'waterfall-root', title: summary},
-      el('span', {class: 'waterfall-node'}, label),
-      el('span', {class: 'waterfall-meta'}, `${duration} · Status: ${status}`));
+    const raw = root.health_status || root.status || '';
+    const status = {error: 'Failed', ok: 'Succeeded', unset: 'No status reported'}[raw] || raw || 'Status unknown';
+    return el('div', {class: 'waterfall-root', title: `Whole run · ${duration} · ${status}`},
+      el('span', {class: 'waterfall-node'}, 'Whole run'),
+      el('span', {class: 'waterfall-meta'}, `${duration} · ${status}`));
   }
 
   function openTrace(row, meta) {

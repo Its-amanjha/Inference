@@ -161,6 +161,20 @@ async def test_classification_preserves_trace_identity_and_counts_continuation_e
     assert 'private failure payload' not in str(await fleet.app.state.db.fetchall('SELECT * FROM execution_cursors'))
 
 
+async def test_a_failed_run_counts_its_failed_step_once(fleet):
+    """n8n marks the failing node and the workflow's root span as errors; the run shows one failed step."""
+    instance,token=await issue(fleet)
+    node=[{'key':'n8n.node.name','value':{'stringValue':'HTTP Request'}}]
+    for payload in (batch(trace='e'*32,span='1'*16,status=2),batch(trace='e'*32,span='2'*16,status=2,attributes=node),
+                    batch(trace='f'*32,span='3'*16,status=2)):
+        assert (await send(fleet,token['token'],payload)).status_code==200
+    traces={row['trace_id']:row['error_spans'] for row in (await fleet.client.get('/api/otel/traces')).json()['data']}
+    # The node's failure stands for its run; a run that failed outside any node still counts once.
+    assert traces=={'e'*32:1,'f'*32:1}
+    assert (await fleet.client.get('/api/otel/summary')).json()['error_spans']==2
+    assert (await fleet.client.get('/api/otel/summary',params={'instance_id':instance})).json()['error_spans']==2
+
+
 async def test_trace_cost_aggregate_preserves_all_stored_decimal_digits(fleet):
     instance,token=await issue(fleet)
     await send(fleet,token['token'],batch())
