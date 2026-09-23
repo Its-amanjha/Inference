@@ -182,14 +182,45 @@
 .result-card .triage-action-group { flex-wrap:wrap; }
 .result-card-foot { display:flex; justify-content:center; padding:12px 16px; border-top:1px solid var(--border); }
 .result-card-foot:has(> button:disabled) { display:none; }
-/* Workflows table: every cell on one line. State pairs the badge with its toggle; row actions are compact
-   buttons that do not wrap; the updated time is relative with the exact time on hover. */
-.workflows-table td { vertical-align:middle; }
+/* Workflows: the name opens the details panel; under it, the steps in run order on one line. */
+.workflows-table td { vertical-align:middle; padding-block:8px; }
 .workflows-table .relative-time { white-space:nowrap; }
-.state-cell { display:flex; align-items:center; gap:8px; flex-wrap:nowrap; }
-.row-actions { flex-wrap:nowrap; gap:6px; }
-.state-cell .button,.row-actions .button { min-height:30px; padding:0 10px; margin:0; font-size:12px; white-space:nowrap; gap:5px; }
-.state-cell .button>.icon,.row-actions .button>.icon { width:14px; height:14px; }
-.row-actions { margin:0; align-items:center; }
-.workflows-table td { padding-block:10px; }
-@media (pointer:coarse),(max-width:700px) { .state-cell .button,.row-actions .button { min-height:44px; } }
+.workflow-open { padding:0; border:0; background:none; font:inherit; font-weight:600; color:var(--color-ink-black); text-align:left; cursor:pointer; overflow-wrap:anywhere; }
+.workflow-open:hover { text-decoration:underline; text-underline-offset:3px; }
+.workflow-open:focus-visible { outline:2px solid var(--focus); outline-offset:2px; border-radius:4px; }
+.flow-strip { display:flex; align-items:center; gap:4px; max-width:64ch; margin:3px 0 0; overflow:hidden; font-size:12px; color:var(--color-smoke); white-space:nowrap; }
+.flow-step { min-width:0; max-width:18ch; overflow:hidden; text-overflow:ellipsis; }
+.flow-step.is-disabled { text-decoration:line-through; }
+.flow-sep { flex:none; color:var(--color-pencil-gray); }
+.flow-more { flex:none; padding:0 6px; border-radius:50px; background:var(--color-ash-mist); font-variant-numeric:tabular-nums; }
+.workflow-tags { max-width:16rem; color:var(--color-graphite); }
+.workflows-table td.workflow-actions { width:1%; text-align:right; padding-block:4px; }
+.workflows-table td.workflow-select-cell { width:48px; padding:0 8px; text-align:center; }
+.workflows-table tbody tr.is-selected { background:var(--selection-fill); }
+.workflow-bulk { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px 16px; padding:6px 8px 6px 14px; border:1px solid var(--selection-text); border-radius:10px; }
+.workflow-bulk[hidden] { display:none; }
+.workflow-bulk-count { font-size:13px; font-weight:600; color:var(--color-ink-black); font-variant-numeric:tabular-nums; }
+.workflow-bulk-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.workflow-bulk-actions .button { min-height:32px; margin:0; font-size:12px; }
+/* Every step in the details panel, numbered in run order. */
+.flow-list { display:flex; flex-direction:column; margin:0; padding:0; list-style:none; counter-reset:step; }
+.flow-list li { counter-increment:step; display:grid; grid-template-columns:30px minmax(0,1fr); column-gap:8px; padding:5px 0; }
+.flow-list li::before { content:counter(step); grid-row:span 2; display:inline-grid; place-items:center; width:22px; height:22px; border-radius:50%; background:var(--color-ash-mist); color:var(--color-smoke); font-size:11px; font-variant-numeric:tabular-nums; }
+.flow-list-name { font-size:13px; font-weight:500; color:var(--color-ink-black); overflow-wrap:anywhere; }
+.flow-list-kind { font-size:12px; color:var(--color-smoke); }
+.flow-list li.is-disabled .flow-list-name { color:var(--color-smoke); text-decoration:line-through; }
+@media(max-width:700px) {
+  .table-wrap.table-wrap-stack table.workflows-table tbody tr { display:grid; grid-template-columns:auto auto minmax(0,1fr) auto; grid-template-areas:"select name name menu" "select state updated updated"; align-items:center; gap:4px 8px; padding:8px 4px 10px 12px; }
+  .table-wrap.table-wrap-stack table.workflows-table td { display:block; min-width:0; width:auto; padding:0; border:0; }
+  .table-wrap.table-wrap-stack table.workflows-table td::before { content:none; }
+  .table-wrap.table-wrap-stack table.workflows-table td.workflow-select-cell { grid-area:select; align-self:start; margin:-6px 0 0 -12px; }
+  .table-wrap.table-wrap-stack table.workflows-table td.workflow-subject { grid-area:name; }
+  .table-wrap.table-wrap-stack table.workflows-table td.workflow-tags { display:none; }
+  .table-wrap.table-wrap-stack table.workflows-table td.workflow-state { grid-area:state; }
+  .table-wrap.table-wrap-stack table.workflows-table td.workflow-updated { grid-area:updated; font-size:12px; color:var(--color-smoke); }
+  .table-wrap.table-wrap-stack table.workflows-table td.workflow-actions { grid-area:menu; align-self:start; }
+  .flow-strip { flex-wrap:wrap; max-width:100%; white-space:normal; row-gap:0; }
+  .flow-step { max-width:none; }
+  .workflow-open { min-height:32px; }
+  .workflow-bulk-actions .button { min-height:44px; }
+}

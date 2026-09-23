@@ -782,9 +782,9 @@ def exercise_links(page, ids, error_id):
     page.keyboard.press('Escape')
     page.evaluate("location.hash = 'workflows'")
     section = page.get_by_role('region', name='Workflows on source', exact=True)
-    workflow_row = section.get_by_role('row').filter(has=page.get_by_role('cell', name='Order synchronization', exact=True))
-    expect(workflow_row).to_have_count(1)
-    assert_repair_href(workflow_row.get_by_role('link', name='Repair workflow Order synchronization with AI', exact=True), target)
+    section.get_by_role('button', name='More actions for Order synchronization on source', exact=True).click()
+    assert_repair_href(page.get_by_role('menu', name='More actions for Order synchronization on source').get_by_role('menuitem', name=UI['repair_link'], exact=True), target)
+    page.keyboard.press('Escape')
     page.route('**/api/n8n_proxy/dashboard*', lambda route: route.fulfill(json=DASHBOARD_FIXTURE))
     try:
         page.evaluate("location.hash = 'dashboard'")
