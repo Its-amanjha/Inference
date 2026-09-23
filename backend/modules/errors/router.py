@@ -37,3 +37,16 @@ async def resolve(identifier: int,request: Request):
         await tx.execute("UPDATE errors SET status='resolved',resolved_at=datetime('now') WHERE id=?",(identifier,))
     await audit.record(request,'errors.resolved',str(identifier))
     return {'id':str(identifier),'status':'resolved'}
+
+
+# Undo for a resolve: the row returns to the open queue unchanged.
+@router.post('/{identifier}/reopen')
+async def reopen(identifier: int,request: Request):
+    require_role(request,'operator')
+    async with request.app.state.db.transaction() as tx:
+        await require_current_role(request,'operator',tx)
+        if not await tx.fetchone('SELECT id FROM errors WHERE id=?',(identifier,)):
+            fail(404,'error_not_found','Error was not found.')
+        await tx.execute("UPDATE errors SET status='open',resolved_at=NULL WHERE id=?",(identifier,))
+    await audit.record(request,'errors.reopened',str(identifier))
+    return {'id':str(identifier),'status':'open'}

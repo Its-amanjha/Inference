@@ -98,6 +98,10 @@ async def test_confirmed_span_errors_are_triaged_once(fleet):
     resolved=await fleet.client.post(f'/api/errors/{identifier}/resolve',headers=fleet.headers)
     assert resolved.status_code==200
     assert (await fleet.client.get('/api/errors',params={'status':'open'})).json()['data']==[]
+    reopened=await fleet.client.post(f'/api/errors/{identifier}/reopen',headers=fleet.headers)
+    assert reopened.status_code==200 and reopened.json()['status']=='open'
+    assert [row['id'] for row in (await fleet.client.get('/api/errors',params={'status':'open'})).json()['data']]==[identifier]
+    assert (await fleet.client.post('/api/errors/999999/reopen',headers=fleet.headers)).status_code==404
 
 
 async def test_revocation_during_parse_prevents_insert(fleet,monkeypatch):

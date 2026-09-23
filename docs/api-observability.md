@@ -20,6 +20,7 @@ Prompt, input/output content, secret attributes and raw exception text are remov
 | `POST /api/otel/classify` | Operator + CSRF; JSON `instance_id`, `execution_id`, optional `zero_output_nodes` IDs |
 | `GET /api/errors` | Viewer; optional `instance_id`, `status=open/resolved`, `limit`, `before` |
 | `POST /api/errors/{id}/resolve` | Operator + CSRF; marks an error resolved without deleting telemetry |
+| `POST /api/errors/{id}/reopen` | Operator + CSRF; returns a resolved error to the open queue (the Undo after Mark resolved) |
 | `GET/PUT /api/otel/retention` | Admin; PUT JSON `{"days":7}`, allowed 1–365 |
 
 Trace detail costs cover the returned page (`cost_scope=returned_page`). `known_cost_usd` sums known decimal costs; `cost_usd` is null if any returned span has unknown cost. Pagination never silently claims a complete trace total.
