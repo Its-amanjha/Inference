@@ -2,6 +2,7 @@ import {api as request} from '../api.js';
 import {el,button,field,formCard,notice,empty,heading,table} from '../lib/html.js';
 import {icon,registerIcons} from '../lib/icons.js';
 import {confirmAction,actionMenu,stateBadge} from '../lib/confirm.js';
+import {openPeek,closePeek} from '../lib/peek.js';
 import {can} from '../state.js';
 import {relativeLabel} from '../lib/triage.js';
 import {probeSummary,reachabilityBadge,checkedLine,loadFailure,cachedProbe,rememberProbe,forgetProbe,checkConnection,fleetMetrics} from '../lib/payload.js';
@@ -42,8 +43,8 @@ export async function render(container) {
     el('div',{class:'page-heading-row'},heading('Instances','Connections, health and telemetry for every n8n instance.'),add?el('div',{class:'actions'},add):null),
     messages,editor);
   const rollup=el('div',{class:'fleet-summary-strip',role:'region','aria-label':'Fleet health totals'});
-  const totalNum=el('p',{class:'metric-number'},'0'),operationalNum=el('p',{class:'metric-number'},'0'),
-    degradedNum=el('p',{class:'metric-number'},'0'),unreachableNum=el('p',{class:'metric-number'},'—');
+  const totalNum=el('p',{class:'metric-number is-missing'},'—'),operationalNum=el('p',{class:'metric-number is-missing'},'—'),
+    degradedNum=el('p',{class:'metric-number is-missing'},'—'),unreachableNum=el('p',{class:'metric-number is-missing'},'—');
   rollup.append(
     el('div',{class:'fleet-metric-cell'},el('h3',{},'Total instances'),totalNum),
     el('div',{class:'fleet-metric-cell metric-operational'},el('h3',{},'Operational'),operationalNum),
@@ -54,8 +55,7 @@ export async function render(container) {
   const recheckAll=button('Check fleet',()=>checkAll(),'ghost');
   const toolbar=el('div',{class:'fleet-toolbar'},el('div',{class:'fleet-filter-group'},filterAll,filterIssues),recheckAll);
   const tableWrap=el('div');
-  const detail=el('section',{class:'card stack fleet-detail',hidden:true,'aria-label':'Instance details'});
-  container.append(rollup,toolbar,tableWrap,detail);
+  container.append(rollup,toolbar,tableWrap);
   let writing=false;
   let generation=0,checks=null,currentFilter='all',fleetTable=null,entries=[],versions={};
   const api=async(path,options={})=>{
@@ -249,34 +249,31 @@ export async function render(container) {
     operationalNum.textContent=String(operational);
     degradedNum.textContent=String(degraded);
     unreachableNum.textContent=entries.length?String(unreachable):'—';
+    for(const node of [totalNum,operationalNum,degradedNum,unreachableNum])node.classList.remove('is-missing');
+    unreachableNum.classList.toggle('is-zero',unreachable===0);
   }
-  function openDetails(entry){
+  function openDetails(entry, openTelemetry = false){
     const item=entry.item;
-    detail.hidden=false;
     const health=el('div',{class:'probe-status'});
     const feedback=el('div'),probeDetail=el('div');
     const paint=result=>health.replaceChildren(reachabilityBadge(result),el('p',{class:'muted',title:result?.checked_at},checkedLine(result)));
     paint(entry.probe||{reachable:null});
-    let checking=false;
-    const recheck=button('Re-check connection',()=>checkEntry(entry,{paint,feedback,probeDetail}),'ghost',{'aria-label':`Re-check connection ${item.name}`});
-    const actions=el('div',{class:'toolbar'});
+    const actions=[button('Re-check connection',()=>checkEntry(entry,{paint,feedback,probeDetail}),'button',{'aria-label':`Re-check connection ${item.name}`})];
     if(can('admin')){
-      actions.append(recheck,button('Edit',()=>edit(item),'ghost',{'aria-label':`Edit connection ${item.name}`}),
-        actionMenu([button('Remove',()=>act(async()=>{
+      actions.push(button('Edit',()=>{closePeek();edit(item);},'ghost',{'aria-label':`Edit connection ${item.name}`}),
+        actionMenu([button('Remove',()=>{closePeek();act(async()=>{
           if(!await confirmAction({title:'Remove connection',target:item.name,
             consequence:'Inference stops reading this instance and deletes its saved API key. Workflows and executions in n8n are untouched.',
             confirmLabel:'Remove connection',danger:true}))return;
           await api('/api/n8n_proxy/instances/'+encodeURIComponent(item.id),{method:'DELETE'});
-          forgetProbe(item.id);detail.hidden=true;await load();window.dispatchEvent(new Event('instances-changed'));
-        }),'danger',{'aria-label':`Remove connection ${item.name}`})],`More actions for ${item.name}`));
-    }else actions.append(recheck);
+          forgetProbe(item.id);await load();window.dispatchEvent(new Event('instances-changed'));
+        });},'danger',{'aria-label':`Remove connection ${item.name}`})],`More actions for ${item.name}`));
+    }
     if(entry.probe)probeDetail.replaceChildren(probeResult(entry.probe));
-    detail.replaceChildren(
-      el('div',{class:'instance-connection-head'},el('div',{},el('h2',{},item.name),el('p',{class:'muted'},item.url)),health),
-      actions,feedback,probeDetail,telemetry(entry));
-    detail.scrollIntoView({block:'nearest'});
-    detail.querySelector('h2')?.setAttribute('tabindex','-1');
-    detail.querySelector('h2')?.focus({preventScroll:true});
+    const tele=telemetry(entry);
+    if(openTelemetry)tele.open=true;
+    openPeek({eyebrow:'Connection',title:item.name,meta:item.url,
+      sections:[health,feedback,probeDetail,tele],actions});
   }
   async function checkEntry(entry,slots={}){
     if(entry.checking||signal.aborted||entry.checkSignal?.aborted)return;
@@ -308,7 +305,7 @@ export async function render(container) {
     const current=++generation;checks?.abort();checks=new AbortController();
     for(const entry of entries)entry.checkSignal=checks.signal;
     const result=await api('/api/n8n_proxy/instances',{signal});if(signal.aborted||current!==generation)return;
-    tableWrap.replaceChildren();detail.hidden=true;
+    tableWrap.replaceChildren();
     entries=result.data.map(item=>({item,probe:cachedProbe(item),evidence:null,version:null,tele:null,checking:false,checkSignal:checks.signal}));
     if(!entries.length){
       tableWrap.append(empty('No instances yet',can('admin')?'Add your first n8n instance with Add instance above.':'An administrator connects n8n instances.',[],'instances'));
@@ -344,18 +341,19 @@ export async function render(container) {
         entry.tele=state;paintRows();
       }).catch(()=>{});
     }
+    // Deep link ("Set up telemetry" / palette): open that instance's telemetry at
+    // once, without waiting for the automatic probes below.
+    const telemetryTarget=new URLSearchParams(location.hash.split('?')[1]||'').get('telemetry');
+    if(telemetryTarget!==null&&!signal.aborted&&current===generation){
+      const entry=entries.find(row=>row.item.id===telemetryTarget)||entries[0];
+      if(entry)openDetails(entry,true);
+    }
     // Fill only missing probe cache entries automatically, with bounded work.
     const pending=entries.filter(entry=>!entry.probe);
     let index=0;
     await Promise.all(Array.from({length:Math.min(3,pending.length)},async()=>{
       while(index<pending.length&&!checks.signal.aborted)await checkEntry(pending[index++]);
     }));
-    // Deep link ("Set up telemetry" / palette): open that instance's details.
-    const telemetryTarget=new URLSearchParams(location.hash.split('?')[1]||'').get('telemetry');
-    if(telemetryTarget!==null&&!signal.aborted&&current===generation){
-      const entry=entries.find(row=>row.item.id===telemetryTarget)||entries[0];
-      if(entry){openDetails(entry);detail.querySelector('details.telemetry-section').open=true;}
-    }
   }
-  act(load);return()=>{controller.abort();checks?.abort();};
+  act(load);return()=>{controller.abort();checks?.abort();closePeek();};
 }

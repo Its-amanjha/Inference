@@ -14,13 +14,15 @@ function outcomeBadge(value){
 // Machine action names become readable phrases; the raw value stays in the title
 // for auditors, and anything unmapped falls back to a humanized verbatim label.
 const ACTIONS={'auth.setup':'Created the first administrator','auth.login':'Signed in','auth.logout':'Signed out','auth.totp_enabled':'Turned on two-factor authentication','auth.totp_disabled':'Turned off two-factor authentication','auth.totp_enrollment_started':'Started two-factor setup','admin.user_created':'Created a user','admin.user_updated':'Updated a user','admin.secret_saved':'Saved a secret','admin.secret_deleted':'Deleted a secret','admin.secret_template_applied':'Applied a secret template','admin.settings_updated':'Updated system settings','admin.preferences_updated':'Updated preferences','fleet.instance_created':'Connected an instance','fleet.instance_updated':'Updated a connection','fleet.instance_removed':'Removed a connection','fleet.instance_probed':'Tested a connection','fleet.workflow_activated':'Activated a workflow','fleet.workflow_deactivated':'Deactivated a workflow','fleet.execution_deleted':'Deleted an execution','fleet.node_updated':'Updated node code','fleet.changed':'Fleet changed','notes.saved':'Saved a note','notes.deleted':'Deleted a note','notes.changed':'Notes changed','backups.schedule_saved':'Saved a backup schedule','backups.schedule_deleted':'Deleted a backup schedule','backups.run_completed':'Completed a backup run','backups.exported':'Exported a backup','backups.reconciled':'Reconciled a backup','backups.local_deleted':'Deleted a local archive','backups.changed':'Backups changed','credentials.mapping_saved':'Saved a credential mapping','credentials.mapping_deleted':'Deleted a credential mapping','docker.staged':'Staged a bundle','docker.restarted':'Restarted a bundle','docker.changed':'Containers changed','assistant.approval':'Decided a proposal','assistant.configured':'Configured the assistant','assistant.tool_calling_checked':'Checked tool calling','assistant.repair_settings_updated':'Updated repair settings','assistant.workflow_repaired':'Repaired a workflow','assistant.workflow_restored':'Restored a workflow','observability.price_override':'Overrode a price','observability.price_sync':'Synced prices','errors.resolved':'Resolved an error','errors.reopened':'Reopened an error'};
-// Audit targets are stored as IDs: an instance ID, or instance:workflow. Show the instance's name,
-// keep the stored value in the title.
-function auditTarget(value){
+// Audit targets are stored as IDs. Name their kind: backup runs and schedules,
+// instance workflows ("Workflow <id>", since names are not stored), or instance names.
+function auditTarget(value, action = ''){
   const raw=String(value??'');if(!raw)return '—';
+  if(action==='backups.run_completed')return el('span',{title:raw},`Backup run ${raw}`);
+  if(action==='backups.schedule_saved'||action==='backups.schedule_deleted')return el('span',{title:raw},`Backup schedule ${raw}`);
   const [head,...rest]=raw.split(':'),instance=state.instances.find(item=>item.id===head);
   if(!instance)return raw;
-  return el('span',{title:raw},rest.length?`${instance.name} · workflow ${rest.join(':')}`:instance.name);
+  return el('span',{title:raw},rest.length?`${instance.name} · Workflow ${rest[0]}`:instance.name);
 }
 function actionLabel(action){
   const raw=String(action??'');
@@ -70,6 +72,9 @@ export async function render(container){
   function preferenceFields(value,subhead=true){const theme=el('select',{},el('option',{value:'light'},'Light'),el('option',{value:'dark'},'Dark'),el('option',{value:'n8n'},'n8n inspired'));theme.value=value.theme;const size=el('input',{type:'number',min:10,max:100,value:value.page_size,required:true,class:'control-narrow'}),notifications=el('input',{type:'checkbox',checked:value.error_notifications});const display=[el('div',{class:'form-row'},field('Theme',theme),field('Rows per page',size,{hint:'Between 10 and 100.'})),field('Error notifications',notifications,{})];return {nodes:[...(subhead?[el('h3',{id:'settings-display',class:'settings-subhead',tabindex:-1},'Display')]:[]),...display],value:()=>({theme:theme.value,page_size:Number(size.value),error_notifications:notifications.checked})};}
   async function loadPreferences(){const fields=preferenceFields(await api('/api/admin/preferences',{signal}));const form=formCard({title:'Your preferences',description:'Only for you, on every device you sign in from. They override the system defaults.',body:fields.nodes,actions:[el('button',{type:'submit',class:'button'},icon('save'),'Save preferences')]});form.addEventListener('submit',e=>{e.preventDefault();act(async()=>{const result=await api('/api/admin/preferences',{method:'PUT',json:fields.value()});window.dispatchEvent(new CustomEvent('preferences-changed',{detail:result}));notice(messages,'Preferences saved.');});});groups.account.append(form);}
 
+  // Same words as the account menu: Administrator, Operator, Viewer.
+  const ROLE_LABELS={admin:'Administrator',operator:'Operator',viewer:'Viewer'};
+  const roleLabel=role=>ROLE_LABELS[role]||humanize(role);
   // Two-factor state: true/false once known (admin user list or this session's own actions), null when unavailable, undefined while checking.
   const password=el('input',{type:'password',autocomplete:'current-password','aria-label':'Current password'}),code=el('input',{autocomplete:'one-time-code','aria-label':'Authenticator or recovery code'}),factorResult=el('div'),factorStep=el('div',{class:'factor-step'});
   let factorEnabled=can('admin')?undefined:null,factorPending=false;
@@ -100,7 +105,11 @@ export async function render(container){
     else if(factorPending)step=[field('Authenticator or recovery code',code),el('div',{class:'toolbar'},confirmSetup('button'),button('Cancel setup',()=>{factorPending=false;code.value='';factorResult.replaceChildren();renderFactor();},'ghost'))];
     else if(factorEnabled===true)step=[el('p',{class:'muted'},'To turn it off, enter your current password and a code.'),field('Current password',password),field('Authenticator or recovery code',code),el('div',{class:'toolbar'},disableFactor())];
     else if(factorEnabled===false)step=[el('p',{class:'muted'},'Require an authenticator code in addition to your password when you sign in.'),field('Current password',password),el('div',{class:'toolbar'},startSetup('button'))];
-    else step=[field('Current password',password),field('Authenticator or recovery code',code),el('div',{class:'toolbar'},startSetup('ghost'),confirmSetup('button'),disableFactor())];
+    // Status unknown (non-admins never see the user list): only Start setup, with
+    // Confirm revealed after enrollment and Disable behind a disclosure.
+    else step=[el('p',{class:'muted'},'Require an authenticator code in addition to your password when you sign in.'),field('Current password',password),el('div',{class:'toolbar'},startSetup('button')),
+      el('details',{class:'form-disclosure'},el('summary',{},'Already turned on?'),
+        el('p',{class:'muted'},'If setup already finished, enter a code above to turn it off.'),field('Authenticator or recovery code',code),el('div',{class:'toolbar'},disableFactor()))];
     factorStep.replaceChildren(...step);
     factor.replaceChildren(el('div',{class:'form-card-head'},el('div',{class:'title-row'},el('h2',{},'Two-factor authentication'),badge)),el('div',{class:'form-card-body'},factorStep,factorResult));
   }
@@ -119,8 +128,8 @@ export async function render(container){
       ['Fixed by the environment',list(result.environment_locked_fields)],
     ].map(([label,value])=>[el('dt',{},label),el('dd',{},value)]));
   }
-  function userEditor(user,host,refresh){const username=el('input',{required:true,value:user?.username||'',pattern:'[A-Za-z0-9_.\-]+',readOnly:Boolean(user)}),password=el('input',{type:'password',minLength:14,maxLength:256,required:!user,autocomplete:'new-password'}),role=el('select',{},...['viewer','operator','admin'].map(r=>el('option',{value:r},r))),disabled=el('input',{type:'checkbox',checked:Boolean(user?.disabled)});role.value=user?.role||'viewer';const form=el('form',{class:'form user-editor'},el('div',{class:'form-row'},field('Username',username),field('Role',role)),field(user?'New password (optional)':'Password',password,{hint:'At least 14 characters.'}),...(user?[field('Disabled',disabled,{})]:[]),el('div',{class:'form-actions'},button('Cancel',()=>host.replaceChildren(),'ghost'),el('button',{type:'submit',class:'button'},'Save user')));form.addEventListener('submit',e=>{e.preventDefault();act(async()=>{const body={role:role.value};if(user)body.disabled=disabled.checked;else body.username=username.value;if(password.value)body.password=password.value;await api('/api/admin/users'+(user?'/'+encodeURIComponent(user.username):''),{method:user?'PATCH':'POST',json:body});password.value='';host.replaceChildren();await refresh();});});host.replaceChildren(form);}
-  async function loadUsers(){const section=el('section',{class:'card form-card'}),host=el('div'),rows=el('div');async function refresh(){const result=await api('/api/admin/users',{signal});rows.replaceChildren(table(['User','Role','Status','2FA',''],result.data.map(u=>[u.username,stateBadge('',u.role,u.role),u.disabled?el('span',{class:'badge warning'},icon('errors'),'Disabled'):el('span',{class:'badge success'},icon('check'),'Enabled'),u.totp_enabled?stateBadge('success','On'):stateBadge('','Off'),button('Edit',()=>userEditor(u,host,refresh),'ghost',{'aria-label':`Edit user ${u.username}`})])));
+  function userEditor(user,host,refresh){const username=el('input',{required:true,value:user?.username||'',pattern:'[A-Za-z0-9_.\-]+',readOnly:Boolean(user)}),password=el('input',{type:'password',minLength:14,maxLength:256,required:!user,autocomplete:'new-password'}),role=el('select',{},...['viewer','operator','admin'].map(r=>el('option',{value:r},roleLabel(r)))),disabled=el('input',{type:'checkbox',checked:Boolean(user?.disabled)});role.value=user?.role||'viewer';const form=el('form',{class:'form user-editor'},el('div',{class:'form-row'},field('Username',username),field('Role',role)),field(user?'New password (optional)':'Password',password,{hint:'At least 14 characters.'}),...(user?[field('Disabled',disabled,{})]:[]),el('div',{class:'form-actions'},button('Cancel',()=>host.replaceChildren(),'ghost'),el('button',{type:'submit',class:'button'},'Save user')));form.addEventListener('submit',e=>{e.preventDefault();act(async()=>{const body={role:role.value};if(user)body.disabled=disabled.checked;else body.username=username.value;if(password.value)body.password=password.value;await api('/api/admin/users'+(user?'/'+encodeURIComponent(user.username):''),{method:user?'PATCH':'POST',json:body});password.value='';host.replaceChildren();await refresh();});});host.replaceChildren(form);}
+  async function loadUsers(){const section=el('section',{class:'card form-card'}),host=el('div'),rows=el('div');async function refresh(){const result=await api('/api/admin/users',{signal});rows.replaceChildren(table(['User','Role','Status','2FA',''],result.data.map(u=>[u.username,stateBadge('',roleLabel(u.role),u.role),u.disabled?el('span',{class:'badge warning'},icon('errors'),'Disabled'):el('span',{class:'badge success'},icon('check'),'Enabled'),u.totp_enabled?stateBadge('success','On'):stateBadge('','Off'),button('Edit',()=>userEditor(u,host,refresh),'ghost',{'aria-label':`Edit user ${u.username}`})])));
     const me=result.data.find(u=>u.username===state.user?.username);
     if(me&&!factorPending&&factorEnabled!==Boolean(me.totp_enabled)){factorEnabled=Boolean(me.totp_enabled);renderFactor();}}
     section.append(el('div',{class:'form-card-head card-head-row'},el('h2',{},'Users'),button('Add user',()=>userEditor(null,host,refresh),'ghost')),el('div',{class:'form-card-body is-wide'},host,rows));await refresh();return section;}
@@ -139,7 +148,7 @@ export async function render(container){
       const result=await api('/api/admin/audit?limit=10'+(cursors[target]?'&before='+encodeURIComponent(cursors[target]):''),{signal});
       page=target;next=result.next_cursor??null;cursors[page+1]=next;
       rows.replaceChildren(result.data.length?table(['Time','Actor','Action','Target','Outcome'],result.data.map(r=>[when(r.occurred_at||r.created_at),r.actor,
-        el('span',{title:String(r.action??'')},actionLabel(r.action)),auditTarget(r.target),outcomeBadge(r.outcome)]),{className:'audit-table'})
+        el('span',{title:String(r.action??'')},actionLabel(r.action)),auditTarget(r.target,r.action),outcomeBadge(r.outcome)]),{className:'audit-table'})
         :empty('No audit events','Actions taken in Inference appear here.',[],'history'));
       const first=page*10+1;
       position.textContent=result.data.length?`Events ${first}–${first+result.data.length-1}`:'';
@@ -152,11 +161,12 @@ export async function render(container){
     // group's card before appending a fresh one; otherwise every save duplicates
     // the deployment, users and audit cards and their headings.
     for(const key of ['deployment','users','audit'])for(const node of [...groups[key].children])if(!node.matches('h2.settings-group-title'))node.remove();
-    groups.security.append(factor);
     const [policy,users,audit]=await Promise.all([loadPolicy(),loadUsers(),loadAudit()]);
     groups.deployment.append(policy);groups.users.append(users);groups.audit.append(audit);
   }
   container.append(heading('Settings','Your preferences, account protection and application administration.'),messages,nav,groups.account,groups.security);
+  // Two-factor belongs to everyone with an account, not only administrators.
+  groups.security.append(factor);
   if(can('admin'))container.append(groups.deployment,groups.users,groups.audit);
   const adminLoaded=can('admin')?act(loadAdmin).then(()=>{if(factorEnabled===undefined){factorEnabled=null;renderFactor();}}):null;
   await Promise.allSettled([act(loadPreferences),adminLoaded]);return()=>{controller.abort();password.value='';code.value='';factorResult.replaceChildren();};

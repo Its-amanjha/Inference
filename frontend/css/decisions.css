@@ -60,13 +60,15 @@
 .fleet-metric-cell .metric-number { font-family:var(--font-display); font-weight:600; color:var(--color-ink-black); font-size:26px; line-height:1.2; margin:0; letter-spacing:-.03em; font-variant-numeric:tabular-nums; }
 .fleet-metric-cell.metric-operational .metric-number { color:#006c43; }
 .fleet-metric-cell.metric-degraded .metric-number { color:#815000; }
-.fleet-metric-cell.metric-unreachable .metric-number { color:#a80b30; }
+.fleet-metric-cell.metric-unreachable .metric-number:not(.is-zero) { color:#a80b30; }
 [data-theme=dark] .fleet-metric-cell.metric-operational .metric-number,
 [data-theme=n8n] .fleet-metric-cell.metric-operational .metric-number { color:#91e5bc; }
 [data-theme=dark] .fleet-metric-cell.metric-degraded .metric-number,
 [data-theme=n8n] .fleet-metric-cell.metric-degraded .metric-number { color:#f4d18a; }
-[data-theme=dark] .fleet-metric-cell.metric-unreachable .metric-number,
-[data-theme=n8n] .fleet-metric-cell.metric-unreachable .metric-number { color:#ffafc1; }
+[data-theme=dark] .fleet-metric-cell.metric-unreachable .metric-number:not(.is-zero),
+[data-theme=n8n] .fleet-metric-cell.metric-unreachable .metric-number:not(.is-zero) { color:#ffafc1; }
+/* A number that could not be counted reads as plain secondary text, never as zero. */
+.metric-number.is-missing { font-size:14px; font-weight:500; color:var(--color-smoke); }
 
 .fleet-toolbar { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px; }
 .fleet-filter-group { display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
@@ -111,9 +113,9 @@
 .observe-metric-cell { background:var(--surface-card-surface); border:1px solid var(--border); border-radius:14px; padding:14px 16px; display:flex; flex-direction:column; gap:4px; }
 .observe-metric-cell h3 { font-family:var(--font-body); font-size:13px; font-weight:500; line-height:1.35; margin:0; color:var(--color-smoke); }
 .observe-metric-cell .metric-number { font-family:var(--font-display); font-weight:600; color:var(--color-ink-black); font-size:26px; line-height:1.2; margin:0; letter-spacing:-.03em; font-variant-numeric:tabular-nums; }
-.observe-metric-cell.metric-error .metric-number { color:#a80b30; }
-[data-theme=dark] .observe-metric-cell.metric-error .metric-number,
-[data-theme=n8n] .observe-metric-cell.metric-error .metric-number { color:#ffafc1; }
+.observe-metric-cell.metric-error .metric-number:not(.is-zero) { color:#a80b30; }
+[data-theme=dark] .observe-metric-cell.metric-error .metric-number:not(.is-zero),
+[data-theme=n8n] .observe-metric-cell.metric-error .metric-number:not(.is-zero) { color:#ffafc1; }
 
 .observe-toolbar { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; }
 .observe-filter-group { display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
@@ -126,18 +128,12 @@
 .observe-waterfall-title h2 { font-size:20px; margin:0; }
 .observe-ai-strip { display:flex; flex-wrap:wrap; align-items:center; gap:12px 20px; padding:12px 16px; background:var(--color-ash-mist); border-radius:12px; margin:12px 0 16px; font-size:13px; }
 .observe-ai-stat { display:flex; flex-direction:column; gap:2px; }
-.observe-ai-stat .stat-label { font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--color-smoke); }
+.observe-ai-stat .stat-label { font-size:12px; color:var(--color-smoke); }
 .observe-ai-stat .stat-value { font-weight:600; color:var(--color-ink-black); }
 
 /* Waterfall ruler & track */
-.waterfall-ruler-wrap { position:relative; height:24px; margin:16px 0 8px; border-bottom:1px solid var(--border); font-size:11px; font-variant-numeric:tabular-nums; color:var(--color-smoke); }
+.waterfall-ruler-wrap { position:relative; height:24px; margin:16px 0 8px; border-bottom:1px solid var(--border); font-size:12px; font-variant-numeric:tabular-nums; color:var(--color-smoke); }
 .waterfall-ruler-ticks { display:flex; justify-content:space-between; position:relative; width:100%; }
-.waterfall-span-row { display:flex; flex-direction:column; gap:6px; padding:10px 0; border-bottom:1px solid var(--border); }
-.waterfall-span-row:last-child { border-bottom:none; }
-.waterfall-span-row.is-failed { background:rgba(194, 28, 69, 0.04); }
-.waterfall-span-header { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
-.waterfall-span-summary { display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; color:var(--color-ink-black); }
-.waterfall-span-details { margin-top:8px; padding:12px; border-radius:10px; background:var(--color-ash-mist); font-size:12px; }
 /* One span per compact row: name left, time bar right. Details open below on demand. */
 .waterfall-span { border-radius:6px; }
 .waterfall-span:hover,.waterfall-span[open] { background:var(--color-ash-mist); }
@@ -162,7 +158,10 @@
 [data-theme=n8n] .span-failed { color:#ffafc1; }
 
 .span-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:8px; }
-.span-actions .button { min-height:28px; font-size:11px; padding:0 8px; }
+.span-actions .button { min-height:28px; font-size:12px; padding:0 8px; }
+@media(max-width:700px) {
+  .trace-id-line .button, .span-actions .button { min-height:44px; }
+}
 
 /* Fleet health card: numbers first, API access as inline chips, one quiet "last checked" line. */
 .instance-card .instance-body { gap:16px; }

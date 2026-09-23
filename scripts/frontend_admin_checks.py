@@ -23,7 +23,7 @@ def exercise_admin(page):
     row.get_by_role('button', name='Edit user browser_viewer', exact=True).click()
     page.get_by_label('Role', exact=True).select_option('operator')
     page.get_by_role('button', name='Save user', exact=True).click()
-    expect(row.get_by_role('cell', name='operator', exact=True)).to_have_count(1)
+    expect(row.get_by_role('cell', name='Operator', exact=True)).to_have_count(1)
     preferences = page.locator('section').filter(has=page.get_by_role('heading', name='Your preferences', exact=True))
     preferences.get_by_label('Rows per page', exact=True).fill('10')
     preferences.get_by_label('Error notifications', exact=True).uncheck()
@@ -77,7 +77,7 @@ def exercise_admin(page):
         page.get_by_role('button', name='Run backup now: Browser recovery copy', exact=True).click()
     assert run.value.status == 200, run.value.text()
     assert run.value.json()['status'] == 'succeeded', run.value.text()
-    page.get_by_text('Backup outcome: succeeded', exact=True).wait_for()
+    page.get_by_text('Backup outcome: Succeeded.', exact=True).wait_for()
     run = page.get_by_role('row').filter(has=page.get_by_role('cell', name='Succeeded', exact=True))
     expect(run.get_by_role('button', name=re.compile(r'^Download backup from '))).to_have_count(1)
     with page.expect_download() as downloaded:

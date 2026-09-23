@@ -13,6 +13,18 @@ function bundleBadge(status){
   return stateBadge(kind,label,status);
 }
 
+// One short sentence from the response fields: name, status, version, stage and
+// any diagnostic. Raw payloads never reach the screen.
+function bundleSentence(result, name){
+  if(!result||typeof result!=='object')return 'The bundle record could not be read.';
+  const label=result.name||name||result.id||'bundle';
+  const status=(BUNDLE_STATES[result.status]?.[1]||humanize(result.status||'unknown')).toLowerCase();
+  const version=result.version?` · n8n ${result.version}`:'';
+  const stage=result.stage?` · ${humanize(String(result.stage)).toLowerCase()}`:'';
+  const diagnostic=typeof result.diagnostic==='string'&&result.diagnostic?` · ${result.diagnostic}`:'';
+  return `Bundle ${label} is ${status}${version}${stage}${diagnostic}.`;
+}
+
 function dockerStatus(value){
   const lines=[];
   for(const [key,item] of Object.entries(value&&typeof value==='object'?value:{})){
@@ -30,7 +42,7 @@ export async function render(container){
   const controller=new AbortController(),signal=controller.signal,messages=el('div'),list=el('div',{class:'grid'}),editor=el('div'),service=el('div');
   const results=new Map();
   let engineAvailable=true;
-  const provisionButton=button('Provision bundle',provision);
+  const provisionButton=button('Provision bundle',provision,'ghost');
   let writing=false;
   const api=async(path,options={})=>{
     if(signal.aborted)throw new DOMException('View closed','AbortError');
@@ -42,8 +54,8 @@ export async function render(container){
   const act=async fn=>{try{await fn();}catch(e){if(!signal.aborted)notice(messages,e);}};
   function emptyInventory(){
     return engineAvailable
-      ? empty('No owned bundles','Provision a matching n8n and task runner pair. Existing host containers remain outside this inventory.',[button('Provision your first bundle',provision)])
-      : empty('No owned bundles','Remote n8n connections are managed in Instances. This inventory only lists Docker bundles created by Inference.',[el('a',{class:'button ghost',href:'#instances'},'Open instances')]);
+      ? empty('No owned bundles','Provision a matching n8n and task runner pair. Existing host containers remain outside this inventory.',[button('Provision your first bundle',provision)],'containers')
+      : empty('No owned bundles','Remote n8n connections are managed in Instances. This inventory only lists Docker bundles created by Inference.',[el('a',{class:'button ghost',href:'#instances'},'Open instances')],'containers');
   }
   async function checkEngine(){
     try{
@@ -65,9 +77,9 @@ export async function render(container){
   }
   async function load(){const result=await api('/api/docker_mgr/bundles',{signal});list.replaceChildren();for(const item of result.data){
     const detail=el('div'),id=encodeURIComponent(item.id),name=item.name||item.id,base='/api/docker_mgr/bundles/'+id;
-    if(results.has(item.id))detail.append(jsonView(results.get(item.id)));
+    if(results.has(item.id))detail.append(el('p',{role:'status'},results.get(item.id)));
     // Operations reload the inventory so status and the offered actions stay current, even after a failure.
-    const operate=async(path,options)=>{try{results.set(item.id,await api(path,options));}finally{await load().catch(()=>{});}};
+    const operate=async(path,options)=>{try{results.set(item.id,bundleSentence(await api(path,options),name));}finally{await load().catch(()=>{});}};
     const lifecycle=(action,className)=>button(action==='start'?'Start':'Stop',()=>act(async()=>{
       const ok=await confirmAction(action==='start'
         ?{title:'Start bundle',target:name,consequence:'Starts the n8n and task runner containers and waits for them to report healthy.',confirmLabel:'Start bundle'}
@@ -85,11 +97,11 @@ export async function render(container){
       results.delete(item.id);
       try{await api(base+'?purge_data=true',{method:'DELETE'});}finally{await load().catch(()=>{});}
     }),'danger',{'aria-label':`Purge data of bundle ${name}`});
-    const inspect=button('Inspect',()=>act(async()=>{detail.replaceChildren(jsonView(await api(base)));}),'ghost',{'aria-label':`Inspect bundle ${name}`});
+    const inspect=button('Inspect',()=>act(async()=>{detail.replaceChildren(el('p',{role:'status'},bundleSentence(await api(base),name)));}),'ghost',{'aria-label':`Inspect bundle ${name}`});
     const primary=[],more=[];
     if(item.status==='ready'){primary.push(lifecycle('stop','button'));more.push(reconcile('ghost'));}
     else if(item.status==='stopped'){primary.push(lifecycle('start','button'));more.push(reconcile('ghost'));}
-    else{primary.push(reconcile('button'));more.push(lifecycle('start','ghost'),lifecycle('stop','ghost'));}
+    else{more.push(reconcile('ghost'),lifecycle('start','ghost'),lifecycle('stop','ghost'));}
     const actions=el('div',{class:'toolbar'},primary,inspect,actionMenu([...more,remove,purge],`More actions for ${name}`));
     list.append(el('section',{class:'card stack'},el('div',{class:'title-row'},el('h2',{},name),bundleBadge(item.status)),item.version?el('p',{class:'muted'},'n8n '+item.version):null,actions,detail));}
     if(!result.data.length)list.append(emptyInventory());}
@@ -103,12 +115,14 @@ export async function render(container){
     const inputs={},fields={};
     for(const [key,label,type,value,hint] of specs){inputs[key]=el('input',{type,value,required:true,autocomplete:'off'});fields[key]=field(label,inputs[key],{hint});}
     const result=el('div');const submit=el('button',{type:'submit',class:'button'},'Provision bundle');
+    const closeForm=()=>{editor.replaceChildren();provisionButton.hidden=false;};
     const form=formCard({title:'Provision n8n + runners',description:'Creates a matching n8n and task runner pair owned by this installation.',
       body:[el('fieldset',{class:'form-group'},el('legend',{},'Container'),el('div',{class:'form-row'},fields.name,fields.version)),
         el('fieldset',{class:'form-group'},el('legend',{},'Network'),el('div',{class:'form-row'},fields.port,fields.bind_host),fields.instance_url,fields.exporter_base_url,result)],
       note:'Downloads matching images and creates a persistent data volume. Complete n8n owner setup and add its API key in Instances afterwards.',
-      actions:[button('Cancel',()=>editor.replaceChildren(),'ghost'),submit]});
-    let request=null;form.addEventListener('input',()=>{request=null;});form.addEventListener('submit',e=>{e.preventDefault();act(async()=>{if(!request){if(!await confirmAction({title:'Create n8n bundle',target:inputs.name.value,consequence:`Downloads the n8n and task runner ${inputs.version.value} images, then creates the containers, a network and a persistent data volume published on ${inputs.bind_host.value}:${inputs.port.value}.`,confirmLabel:'Create bundle'}))return;request={spec:{name:inputs.name.value,version:inputs.version.value,port:Number(inputs.port.value),bind_host:inputs.bind_host.value,exporter_base_url:inputs.exporter_base_url.value},instance_url:inputs.instance_url.value,idempotency_key:crypto.randomUUID(),readiness_timeout:90};}submit.disabled=true;try{result.replaceChildren(jsonView(await api('/api/docker_mgr/bundles',{method:'POST',json:request})));await load();window.dispatchEvent(new Event('instances-changed'));}finally{submit.disabled=false;}});});editor.replaceChildren(form);}
+      actions:[button('Cancel',closeForm,'ghost'),submit]});
+    provisionButton.hidden=true;
+    let request=null;form.addEventListener('input',()=>{request=null;});form.addEventListener('submit',e=>{e.preventDefault();act(async()=>{if(!request){if(!await confirmAction({title:'Create n8n bundle',target:inputs.name.value,consequence:`Downloads the n8n and task runner ${inputs.version.value} images, then creates the containers, a network and a persistent data volume published on ${inputs.bind_host.value}:${inputs.port.value}.`,confirmLabel:'Create bundle'}))return;request={spec:{name:inputs.name.value,version:inputs.version.value,port:Number(inputs.port.value),bind_host:inputs.bind_host.value,exporter_base_url:inputs.exporter_base_url.value},instance_url:inputs.instance_url.value,idempotency_key:crypto.randomUUID(),readiness_timeout:90};}submit.disabled=true;try{const created=await api('/api/docker_mgr/bundles',{method:'POST',json:request});result.replaceChildren(el('p',{role:'status'},bundleSentence(created,inputs.name.value)));await load();window.dispatchEvent(new Event('instances-changed'));}finally{submit.disabled=false;}});});editor.replaceChildren(form);}
   container.append(heading('Containers','Provision and manage bundles owned by this Inference installation.'),messages,service,el('div',{class:'toolbar'},provisionButton,button('Refresh',refresh,'ghost')),editor,list);
   await refresh();return()=>controller.abort();
 }

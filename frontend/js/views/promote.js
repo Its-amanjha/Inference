@@ -15,8 +15,8 @@ function findingText(item){
   const node=item?.node?` in node ${quoted(item.node)}`:'';
   const errorWorkflow=item?.path==='settings.errorWorkflow';
   switch(item?.code){
-    case 'credential_mapping_required':return [`Credential ${quoted(item.name||item.id)}${item.type?` (${item.type})`:''}${node} has no target credential mapping.`,'Add a credential mapping or a vault reference under Credential and subworkflow mappings.'];
-    case 'workflow_mapping_required':return [errorWorkflow?`Error workflow ${item.id} has no target workflow mapping.`:`Subworkflow ${item.id}${node} has no target workflow mapping.`,'Add a subworkflow ID mapping.'];
+    case 'credential_mapping_required':return [`Credential ${quoted(item.name||item.id)}${item.type?` (${item.type})`:''}${node} has no target credential mapping.`,'Add a mapping below under Credential mappings, or a vault reference such as $SERVICE_KEY.'];
+    case 'workflow_mapping_required':return [errorWorkflow?`Error workflow ${item.id} has no target workflow mapping.`:`Subworkflow ${item.name?`${quoted(item.name)} (${item.id})`:item.id}${node} has no target workflow mapping.`,'Add a subworkflow ID mapping.'];
     case 'unsupported_workflow_reference':return [errorWorkflow?'The error workflow setting uses a dynamic or unsupported reference.':`A workflow reference${node}${item.path?` at ${item.path}`:''} is dynamic or unsupported.`,'Dynamic references cannot be mapped automatically.'];
     case 'target_active':return ['The target workflow is not confirmed inactive.',item.message||''];
     case 'duplicate_node_name':return [`More than one node is named ${quoted(item.node)}.`,''];
@@ -32,8 +32,8 @@ function mappedText(item){
     const subject=`Credential ${quoted(item.name||item.id)}${item.type?` (${item.type})`:''}${node}`;
     return String(item.target_id).startsWith('pending-')?`${subject} will be created on the target from its vault reference.`:`${subject} maps to target credential ${item.target_id}.`;
   }
-  if(item?.path==='settings.errorWorkflow')return `Error workflow ${item.id} maps to target workflow ${item.target_id}.`;
-  return `Subworkflow ${item?.id}${node} maps to target workflow ${item?.target_id}.`;
+  if(item?.path==='settings.errorWorkflow')return `Error workflow ${item.name?`${quoted(item.name)} (${item.id})`:item.id} maps to target workflow ${item.target_id}.`;
+  return `Subworkflow ${item?.name?`${quoted(item.name)} (${item?.id})`:item?.id}${node} maps to target workflow ${item?.target_id}.`;
 }
 function itemRow(glyph,text,hint=''){
   return el('li',{},icon(glyph),el('span',{},text,hint?el('span',{className:'decision-hint'},hint):null));
@@ -129,7 +129,7 @@ function updateJsonText(rawText,key,newValue){
 
 export async function render(container){
   const controller=new AbortController();container.append(heading('Promote workflows','Preview exact changes, deploy inactive, then activate separately.'));
-  if(!can('operator')){container.append(empty('Operator access required','Ask an administrator for permission to promote workflows.'));return()=>controller.abort();}
+  if(!can('operator')){container.append(empty('Operator access required','Ask an administrator for permission to promote workflows.',[],'promote'));return()=>controller.abort();}
   const route=new URLSearchParams(location.hash.split('?')[1]||'');
   const source=el('select'),target=el('select');
   const previewBody=el('div',{className:'stack'});
@@ -137,6 +137,16 @@ export async function render(container){
   const history=el('section',{className:'card stack'}),messages=el('div');
   let preview=null,previewContext=null,key=null,version=0;
   const runContext=new Map();
+
+  // Promotion copies between two instances: with fewer than two, no target
+  // exists and preflight can only fail.
+  if(state.instances.length<2){
+    container.append(empty('Connect a second instance to promote','Promotion copies a workflow from one instance to another. Connect both first.',
+      can('admin')?[el('a',{class:'button ghost',href:'#instances'},'Open instances')]:[],'promote'),
+      messages,history);
+    await runs();
+    return()=>controller.abort();
+  }
 
   for(const item of state.instances){
     source.append(el('option',{value:item.id},item.name||item.id));
@@ -154,7 +164,7 @@ export async function render(container){
   const activeSubflowPickers=new Map();
 
   function invalidate(){activeCredPickers.clear();activeSubflowPickers.clear();mappingBox.replaceChildren();resetPreview();}
-  function resetPreview(){version++;preview=null;previewContext=null;deploy.disabled=true;previewBody.replaceChildren(el('p',{className:'muted'},'Run preflight to review a fresh source and target snapshot.'));}
+  function resetPreview(){version++;preview=null;previewContext=null;deploy.disabled=true;previewBody.replaceChildren(el('p',{className:'muted'},'Check changes to review a fresh source and target snapshot.'));}
 
   // Source workflow combobox
   const workflowPicker=createIdPicker({
@@ -196,7 +206,7 @@ export async function render(container){
     deploy.disabled=true;
     try{const result=await api('/api/n8n_promote/deploy',{method:'POST',json:{preview_id:preview.preview_id,idempotency_key:key}});runContext.set(result.id,context);previewBody.append(el('h3',{},'Deployment result'),runCard(result));preview=null;await runs();}
     catch(error){notice(messages,error);previewBody.append(el('p',{className:'muted'},'Check run history before creating another preview. A remote write may have completed.'));await runs();}
-  });deploy.disabled=true;
+  },'ghost');deploy.disabled=true;
 
   const mappingBox=el('div',{className:'mapping-box'});
 
@@ -223,8 +233,8 @@ export async function render(container){
     const displayName=item.name||item.id;
     const picker=createIdPicker({
       label:`Target credential for “${displayName}”`,
-      placeholder:'Type a name, paste ID, or $VAULT_REF',
-      hint:'Existing target credentials or $VAULT_REFERENCE.',
+      placeholder:'Type a name, paste an ID, or a $VAULT_REF',
+      hint:'Pick an existing target credential, or type a vault reference such as $SERVICE_KEY. The secret stays encrypted.',
       clearAriaLabel:`Clear target credential for “${displayName}”`,
       clearable:true,
       load:async signal=>{
@@ -405,7 +415,7 @@ export async function render(container){
       el('p',{className:'muted'},'Preview expires after 15 minutes. Source and target are checked again before deployment.'),deploy].filter(Boolean));
   }
 
-  const preflight=button('Review preflight',async()=>{
+  const preflight=button('Check changes',async()=>{
     messages.replaceChildren();
     // Client-side validation: catch errors in form before sending request
     if(!source.value||!target.value){
@@ -519,14 +529,14 @@ export async function render(container){
     if(run.status==='rejected')card.append(el('p',{className:'muted'},'Next step: run preflight again to create a fresh preview.'));
     if(recovery.includes('new_preview_with_explicit_mappings'))card.append(el('p',{className:'muted'},'Next step: reconcile, then create a new preview with explicit mappings for any retained credentials.'));
     const controls=el('div',{className:'actions'});
-    for(const action of recovery){if(!['activate','restore','reconcile'].includes(action))continue;const label=action==='activate'?'Activate with binding checks':action==='restore'?'Restore previous workflow':'Reconcile actual state';const control=button(label,async()=>{
+    for(const action of recovery){if(!['activate','restore','reconcile'].includes(action))continue;const label=action==='activate'?'Activate with binding checks':action==='restore'?'Restore previous workflow':'Check target state';const control=button(label,async()=>{
       if(action==='activate'&&!await confirmAction({title:'Activate workflow',target:`${context?context.workflowLabel:'The deployed workflow'} on ${targetName}`,
         consequence:'The target snapshot and credential bindings are checked first. Once activated, the workflow runs on its own triggers.',confirmLabel:'Activate workflow'}))return;
       if(action==='restore'&&!await confirmAction({title:'Restore previous workflow',target:targetName,
         consequence:'The previous inactive workflow is written back. Newly created workflows and credentials are not deleted.',confirmLabel:'Restore workflow'}))return;
       let body;
       if(action==='reconcile'){
-        const value=await askText({title:'Reconcile actual state',label:'Known created workflow ID',
+        const value=await askText({title:'Check target state',label:'Known created workflow ID',
           description:'Leave this empty if the run already recorded a target workflow.',value:run.target_workflow_id||'',confirmLabel:'Reconcile'});
         if(value===null)return;
         body=value?{target_workflow_id:value}:{};
@@ -542,7 +552,7 @@ export async function render(container){
     try{
       const result=await api('/api/n8n_promote/runs',{signal:controller.signal});
       history.replaceChildren(el('h2',{className:'wizard-step'},'3. Deployment history'),button('Refresh runs',runs,'button ghost'),...result.data.map(runCard));
-      if(!result.data.length)history.append(empty('No promotions yet','Your deployment results and recovery actions will appear here.',[button('Start a promotion',()=>{source.scrollIntoView();source.focus({preventScroll:true});},'ghost')]));
+      if(!result.data.length)history.append(empty('No promotions yet','Your deployment results and recovery actions will appear here.',[button('Start a promotion',()=>{source.scrollIntoView();source.focus({preventScroll:true});},'ghost')],'promote'));
     }catch(error){
       if(!controller.signal.aborted)notice(history,error);
     }
