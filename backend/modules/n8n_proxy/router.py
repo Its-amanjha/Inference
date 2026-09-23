@@ -91,8 +91,35 @@ def check_literal_destination(request: Request,url: str) -> None:
         fail(422,'destination_blocked','Destination is blocked. Configure an explicit private-network allowlist if needed.')
 
 
-def instance_view(row: dict[str,Any]) -> dict[str,Any]:
-    return {**{key:row[key] for key in ('id','name','url','is_active','created_at')},'api_key_configured':bool(row['api_key_enc'])}
+def instance_view(row: dict[str,Any],last_probe: dict[str,Any] | None=None) -> dict[str,Any]:
+    return {**{key:row[key] for key in ('id','name','url','is_active','created_at')},'api_key_configured':bool(row['api_key_enc']),
+            'last_probe':last_probe}
+
+
+PROBE_FIELDS=('reachable','checked_at','latency_ms','capabilities','diagnostics')
+
+
+async def saved_probes(db: Any,instance_ids: list[str]) -> dict[str,dict[str,Any]]:
+    """The last connection check of each instance, as stored by a probe or a fleet health scan, so every
+    page shows the same reachability. A check is removed whenever the instance's URL or key changes."""
+    if not instance_ids:
+        return {}
+    keys=[f'instance_probe:{identifier}' for identifier in instance_ids]
+    rows=await db.fetchall(f"SELECT key,value_json FROM documents WHERE key IN ({','.join('?'*len(keys))})",tuple(keys))
+    result={}
+    for row in rows:
+        try:
+            value=json.loads(row['value_json'])
+        except ValueError:
+            continue
+        if isinstance(value,dict) and isinstance(value.get('reachable'),bool) and isinstance(value.get('checked_at'),str):
+            result[row['key'].split(':',1)[1]]={key:value.get(key) for key in PROBE_FIELDS}
+    return result
+
+
+async def save_probe(tx: Any,instance_id: str,result: dict[str,Any]) -> None:
+    await tx.execute("INSERT INTO documents(key,value_json) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=datetime('now')",
+                     (f'instance_probe:{instance_id}',json.dumps({'instance_id':instance_id,**{key:result.get(key) for key in PROBE_FIELDS}})))
 
 
 async def instance_row(request: Request,instance_id: str,tx: Any=None) -> dict[str,Any]:
@@ -106,7 +133,8 @@ async def instance_row(request: Request,instance_id: str,tx: Any=None) -> dict[s
 async def instances(request: Request) -> dict[str,Any]:
     require_role(request,'viewer')
     rows=await request.app.state.db.fetchall('SELECT * FROM instances ORDER BY name,id')
-    return {'data':[instance_view(row) for row in rows]}
+    probes=await saved_probes(request.app.state.db,[row['id'] for row in rows])
+    return {'data':[instance_view(row,probes.get(row['id'])) for row in rows]}
 
 
 @router.post('/instances')
@@ -126,7 +154,8 @@ async def create_instance(body: InstanceCreate,request: Request) -> dict[str,Any
 @router.get('/instances/{instance_id}')
 async def get_instance(instance_id: str,request: Request) -> dict[str,Any]:
     require_role(request,'viewer')
-    return instance_view(await instance_row(request,instance_id))
+    probes=await saved_probes(request.app.state.db,[instance_id])
+    return instance_view(await instance_row(request,instance_id),probes.get(instance_id))
 
 
 @router.patch('/instances/{instance_id}')
@@ -230,7 +259,7 @@ async def probe(instance_id: str,request: Request) -> dict[str,Any]:
         async with request.app.state.db.transaction() as tx:
             await require_current_role(request,'admin',tx)
             ensure_same_connection(snapshot,await instance_row(request,instance_id,tx))
-            await tx.execute("INSERT INTO documents(key,value_json) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=datetime('now')",(f'instance_probe:{instance_id}',json.dumps(result)))
+            await save_probe(tx,instance_id,result)
     await audit.record(request,'fleet.instance_probed',instance_id,{'reachable':result['reachable']})
     return result
 
@@ -240,7 +269,7 @@ async def health(request: Request) -> dict[str,Any]:
     actor=require_role(request,'viewer')
     if not request.app.state.limiter.hit(f"fleet_health:{actor['username']}",limit=4,window=60):
         fail(429,'rate_limited','Wait before refreshing fleet health.')
-    rows=await request.app.state.db.fetchall('SELECT id,name FROM instances ORDER BY name,id')
+    rows=await request.app.state.db.fetchall('SELECT id,name,url,api_key_enc FROM instances ORDER BY name,id')
     # Five fixed workers bound task count and outbound fan-out even for large fleets.
     pending=iter(rows)
     results=[]
@@ -263,6 +292,16 @@ async def health(request: Request) -> dict[str,Any]:
         for task in workers:
             task.cancel()
         await asyncio.gather(*workers,return_exceptions=True)
+    # Completed checks are saved like a probe's, unless the connection changed while they ran.
+    before={row['id']:row for row in rows}
+    async with request.app.state.db.transaction() as tx:
+        for result in results:
+            if 'checked_at' not in result:
+                continue
+            current=await tx.fetchone('SELECT url,api_key_enc FROM instances WHERE id=?',(result['instance_id'],))
+            snapshot=before[result['instance_id']]
+            if current and current['url']==snapshot['url'] and current['api_key_enc']==snapshot['api_key_enc']:
+                await save_probe(tx,result['instance_id'],result)
     return {'data':sorted(results,key=lambda row:(row['name'],row['instance_id']))}
 
 

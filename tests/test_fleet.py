@@ -149,6 +149,12 @@ async def test_probe_records_only_read_capabilities_and_reports_partial_access(f
     assert r.json()['reachable'] is True
     assert all(call.method=='GET' for call in fleet.calls)
     assert await fleet.app.state.db.fetchone('SELECT key FROM documents WHERE key=?',(f'instance_probe:{instance}',))
+    # Every page reads the same saved check with the instance, not a per-browser copy.
+    listed=(await fleet.client.get('/api/n8n_proxy/instances')).json()['data'][0]['last_probe']
+    single=(await fleet.client.get(f'/api/n8n_proxy/instances/{instance}')).json()['last_probe']
+    assert listed==single
+    assert listed['reachable'] is True and listed['checked_at']==r.json()['checked_at']
+    assert listed['capabilities']=={'workflow_read':'supported','execution_read':'forbidden'}
 
 
 async def test_mutations_and_execution_details_target_exact_instance_and_are_audited(fleet):
@@ -202,6 +208,10 @@ async def test_fleet_health_keeps_healthy_instances_when_one_fails(fleet):
     assert r.status_code==200,r.text
     states={item['instance_id']:item['reachable'] for item in r.json()['data']}
     assert states=={alpha:True,beta:False}
+    # The scan's checks are saved like a probe's, so the instance list agrees with Fleet health.
+    listed=(await fleet.client.get('/api/n8n_proxy/instances')).json()
+    assert {item['id']:item['last_probe']['reachable'] for item in listed['data']}=={alpha:True,beta:False}
+    assert 'beta-secret-key' not in str(listed)
 
 
 async def test_probe_does_not_save_results_for_changed_connection(fleet,monkeypatch):

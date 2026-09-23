@@ -38,8 +38,8 @@ export function loadFailure(error,retry,label='Could not refresh data'){
       button('Retry',retry,'ghost')));
 }
 
-// Only connection-check metadata is cached, per signed-in user and browser tab.
-// The backend's persisted probe has no read endpoint; never infer health from a saved URL.
+// Only connection-check metadata is cached, per signed-in user and browser tab. The server also returns
+// each instance's last saved check (last_probe); the newer of the two wins. Never infer health from a URL.
 function probeCache(){
   const user=state.user?.username;
   if(!user)return {key:null,rows:{}};
@@ -52,8 +52,12 @@ function probeCache(){
 }
 export function cachedProbe(instance){
   const entry=probeCache().rows[instance.id];
-  return entry?.url===instance.url && typeof entry.result?.reachable==='boolean'
+  const local=entry?.url===instance.url && typeof entry.result?.reachable==='boolean'
     && parseTimestamp(entry.result.checked_at)?entry.result:null;
+  const saved=instance.last_probe;
+  const server=saved&&typeof saved.reachable==='boolean'&&parseTimestamp(saved.checked_at)?{instance_id:instance.id,...saved}:null;
+  if(!local||!server)return local||server;
+  return parseTimestamp(server.checked_at)>parseTimestamp(local.checked_at)?server:local;
 }
 export function rememberProbe(instance,result){
   const {key,rows}=probeCache();if(!key)return;
