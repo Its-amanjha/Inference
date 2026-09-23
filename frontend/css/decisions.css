@@ -98,6 +98,10 @@
 /* Waterfall ruler & track */
 .waterfall-ruler-wrap { position:relative; height:24px; margin:16px 0 8px; border-bottom:1px solid var(--border); font-size:12px; font-variant-numeric:tabular-nums; color:var(--color-smoke); }
 .waterfall-ruler-ticks { display:flex; justify-content:space-between; position:relative; width:100%; }
+/* The trace's root span names the whole run: one header bar, not an expandable step. */
+.waterfall-root { display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; gap:4px 12px; margin:16px 0 8px; padding:8px 12px; border-radius:8px; background:var(--color-ash-mist); font-size:13px; }
+.waterfall-root>.waterfall-node { font-weight:600; color:var(--color-ink-black); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.waterfall-root>.waterfall-meta { flex:none; color:var(--color-smoke); font-variant-numeric:tabular-nums; }
 /* One span per compact row: name left, time bar right. Details open below on demand. */
 .waterfall-span { border-radius:6px; }
 .waterfall-span:hover,.waterfall-span[open] { background:var(--color-ash-mist); }

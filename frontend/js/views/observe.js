@@ -6,6 +6,7 @@ import {loadingState,loadFailure,asOf} from '../lib/payload.js';
 import {instanceName,relativeLabel,n8nUrl,repairHref} from '../lib/triage.js';
 import {openPeek,peekFacts,peekSection,peekCopy,closePeek} from '../lib/peek.js';
 import {rowMenu} from '../lib/row-menu.js';
+import {segmented} from '../lib/select-menu.js';
 
 registerIcons({
   'span-failed':'M12 3 2 20h20L12 3z M12 10v4 M12 17h.01',
@@ -66,11 +67,15 @@ export async function render(container) {
   const next = button('Older traces', () => load(cursor), 'button ghost');
   next.hidden = true;
 
-  const filterAllBtn = button('All traces', () => setFilter('all'), 'ghost observe-filter-btn', {'aria-pressed': 'true'});
-  const filterErrorsBtn = button('Errors only', () => setFilter('errors'), 'ghost observe-filter-btn', {'aria-pressed': 'false'});
-  const filterGroup = el('div', {class: 'observe-filter-group'}, filterAllBtn, filterErrorsBtn);
+  // Two choices that switch often sit side by side, like the Errors status filter.
+  const traceFilter = segmented({label: 'Trace filter', options: [
+    {value: 'all', label: 'All traces', glyph: 'observe'},
+    {value: 'errors', label: 'Errors only', glyph: 'errors'},
+  ], value: 'all', onChange: (next) => setFilter(next)});
 
-  const toolbar = el('div', {class: 'observe-toolbar'}, filterGroup, refresh);
+  // Filters stay out of the way until the first successful read finds traces.
+  const toolbar = el('div', {class: 'observe-toolbar'}, traceFilter.node, refresh);
+  toolbar.hidden = true;
 
   container.append(
     heading('Observability', 'Runs of your workflows, and what the AI steps cost.'),
@@ -84,8 +89,7 @@ export async function render(container) {
 
   function setFilter(filter) {
     currentFilter = filter;
-    filterAllBtn.setAttribute('aria-pressed', String(filter === 'all'));
-    filterErrorsBtn.setAttribute('aria-pressed', String(filter === 'errors'));
+    traceFilter.value = filter;
 
     if (tracesTable) {
       const filtered = currentFilter === 'errors'
@@ -182,7 +186,8 @@ export async function render(container) {
       const spans = Number(summaryData.spans || 0);
       const traces = Number(summaryData.traces || 0);
       const errorSpans = Number(summaryData.error_spans || 0);
-      const errorRate = spans > 0 ? ((errorSpans / spans) * 100).toFixed(1) + '%' : '0%';
+      // A rate over no measured spans is undefined, never zero.
+      const errorRate = spans > 0 ? ((errorSpans / spans) * 100).toFixed(1) + '%' : null;
 
       paintSummary({traces, spans, errors: errorSpans, rate: errorRate});
     } catch {
@@ -211,7 +216,9 @@ export async function render(container) {
       const width = Math.max(0.3, Number(spanDuration * 10000n / totalDuration) / 100);
       const status = span.health_status || span.status || 'Unknown';
       const failed = span.status === 'error' || span.health_status === 'error';
-      const description = `${span.name}: ${failed ? 'failed, ' : ''}starts at ${elapsed(spanStart - start)}, duration ${elapsed(spanDuration)}, status ${status}`;
+      // Steps read as their node name; the raw span name (workflow.execute…) is only a fallback.
+      const nodeLabel = span.node_name || span.name || 'Step';
+      const description = `${nodeLabel}: ${failed ? 'failed, ' : ''}starts at ${elapsed(spanStart - start)}, duration ${elapsed(spanDuration)}, status ${status}`;
       // Only AI steps carry a price: other nodes show no cost at all, never "Unknown".
       const ai = span.model != null || span.tokens_in != null || span.tokens_out != null;
       const bar = el('div', {className: failed ? 'waterfall-bar failed' : 'waterfall-bar',
@@ -229,10 +236,10 @@ export async function render(container) {
         spanActions.append(el('a', {class: 'button ghost', href: '#errors'}, 'View errors'));
       }
       nodes.push(el('details', {class: 'waterfall-span'},
-        el('summary', {class: 'waterfall-row'},
-          el('span', {class: 'waterfall-name'},
-            failed ? el('span', {className: 'span-failed'}, icon('span-failed'), 'Failed') : null,
-            el('span', {class: 'waterfall-node'}, span.name),
+          el('summary', {class: 'waterfall-row'},
+            el('span', {class: 'waterfall-name'},
+              failed ? el('span', {className: 'span-failed'}, icon('span-failed'), 'Failed') : null,
+              el('span', {class: 'waterfall-node'}, nodeLabel),
             ai ? el('span', {class: 'waterfall-cost'}, cents(span.cost_exact)) : null),
           el('span', {class: 'waterfall-track'}, bar)),
         failed && (span.error_summary || span.error_type)
@@ -246,6 +253,18 @@ export async function render(container) {
         spanActions.childElementCount ? spanActions : null));
     }
     return nodes;
+  }
+
+  // The root span names the whole run, so it reads as the panel's header bar;
+  // only its child steps expand below. A trace with no single root keeps every span as a step.
+  function rootHeader(root) {
+    const label = root.node_name || root.name || 'Workflow run';
+    const duration = elapsed(BigInt(root.end_ns) - BigInt(root.start_ns));
+    const status = root.health_status || root.status || 'Unknown';
+    const summary = `${label} · ${duration} · ${status}`;
+    return el('div', {class: 'waterfall-root', role: 'img', 'aria-label': summary, title: summary},
+      el('span', {class: 'waterfall-node'}, label),
+      el('span', {class: 'waterfall-meta'}, `${duration} · Status: ${status}`));
   }
 
   function openTrace(row, meta) {
@@ -266,7 +285,6 @@ export async function render(container) {
         peekFacts([
           ['Trace ID', peekCopy(row.trace_id, 'trace ID')],
           ['Execution', execution ? peekCopy(execution, 'execution ID') : 'Not recorded'],
-          ['Started', started ? el('time', {datetime: started.toISOString(), title: started.toLocaleString()}, relativeLabel(started)) : null],
         ]),
         running,
         peekSection('Steps', steps),
@@ -284,18 +302,27 @@ export async function render(container) {
         const result = await api('/api/otel/traces/' + encodeURIComponent(row.trace_id) + '?' + params, {signal: controller.signal});
         if (controller.signal.aborted || !dialog.isConnected) return;
         if (!after) {
-          const unpriced = result.data.filter(span => (span.model != null || span.tokens_in != null || span.tokens_out != null) && span.cost_exact == null).length;
-          running.replaceChildren(
-            peekFacts([
-              ['AI cost', cents(result.known_cost_usd)],
-              ['AI steps without a price', unpriced ? String(unpriced) : null],
-            ]),
-            el('p', {className: 'muted'}, 'Costs cover the steps on this page. Only AI steps carry a price.'));
+          const aiSteps = result.data.filter(span => span.model != null || span.tokens_in != null || span.tokens_out != null);
+          const unpriced = aiSteps.filter(span => span.cost_exact == null).length;
+          if (!aiSteps.length) {
+            // No AI steps on this page means no cost line at all, not a zero cost.
+            running.replaceChildren();
+          } else {
+            running.replaceChildren(
+              peekFacts([
+                ['AI cost', unpriced ? `Unknown (${unpriced} AI ${unpriced === 1 ? 'step' : 'steps'} unpriced)` : cents(result.known_cost_usd)],
+              ]),
+              el('p', {className: 'muted'}, 'Costs cover the steps on this page. Only AI steps carry a price.'));
+          }
         }
+        const roots = !after ? result.data.filter(span => !span.parent_id) : [];
+        const root = roots.length === 1 ? roots[0] : null;
+        const shown = root ? result.data.filter(span => span !== root) : result.data;
         if (!result.data.length) {
           if (!after) steps.append(el('p', {className: 'muted'}, 'No steps on this page.'));
         } else {
-          steps.append(...spanNodes(result.data, BigInt(row.start_ns), BigInt(row.end_ns), !after));
+          if (root) steps.append(rootHeader(root));
+          steps.append(...spanNodes(shown, BigInt(row.start_ns), BigInt(row.end_ns), !after));
         }
         if (result.next_cursor) {
           const more = button('Next steps', () => { more.disabled = true; load(result.next_cursor).finally(() => more.remove()); }, 'ghost');
@@ -344,11 +371,13 @@ export async function render(container) {
           ? result.data.filter(r => Number(r.error_spans || 0) > 0)
           : result.data;
         tracesTable.appendRows(filteredNewRows.map(row => formatTableRow(row, metas.get(row.instance_id + ':' + row.trace_id))));
+        toolbar.hidden = !allRowsData.length;
       } else {
         // Initial or refreshed traces table
         allRowsData = result.data;
         await enrich(result.data);
         if (controller.signal.aborted) return;
+        toolbar.hidden = !allRowsData.length;
         if (result.data.length) {
           const displayRows = currentFilter === 'errors'
             ? allRowsData.filter(r => Number(r.error_spans || 0) > 0)
