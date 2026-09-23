@@ -1,0 +1,16 @@
+/* Command palette: one field over grouped jump targets. */
+
+.palette-overlay { position:fixed; inset:0; z-index:950; display:flex; justify-content:center; align-items:flex-start; padding:12vh 16px 16px; background:rgba(0,0,0,.45); }
+.palette { width:min(560px,100%); max-height:min(420px,70vh); display:flex; flex-direction:column; overflow:hidden; border:1px solid var(--border); border-radius:12px; background:var(--surface-card-surface); color:var(--color-ink-black); box-shadow:0 12px 32px rgba(0,0,0,.35); }
+.palette input[type=text] { border:0; border-bottom:1px solid var(--border); border-radius:0; min-height:44px; padding:0 16px; font-size:14px; background:transparent; color:var(--color-ink-black); }
+.palette input[type=text]:focus { outline:none; box-shadow:none; border-bottom-color:var(--focus); }
+.palette-list { margin:0; padding:8px; overflow-y:auto; list-style:none; }
+.palette-group { padding:8px 12px 4px; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.05em; color:var(--color-smoke); }
+.palette-option { display:flex; align-items:baseline; gap:8px; min-height:32px; padding:6px 12px; border-radius:8px; font-size:13px; cursor:pointer; }
+.palette-option[aria-selected=true] { background:var(--selection-fill); color:var(--selection-text); }
+.palette-label { font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.palette-detail { margin-left:auto; flex:none; font-size:12px; }
+.palette-hint { margin:0; padding:8px 16px 12px; font-size:12px; }
+@media(max-width:700px) {
+  .palette-option { min-height:44px; align-items:center; }
+}

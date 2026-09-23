@@ -77,7 +77,7 @@ export async function render(container) {
   const toolbar = el('div', {class: 'observe-toolbar'}, filterGroup, refresh);
 
   container.append(
-    heading('Observability', 'OpenTelemetry trace waterfalls and exact recorded AI costs.'),
+    heading('Observability', 'Runs of your workflows, and what the AI steps cost.'),
     summaryStrip,
     toolbar,
     messages,
@@ -95,11 +95,53 @@ export async function render(container) {
       const filtered = currentFilter === 'errors'
         ? allRowsData.filter(r => Number(r.error_spans || 0) > 0)
         : allRowsData;
-      tracesTable.setRows(filtered.map(formatTableRow));
+      tracesTable.setRows(filtered.map(row => formatTableRow(row, metas.get(row.instance_id + ':' + row.trace_id))));
     }
   }
 
-  function formatTableRow(row) {
+  // The trace list carries no names, so each visible row is labelled from its
+  // first span: workflow name first, execution and trace IDs secondary.
+  const metas = new Map();
+  async function enrich(rows) {
+    await Promise.all(rows.map(async row => {
+      const key = row.instance_id + ':' + row.trace_id;
+      if (!metas.has(key)) {
+        // Newer backends name the workflow on the list row itself; older ones
+        // need one bounded first-span read per row.
+        metas.set(key, row.workflow_name || row.workflow_id || row.execution_id
+          ? Promise.resolve({workflow: row.workflow_name || row.workflow_id || null, execution: row.execution_id || null})
+          : api('/api/otel/traces/' + encodeURIComponent(row.trace_id) + '?' + new URLSearchParams({instance_id: row.instance_id, limit: '1'}), {signal: controller.signal})
+            .then(result => {
+              const span = result.data?.[0];
+              return span ? {workflow: span.workflow_name || span.workflow_id || null, execution: span.execution_id || null} : null;
+            }).catch(() => null));
+      }
+      metas.set(key, await metas.get(key));
+    }));
+  }
+
+  async function copyText(text, btn) {
+    try { await navigator.clipboard.writeText(text); }
+    catch {
+      const area = el('textarea', {value: text, readonly: true, style: 'position:fixed;opacity:0'});
+      document.body.append(area); area.select();
+      try { document.execCommand('copy'); } catch {} area.remove();
+    }
+    if (btn?.isConnected) {
+      const label = btn.textContent; btn.textContent = 'Copied';
+      setTimeout(() => { if (btn.isConnected) btn.textContent = label; }, 1500);
+    }
+  }
+
+  function idLine(id, kind, row) {
+    if (!id) return null;
+    const code = el('code', {class: 'mono'}, id.length > 16 ? id.slice(0, 16) + '…' : id);
+    code.title = id;
+    const copy = button('Copy', () => copyText(id, copy), 'ghost', {'aria-label': `Copy ${kind} ID for ${row.trace_id}`});
+    return el('span', {class: 'trace-id-line'}, code, copy);
+  }
+
+  function formatTableRow(row, meta) {
     const instName = instanceName(row.instance_id);
     const startMs = Number(BigInt(row.start_ns) / 1000000n);
     const startDate = new Date(startMs);
@@ -115,18 +157,17 @@ export async function render(container) {
       ? el('span', {class: 'badge error'}, `${errorCount} error${errorCount === 1 ? '' : 's'}`)
       : el('span', {class: 'badge success'}, 'Healthy');
 
-    const traceDisplay = el('span', {class: 'mono', title: row.trace_id},
-      row.trace_id.length > 16 ? row.trace_id.slice(0, 16) + '…' : row.trace_id
-    );
+    const workflowName = meta?.workflow || 'Workflow unknown';
 
     return [
-      {sortValue: row.trace_id, content: traceDisplay},
+      {sortValue: workflowName.toLowerCase(), content: el('strong', {}, workflowName)},
+      {sortValue: row.trace_id, content: el('div', {class: 'trace-ids'}, idLine(row.trace_id, 'trace', row), idLine(meta?.execution, 'execution', row))},
       {sortValue: instName, content: instName},
       {sortValue: startMs, content: startEl},
       {sortValue: Number(durNs), content: durFormatted},
       {sortValue: Number(row.span_count), content: String(row.span_count)},
       {sortValue: errorCount, content: healthBadge},
-      button('View waterfall', () => inspect(row), 'button ghost', {'aria-label': `View waterfall for trace ${row.trace_id}`})
+      button('View waterfall', () => inspect(row), 'button ghost', {'aria-label': `View waterfall for ${workflowName} ${row.trace_id}`})
     ];
   }
 
@@ -211,20 +252,16 @@ export async function render(container) {
 
       const aiCostStrip = el('div', {class: 'observe-ai-strip'},
         el('div', {class: 'observe-ai-stat'},
-          el('span', {class: 'stat-label'}, 'Known AI Cost'),
+          el('span', {class: 'stat-label'}, 'AI cost'),
           el('span', {class: 'stat-value'}, cents(result.known_cost_usd))
         ),
         el('div', {class: 'observe-ai-stat'},
-          el('span', {class: 'stat-label'}, 'Total Calculated Cost'),
-          el('span', {class: 'stat-value'}, cents(result.cost_usd))
-        ),
-        el('div', {class: 'observe-ai-stat'},
-          el('span', {class: 'stat-label'}, 'Unpriced Spans'),
-          el('span', {class: 'stat-value'}, `${result.unknown_cost_spans} span(s)`)
+          el('span', {class: 'stat-label'}, 'Steps without a price'),
+          el('span', {class: 'stat-value'}, `${result.unknown_cost_spans} step(s)`)
         )
       );
 
-      const provenanceNote = el('p', {className: 'muted'}, 'Costs and tokens below cover this returned page; estimates retain their original pricing provenance.');
+      const provenanceNote = el('p', {className: 'muted'}, 'Costs cover the spans on this page. Only AI steps carry a price.');
 
       detailContent.replaceChildren(headerRow, aiCostStrip, provenanceNote);
       if (!after) {
@@ -262,6 +299,8 @@ export async function render(container) {
         const status = span.health_status || span.status || 'Unknown';
         const failed = span.status === 'error' || span.health_status === 'error';
         const description = `${span.name}: ${failed ? 'failed, ' : ''}starts at ${elapsed(spanStart - start)}, duration ${elapsed(spanDuration)}, status ${status}`;
+        // Only AI steps carry a price: other nodes show no cost at all, never "Unknown".
+        const ai = span.model != null || span.tokens_in != null || span.tokens_out != null;
 
         const bar = el('div', {
           className: failed ? 'waterfall-bar failed' : 'waterfall-bar',
@@ -284,10 +323,12 @@ export async function render(container) {
           spanActions.append(el('a', {class: 'button ghost', href: `#errors?instance_id=${encodeURIComponent(span.instance_id)}`}, 'View Errors'));
         }
 
-        const summaryNode = el('summary', {},
-          failed ? el('span', {className: 'span-failed'}, icon('span-failed'), 'Failed') : null,
-          `${span.name} · ${status} · ${cents(span.cost_exact)}`
-        );
+        const summaryNode = el('summary', {class: 'waterfall-row'},
+          el('span', {class: 'waterfall-name'},
+            failed ? el('span', {className: 'span-failed'}, icon('span-failed'), 'Failed') : null,
+            el('span', {class: 'waterfall-node'}, span.name),
+            ai ? el('span', {class: 'waterfall-cost'}, cents(span.cost_exact)) : null),
+          el('span', {class: 'waterfall-track'}, bar));
 
         const errorGuidance = failed && (span.error_summary || span.error_type)
           ? el('div', {class: 'instance-diagnostic-box is-unreachable'},
@@ -299,15 +340,17 @@ export async function render(container) {
             )
           : null;
 
-        const info = el('details', {},
+        const info = el('details', {class: 'waterfall-span'},
           summaryNode,
           errorGuidance,
-          el('p', {className: 'muted'}, `Model: ${span.model || 'Unreported'} · Input tokens: ${span.tokens_in ?? 'Unknown'} · Output tokens: ${span.tokens_out ?? 'Unknown'}`),
-          jsonView({pricing: span.pricing, attributes: span.attributes, parent_id: span.parent_id}),
+          el('p', {className: 'muted'}, `Status: ${status} · Duration: ${elapsed(spanDuration)}` +
+            (ai ? ` · Model: ${span.model || 'Unreported'} · Input tokens: ${span.tokens_in ?? 'Unknown'} · Output tokens: ${span.tokens_out ?? 'Unknown'}` : '')),
+          ai ? jsonView({pricing: span.pricing, attributes: span.attributes, parent_id: span.parent_id})
+            : jsonView({attributes: span.attributes, parent_id: span.parent_id}),
           spanActions.childElementCount ? spanActions : null
         );
 
-        detailContent.append(el('div', {className: failed ? 'stack waterfall-span failed' : 'stack waterfall-span'}, info, el('div', {className: 'waterfall-track'}, bar)));
+        detailContent.append(info);
       }
 
       if (result.next_cursor) {
@@ -350,27 +393,31 @@ export async function render(container) {
       if (before && tracesTable) {
         // Appending older traces to existing table
         allRowsData.push(...result.data);
+        await enrich(result.data);
+        if (controller.signal.aborted) return;
         const filteredNewRows = currentFilter === 'errors'
           ? result.data.filter(r => Number(r.error_spans || 0) > 0)
           : result.data;
-        tracesTable.appendRows(filteredNewRows.map(formatTableRow));
+        tracesTable.appendRows(filteredNewRows.map(row => formatTableRow(row, metas.get(row.instance_id + ':' + row.trace_id))));
       } else {
         // Initial or refreshed traces table
         allRowsData = result.data;
+        await enrich(result.data);
+        if (controller.signal.aborted) return;
         if (result.data.length) {
           const displayRows = currentFilter === 'errors'
             ? allRowsData.filter(r => Number(r.error_spans || 0) > 0)
             : allRowsData;
 
-          tracesTable = table(['Trace', 'Instance', 'Started', 'Duration', 'Spans', 'Health', ''], displayRows.map(formatTableRow), {
-            numeric: [4],
-            sortable: {0: 'text', 1: 'text', 2: 'number', 3: 'number', 4: 'number', 5: 'number'},
-            initialSort: {column: 2, direction: 'desc'}
+          tracesTable = table(['Workflow', 'Trace', 'Instance', 'Started', 'Duration', 'Spans', 'Health', ''], displayRows.map(row => formatTableRow(row, metas.get(row.instance_id + ':' + row.trace_id))), {
+            numeric: [5],
+            sortable: {0: 'text', 1: 'text', 2: 'text', 3: 'number', 4: 'number', 5: 'number', 6: 'number'},
+            initialSort: {column: 3, direction: 'desc'}
           });
           list.replaceChildren(tracesTable);
         } else {
           tracesTable = null;
-          list.replaceChildren(empty('Waiting for telemetry', 'Create an exporter token in Instances and connect your n8n telemetry exporter.', [el('a', {class: 'button ghost', href: '#instances'}, 'Open instances')]));
+          list.replaceChildren(empty('Waiting for telemetry', 'Create an exporter token in Instances and connect your n8n telemetry exporter.', [el('a', {class: 'button ghost', href: '#instances?telemetry=' + encodeURIComponent(instance || '')}, 'Set up telemetry')]));
         }
       }
     } catch (error) {

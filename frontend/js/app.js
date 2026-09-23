@@ -4,6 +4,7 @@ import {state,can,applyPreferences} from './state.js';
 import {renderAuth} from './wizard.js';
 import {setTheme} from './themes.js';
 import {icon} from './lib/icons.js';
+import {openPalette} from './lib/palette.js';
 
 const routes = {'dashboard':'Overview','workflows':'Workflows','promote':'Promote','errors':'Errors','observe':'Observability','fleet-health':'Fleet health','codelab':'CodeLab','assistant':'AI workspace','containers':'Containers','notes':'Notes','backup':'Backups','secrets':'Secrets','instances':'Instances','settings':'Settings'};
 const adminOnly = new Set(['containers','backup','secrets']);
@@ -126,7 +127,7 @@ function accountMenu(){
 function renderShell() {
   selector=el('select',{'aria-label':'Selected instance',onchange:()=>{state.instanceId=selector.value;navigate();}});
   const link=id=>el('a',{href:`#${id}`,'data-route':id},icon(id),el('span',{},routes[id]));
-  const groups=[['Monitor',['dashboard','errors','observe','fleet-health']],['Orchestrate',['workflows','promote','assistant']],['Manage',['instances','containers','notes','backup','secrets','settings']]];
+  const groups=[['Monitor',['dashboard','errors','observe']],['Orchestrate',['workflows','promote','assistant']],['Manage',['instances','containers','notes','backup','secrets','settings']]];
   const navigation=el('nav',{'aria-label':'All views'},groups.map(([title,ids])=>{
     const labelId=`nav-group-${title.toLowerCase()}`;
     return el('div',{class:'nav-group',role:'group','aria-labelledby':labelId},el('p',{class:'nav-group-title',id:labelId},title),ids.filter(id=>!adminOnly.has(id)||can('admin')).map(link));
@@ -220,11 +221,18 @@ export function openShortcutsDialog(invoker) {
   const globalShortcuts = [
     { display: '?', description: 'Show keyboard shortcuts overlay' },
     { display: '/', description: 'Focus search or primary filter' },
+    { display: 'Ctrl+K', description: 'Open command palette' },
     { display: 'g d', description: 'Go to Overview' },
     { display: 'g e', description: 'Go to Errors' },
     { display: 'g w', description: 'Go to Workflows' },
     { display: 'g o', description: 'Go to Observability' },
-    { display: 'g a', description: 'Go to AI workspace' }
+    { display: 'g a', description: 'Go to AI workspace' },
+    { display: 'g f', description: 'Go to Fleet health' },
+    { display: 'g s', description: 'Go to Settings' },
+    { display: 'g i', description: 'Go to Instances' },
+    { display: 'g n', description: 'Go to Notes' },
+    { display: 'g b', description: 'Go to Backups' },
+    { display: 'g c', description: 'Go to CodeLab' }
   ];
 
   sections.push(
@@ -268,8 +276,16 @@ function matchShortcutKey(shortcut, eventKey) {
 
 function onKeyDown(e) {
   if (e.defaultPrevented) return;
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && String(e.key).toLowerCase() === 'k') {
+    if (isTyping(e)) return;
+    if (document.querySelector('dialog[open]')) return;
+    e.preventDefault();
+    openPalette();
+    return;
+  }
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   if (document.querySelector('dialog[open]')) return;
+  if (document.querySelector('.palette-overlay')) return;
   if (isTyping(e)) return;
 
   if (pendingSequence === 'g') {
@@ -332,7 +348,9 @@ async function navigate() {
   pendingSequence = null;
   clearTimeout(pendingTimer);
   const id=location.hash.slice(1).split('?')[0] || 'dashboard';
-  root.querySelectorAll('[data-route]').forEach(node=>{if(node.dataset.route===(id==='codelab'?'assistant':id))node.setAttribute('aria-current','page');else node.removeAttribute('aria-current');});
+  // Fleet health merged into the Instances fleet page: the old hash and shortcut land there.
+  const navId=id==='codelab'?'assistant':id==='fleet-health'?'instances':id;
+  root.querySelectorAll('[data-route]').forEach(node=>{if(node.dataset.route===navId)node.setAttribute('aria-current','page');else node.removeAttribute('aria-current');});
   root.querySelectorAll('.nav-more').forEach(node=>node.open=!mobileNavigation.matches);
   const currentView=document.querySelector('#current-view');if(currentView)currentView.textContent=routes[id]||'Page not found';
   const container=el('div',{class:'stack'});shell.replaceChildren(container); document.title=`${routes[id] || 'Page not found'} · Inference`;
@@ -340,7 +358,8 @@ async function navigate() {
   if(adminOnly.has(id)&&!can('admin')){container.append(el('h1',{},'Administrator access required'),el('p',{},'Ask an administrator to manage this part of your workspace.'));return;}
   container.append(el('p',{class:'muted',role:'status'},`Loading ${routes[id].toLowerCase()}…`));
   try {
-    const module=await import(`./views/${['assistant','codelab'].includes(id)?'studio':id}.js`);
+    const moduleId=id==='fleet-health'?'instances':['assistant','codelab'].includes(id)?'studio':id;
+    const module=await import(`./views/${moduleId}.js`);
     if(current!==generation)return;
     container.replaceChildren();
     const dispose=await module.render(container);
