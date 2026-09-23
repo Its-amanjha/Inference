@@ -171,12 +171,7 @@
 @media(max-width:700px) {
   .assistant-page .assistant-chat { height:auto; }
   .assistant-page .assistant-chat .chat-transcript { flex:none; min-height:240px; max-height:none; overflow:visible; }
-  .assistant-page .assistant-composer { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:4px 8px; padding:8px 12px; }
-  .assistant-page .assistant-composer .field,.assistant-page .composer-foot { display:contents; }
-  .assistant-page .assistant-composer label { grid-column:1 / -1; grid-row:1; }
-  .assistant-page .assistant-composer textarea { grid-column:1; grid-row:2; min-width:0; min-height:44px; height:44px; max-height:none; resize:none; font-size:16px; line-height:20px; }
-  .assistant-page .composer-foot .button { grid-column:2; grid-row:2; align-self:end; }
-  .assistant-page .composer-foot .muted { grid-column:1 / -1; grid-row:3; max-width:none; }
+  .assistant-page .assistant-composer textarea { min-height:44px; font-size:16px; line-height:20px; }
   .assistant-page :is(button,input,select,textarea,a,summary),
   .assistant-page .repair-target .repair-target-option,
   body:has(.assistant-page) .confirm-dialog :is(button,input) { min-height:44px; }
@@ -208,3 +203,102 @@
 [data-theme=dark] .proposal-risks li,[data-theme=dark] .proposal-risks li>.icon,[data-theme=dark] .proposal-preconditions .is-blocking>.icon,[data-theme=dark] .repair-admin-note,
 [data-theme=n8n] .proposal-risks li,[data-theme=n8n] .proposal-risks li>.icon,[data-theme=n8n] .proposal-preconditions .is-blocking>.icon,[data-theme=n8n] .repair-admin-note { color:#f4d18a; }
 [data-theme=dark] .proposal-preconditions .is-satisfied>.icon,[data-theme=n8n] .proposal-preconditions .is-satisfied>.icon { color:#91e5bc; }
+
+/* AI workspace: a work page, not a chat app. Mode and model sit in the composer, what needs a person sits
+   in the rail, settings live in a drawer. Messages are full-width blocks, not bubbles. */
+.assistant-head .actions { flex-wrap:wrap; justify-content:flex-end; }
+.assistant-history { position:relative; }
+.assistant-history>summary { list-style:none; display:inline-flex; align-items:center; gap:8px; }
+.assistant-history>summary::-webkit-details-marker { display:none; }
+.assistant-history-panel { position:absolute; right:0; top:calc(100% + 6px); z-index:40; display:flex; flex-direction:column; gap:12px; width:min(380px,calc(100vw - 32px)); padding:14px; border:1px solid var(--border); border-radius:12px; background:var(--surface-card-surface); box-shadow:0 12px 32px rgba(0,0,0,.16); }
+.assistant-history-panel .field { margin:0; }
+@media (prefers-reduced-motion:no-preference) { .assistant-history[open]>.assistant-history-panel { animation:menu-enter .16s cubic-bezier(.2,.8,.2,1); transform-origin:top right; } }
+
+.assistant-chat .chat-transcript { display:flex; flex-direction:column; gap:6px; padding:16px 20px; }
+.chat-message { padding:12px 14px; border:0; border-radius:10px; white-space:normal; line-height:1.6; }
+.chat-message>p { max-width:72ch; margin:4px 0 0; }
+.chat-user { background:var(--color-ash-mist); }
+.chat-meta { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 8px; font-size:12px; color:var(--color-smoke); }
+.chat-meta strong { font-size:13px; color:var(--color-ink-black); }
+.chat-meta>span::before,.chat-meta>time::before { content:"\00B7"; margin-right:8px; }
+@keyframes message-in { from { opacity:0; transform:translateY(4px); } }
+@keyframes fade-in { from { opacity:0; } }
+@media (prefers-reduced-motion:no-preference) { .chat-message.is-new { animation:message-in .18s cubic-bezier(.23,1,.32,1); } }
+@media (prefers-reduced-motion:reduce) { .chat-message.is-new { animation:fade-in .12s linear; } }
+
+.assistant-chat .assistant-welcome { min-height:0; align-items:stretch; justify-content:flex-start; gap:10px; padding:4px 0; text-align:left; }
+.assistant-chat .assistant-welcome h2 { margin:0; font-size:15px; }
+.assistant-chat .assistant-welcome p { margin:0; max-width:64ch; font-size:13px; color:var(--color-smoke); }
+.assistant-chat .assistant-welcome .button { align-self:flex-start; }
+.assistant-starts { display:flex; flex-direction:column; gap:6px; margin:0; padding:0; list-style:none; }
+.assistant-start { display:flex; align-items:flex-start; gap:10px; width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:10px; background:var(--surface-card-surface); color:inherit; font:inherit; text-align:left; cursor:pointer; transition:background-color .15s ease-out; }
+.assistant-start:hover { background:var(--color-ash-mist); }
+.assistant-start:focus-visible { outline:2px solid var(--focus); outline-offset:1px; }
+.assistant-start>.icon { width:16px; height:16px; margin-top:3px; flex:none; color:var(--color-danger); }
+.assistant-start-text { display:flex; flex-direction:column; gap:2px; min-width:0; }
+.assistant-start-text strong { font-size:14px; font-weight:600; color:var(--color-ink-black); overflow-wrap:anywhere; }
+.assistant-start-text>span { font-size:12px; color:var(--color-smoke); }
+
+/* Composer: one box; the message, then mode and model on the left and Send on the right. */
+.assistant-page .assistant-composer { display:flex; flex-direction:column; gap:4px; margin:0 16px 16px; padding:8px 8px 8px 12px; border:1px solid var(--control-border); border-radius:14px; background:var(--surface-input); transition:border-color .15s ease-out,box-shadow .15s ease-out; }
+.assistant-page .assistant-composer:focus-within { border-color:var(--focus); box-shadow:0 0 0 1px var(--focus); }
+.assistant-page .assistant-composer textarea { min-height:44px; height:48px; max-height:200px; padding:6px 2px; border:0; border-radius:0; background:transparent; box-shadow:none; resize:none; font-size:14px; line-height:1.5; }
+.assistant-page .assistant-composer textarea:focus { outline:none; box-shadow:none; }
+.composer-foot { display:flex; align-items:center; gap:8px; }
+.composer-controls { display:flex; flex-wrap:wrap; align-items:center; gap:2px; min-width:0; }
+.select-menu-button.composer-select { min-height:32px; padding:0 8px; border-color:transparent; background:transparent; font-size:13px; color:var(--color-graphite); }
+.select-menu-button.composer-select:hover:not(:disabled) { background:var(--color-ash-mist); }
+.composer-hint { margin-left:auto; font-size:12px; color:var(--color-smoke); white-space:nowrap; }
+.composer-send { display:inline-grid; place-items:center; flex:none; width:34px; height:34px; padding:0; border:0; border-radius:10px; background:var(--action-fill); color:var(--action-text); cursor:pointer; transition:opacity .12s ease-out,transform .12s ease-out; }
+.composer-send:disabled { opacity:.35; cursor:not-allowed; }
+.composer-send:not(:disabled):active { transform:scale(.96); }
+.composer-send:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+.composer-send .icon { width:16px; height:16px; }
+.composer-warning { display:flex; align-items:flex-start; gap:6px; margin:0 2px; font-size:12px; line-height:1.5; color:var(--color-graphite); }
+.composer-warning[hidden] { display:none; }
+.composer-warning .icon { width:14px; height:14px; margin-top:2px; flex:none; color:var(--color-warning); }
+.composer-create { display:flex; flex-wrap:wrap; align-items:center; gap:4px 8px; font-size:13px; color:var(--color-smoke); }
+.composer-create[hidden] { display:none; }
+
+/* Review rail */
+.assistant-rail .assistant-rail-heading { flex-direction:row; justify-content:flex-start; align-items:center; gap:8px; }
+.assistant-rail-heading h2 { display:flex; align-items:center; gap:8px; }
+.review-count:not(:empty) { display:inline-grid; place-items:center; min-width:20px; height:20px; padding:0 6px; border-radius:10px; background:var(--selection-fill); color:var(--selection-text); font-size:12px; font-weight:600; }
+.review-updated { margin-left:auto; font-size:12px; color:var(--color-smoke); }
+.icon-button { display:inline-grid; place-items:center; flex:none; width:32px; height:32px; padding:0; border:0; border-radius:8px; background:transparent; color:var(--color-smoke); cursor:pointer; }
+.icon-button:hover:not(:disabled) { background:var(--color-ash-mist); color:var(--color-ink-black); }
+.icon-button:focus-visible { outline:2px solid var(--focus); outline-offset:1px; }
+.icon-button .icon { width:16px; height:16px; }
+.assistant-rail .approval-card { border:0; border-radius:10px; padding:12px; margin:0; background:var(--color-ash-mist); }
+.assistant-privacy { padding:4px 18px; }
+.assistant-privacy h2 { margin:0 0 6px; font-size:13px; }
+.assistant-privacy p { margin:0 0 6px; font-size:12px; line-height:1.55; color:var(--color-smoke); }
+
+/* Settings drawer */
+dialog.peek.settings-drawer { width:min(640px,100vw); }
+@keyframes drawer-in { from { opacity:0; transform:translateX(32px); } }
+@media (prefers-reduced-motion:no-preference) { dialog.peek.settings-drawer[open] { animation:drawer-in .26s cubic-bezier(.32,.72,0,1); } }
+.settings-drawer .assistant-settings { display:flex; flex-direction:column; gap:24px; }
+.settings-drawer .assistant-settings h3 { margin:0 0 8px; font-size:15px; }
+.assistant-page .settings-drawer .assistant-settings .provider-setup>h3:first-child { margin-top:0; }
+.settings-drawer .drawer-section p { margin:0 0 10px; font-size:13px; }
+.settings-drawer .tool-calling { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.mcp-server { display:flex; flex-direction:column; align-items:flex-start; gap:8px; }
+.mcp-server-head { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 10px; }
+.mcp-server-head h4 { margin:0; }
+.mcp-tools { display:flex; flex-direction:column; gap:8px; margin:0; padding:0; list-style:none; font-size:13px; }
+.mcp-tools li { display:flex; flex-direction:column; gap:2px; }
+.mcp-tools span { font-size:12px; color:var(--color-smoke); }
+
+@media(max-width:700px) {
+  .assistant-page .assistant-composer { margin:0 10px 10px; }
+  .composer-hint { display:none; }
+  .composer-send { width:44px; height:44px; margin-left:auto; }
+  .select-menu-button.composer-select { min-height:44px; }
+  .assistant-chat .chat-transcript { padding:12px; }
+}
+/* An empty review keeps its natural height instead of stretching to the conversation's. */
+#studio-chat .assistant-approval-panel:has(.approval-empty) { flex:0 0 auto; }
+.approval-empty { padding:8px 0 0; }
+.approval-empty>.icon { color:var(--color-success); }
+@media(max-width:900px) { .assistant-head .actions { justify-content:flex-start; } }

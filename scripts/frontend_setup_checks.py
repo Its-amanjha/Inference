@@ -25,6 +25,8 @@ def exercise_setup(page, artifacts):
         page.screenshot(path=str(artifacts/'guided-model-setup.png'),full_page=True)
     finally:
         page.unroute('**/api/assistant/providers/guided-browser/test')
+    # The settings drawer is modal: close it before typing in the workspace behind it.
+    page.keyboard.press('Escape')
     page.get_by_label('Your message',exact=True).fill('Keep this draft while editing')
     workspace=page.get_by_role('navigation',name='AI workspace',exact=True)
     workspace.get_by_role('button',name='Code editor (manual)',exact=True).click()

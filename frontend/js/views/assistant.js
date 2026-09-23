@@ -1,10 +1,12 @@
 import {providerSetup} from '../lib/provider-setup.js';
 import {api} from '../api.js';
 import {can, state} from '../state.js';
-import {el, field, formCard, heading, jsonView, notice} from '../lib/html.js';
+import {el, field, formCard, heading, notice} from '../lib/html.js';
 import {icon,actionIcon} from '../lib/icons.js';
 import {rawDisclosure, instanceName, toneBadge, formatTime} from '../lib/payload.js';
 import {confirmAction} from '../lib/confirm.js';
+import {selectMenu} from '../lib/select-menu.js';
+import {relativeTime} from '../lib/triage.js';
 import {parseRepairTarget, repairHash, repairContext, contextQuery, describeTarget, listWorkflows, targetChip, createIdPicker, MAX_NOTES_CHARS} from '../lib/repair-target.js';
 import {isRepairAction, isRound2Action, proposalShell, renderProposal, effectiveStatus, statusBadge, statusForError, describeRepairError, preconditionsOf, preconditionKey,
   turnSteps, contextSent, contextOverview, RATE_LIMITED_TEXT, INCOMPLETE_TEXT, RETRY_WARNING} from '../lib/proposals.js';
@@ -46,7 +48,11 @@ export async function render(container) {
     (interrupt ? urgent : polite).textContent = text;
   };
   const messages = el('div', {className:'assistant-notices'});
-  const provider = el('select', {required: true, disabled:true, 'aria-label': 'Assistant provider'},el('option',{value:''},'Loading models…'));
+  // The model is chosen in the composer next to the mode, as in code assistants. A different model
+  // starts a new conversation.
+  const provider = selectMenu({label: 'Model', options: [{value: '', label: 'Loading models…'}], className: 'composer-select',
+    onChange: () => { chatId = null; resumeId.value = ''; showWelcome(); paintToolSupport(); }});
+  provider.disabled = true;
   const transcript = el('div', {className: 'chat-transcript', role: 'region', 'aria-label': 'Conversation'});
   const input = el('textarea', {rows: 1, maxLength: 16000, required: true, disabled:true, placeholder: 'Ask about an execution or workflow…'});
   const approvals = el('div', {className: 'stack'});
@@ -57,7 +63,8 @@ export async function render(container) {
   let modelsAvailable = false;
   let settings = null;
   let lastMessage = '';
-  const openSettings = () => { if(settings){settings.open=true;settings.scrollIntoView({block:'start'});settings.querySelector('input')?.focus({preventScroll:true});} };
+  // Settings live in a side drawer (built below for administrators), not on the work page.
+  let openSettings = () => {};
   const acting = new Set();
   const proposals = new Map();
   const loadingActions = new Set();
@@ -78,11 +85,34 @@ export async function render(container) {
       : status === 'failed' ? ' Review the error before requesting another proposal.' : '';
     announce(`${label}: proposal for ${subject}${where}${execution}.${next}`, status === 'uncertain');
   };
+  // An empty conversation offers the open failures it can start from, newest first. Picking one fills the
+  // message; nothing is sent until the person sends it.
   const showWelcome = () => {
-    const welcome=el('div',{className:'assistant-welcome'},icon('assistant'),el('h2',{},modelsAvailable?'What would you like to investigate?':'Connect a model to get started'),
-      el('p',{},modelsAvailable?'Ask about a failed execution, inspect a workflow, or review the next action.':can('admin')?'Choose a local or hosted model in Assistant settings.':'Ask your administrator to connect a model.'));
-    if(!modelsAvailable&&can('admin'))welcome.append(action('Connect model',openSettings,true));
+    if(!modelsAvailable){
+      const welcome=el('div',{className:'assistant-welcome'},el('h2',{},'Connect a model to get started'),
+        el('p',{},can('admin')?'Choose a local or hosted model in Assistant settings.':'Ask your administrator to connect a model.'));
+      if(can('admin'))welcome.append(action('Connect model',()=>openSettings(),true));
+      transcript.replaceChildren(welcome);return;
+    }
+    const starts=el('ul',{className:'assistant-starts'});
+    const welcome=el('div',{className:'assistant-welcome'},el('h2',{},'Start from a recent failure'),starts,
+      el('p',{className:'assistant-welcome-note'},'Or ask about any workflow or execution. Nothing changes unless you switch to Propose changes and approve what the AI proposes.'));
     transcript.replaceChildren(welcome);
+    const query=new URLSearchParams({status:'open',limit:'4'});if(state.instanceId)query.set('instance_id',state.instanceId);
+    api('/api/errors?'+query,{signal}).then(result=>{
+      const rows=Array.isArray(result?.data)?result.data:[];
+      if(!rows.length){welcome.querySelector('h2').textContent='Ask about a workflow or execution';starts.remove();return;}
+      starts.replaceChildren(...rows.map(row=>{
+        const where=`${row.node_name||'Workflow'} · ${instanceName(row.instance_id)}`;
+        const pick=el('button',{type:'button',className:'assistant-start'},icon('errors'),
+          el('span',{className:'assistant-start-text'},el('strong',{},`Diagnose ${row.workflow_name||'a workflow'}`),el('span',{},where,' · ',relativeTime(row.occurred_at))));
+        pick.addEventListener('click',()=>{
+          input.value=`Help me investigate error ${row.id} in workflow “${row.workflow_name||row.workflow_id}” (${row.node_name||'workflow'}) on ${instanceName(row.instance_id)}. Use available metadata and suggest next steps.`;
+          setMode('ask');scheduleComposerSize();input.focus();
+        });
+        return el('li',{},pick);
+      }));
+    },()=>{welcome.querySelector('h2').textContent='Ask about a workflow or execution';starts.remove();});
   };
 
   // Repair target, "What the AI sees" and model support. Only people pin or change the target.
@@ -168,6 +198,11 @@ export async function render(container) {
   });
 
   const selectedProvider = () => providerRows.find(row => row.id === provider.value);
+  const MODES = [{value: 'ask', label: 'Ask', glyph: 'eye', detail: 'Reads and answers. Cannot propose changes.'},
+    {value: 'propose', label: 'Propose changes', glyph: 'edit', detail: 'May propose changes. You approve each one.'},
+    ...(can('operator') ? [{value: 'create', label: 'Create workflow', glyph: 'add', detail: 'Plans a new inactive workflow for your review.'}] : [])];
+  let mode = 'ask';
+  const composerWarning = el('p', {className: 'composer-warning', role: 'status', hidden: true});
   const toolBadge = el('span', {className: 'badge tool-calling-badge', hidden: true});
   const toolCheck = can('admin') ? action('Check tool calling', () => checkToolCalling()) : null;
   if (toolCheck) toolCheck.hidden = true;
@@ -177,6 +212,10 @@ export async function render(container) {
     const status = Object.hasOwn(TOOL_SUPPORT, reported ?? '') ? reported : 'untested';
     const [label, tone] = TOOL_SUPPORT[status];
     toolBadge.hidden = !row;
+    // In the composer, only a limit is worth a line: an untested or unsupported model in a change mode.
+    const limits = Boolean(row && status !== 'supported' && mode !== 'ask');
+    composerWarning.hidden = !limits;
+    composerWarning.replaceChildren(...(limits ? [icon('info'), el('span', {}, status === 'unsupported' ? UNSUPPORTED_TEXT : UNTESTED_TEXT)] : []));
     toolBadge.className = `badge tool-calling-badge${tone ? ` ${tone}` : ''}`;
     toolBadge.dataset.status = status;
     toolBadge.textContent = label;
@@ -227,9 +266,8 @@ export async function render(container) {
     if (signal.aborted) return;
     providerRows = Array.isArray(result.data) ? result.data : [];
     modelsAvailable=Boolean(providerRows.length);
-    provider.replaceChildren(...providerRows.map(item => el('option', {value: item.id}, `${item.model} · ${item.id}`)));
-    if(!modelsAvailable)provider.append(el('option',{value:''},'No model connected'));
-    if (providerRows.some(item => item.id === selected)) provider.value = selected;
+    provider.setOptions(modelsAvailable ? providerRows.map(item => ({value: item.id, label: item.model, detail: `Connection ${item.id}`}))
+      : [{value: '', label: 'No model connected'}], selected);
     send.disabled = !modelsAvailable||busy;
     input.disabled = !modelsAvailable;
     provider.disabled = !modelsAvailable||busy;
@@ -511,7 +549,7 @@ export async function render(container) {
     // reported inside that proposal, so a second rail card for it is a duplicate. A linked row that is
     // still pending stays: it can be confirmed on its own, and hiding it would strand it unseen.
     const rows = approvalRows.filter(row => !row.linked_to || row.status === 'pending');
-    if (!rows.length) { approvals.append(el('div',{className:'approval-empty'},icon('secrets'),el('h3',{},'No pending actions'),el('p',{},'Proposed changes appear here. Nothing runs without your confirmation.'))); return; }
+    if (!rows.length) { approvals.append(el('div',{className:'approval-empty'},icon('check'),el('h3',{},'Nothing to review'),el('p',{},'Changes the AI proposes appear here. Nothing runs until you apply it.'))); return; }
     for (const row of rows) {
       const expired = Number(row.expires_at) * 1000 <= Date.now();
       const status = acting.has(row.id) ? 'executing' : row.status === 'pending' && expired ? 'expired' : row.status;
@@ -521,7 +559,7 @@ export async function render(container) {
       const card = el('article', {className: 'card approval-card'},
         el('div', {className: 'decision-head'}, el('h3', {}, ...summarize(row)), toneBadge(label, tone, glyph)),
         APPROVAL_TEXT[status] ? el('p', {}, APPROVAL_TEXT[status]) : null,
-        el('p', {className: 'muted'}, `Tool ${row.name}${status === 'pending' ? ` · Expires ${formatTime(Number(row.expires_at))}` : ''}`));
+        status === 'pending' ? el('p', {className: 'muted'}, `Expires ${formatTime(Number(row.expires_at))}`) : null);
       if (row.name === 'update_node' && status === 'pending') card.append(el('p', {}, 'Review the new code under Exact arguments before confirming.'));
       if (row.name === 'mcp_call') card.append(el('p', {}, 'This remote tool can change data. Its remote resource state cannot be verified.'));
       if (status === 'uncertain') card.append(el('p', {}, 'Check the remote system before requesting another action. Its outcome is unknown.'));
@@ -541,7 +579,8 @@ export async function render(container) {
                 if (row.name === 'mcp_call') {
                   transcript.querySelector('.assistant-welcome')?.remove();
                   transcript.append(renderMcpResult(row, result.result));
-                } else messages.append(jsonView(result.result));
+                } else messages.append(el('div', {className: 'notice', role: 'status'}, `${verb === 'confirm' ? 'Done' : 'Cancelled'}: ${summarize(row).map(part => typeof part === 'string' ? part : part.textContent).join('')}.`),
+                  rawDisclosure(result.result, 'Result details'));
               }
             }
           } finally { try { if (!signal.aborted) await refreshApprovals(); } finally { acting.delete(row.id); if (!signal.aborted) paintApprovals(); } }
@@ -574,6 +613,9 @@ export async function render(container) {
       if (model && row.status && !acting.has(row.id) && model.status !== row.status) { model.status = row.status; if (model.card.isConnected) paintProposal(model); }
     }
     paintApprovals();
+    const pendingCount = approvalRows.filter(row => row.status === 'pending' && Number(row.expires_at) * 1000 > Date.now()).length;
+    reviewCount.textContent = pendingCount ? String(pendingCount) : '';
+    reviewUpdated.textContent = `Updated ${clockTime()}`;
     mountConversationProposals();
   };
 
@@ -590,9 +632,13 @@ export async function render(container) {
     else if (meta.status === 'interrupted') parts.push(el('p', {className: 'repair-turn-note'}, 'This turn stopped before it finished. Nothing was applied.'), retryButton({message: turnMessage, repairSnapshot: meta.repairSnapshot}));
     return parts.length ? el('div', {className: 'repair-turn-footer'}, parts) : null;
   };
-  const appendMessage = (role, text, meta = null, turnMessage = '') => {
+  const clockTime = () => new Date().toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+  const appendMessage = (role, text, meta = null, turnMessage = '', live = false) => {
     transcript.querySelector('.assistant-welcome')?.remove();
-    const node = el('article', {className: `chat-message chat-${role}`},el('strong', {}, role === 'user' ? 'You' : 'Inference'), text ? el('p', {className: 'pre-wrap'}, text) : null);
+    const detail = role === 'user' ? (live ? MODES.find(item => item.value === mode)?.label : null) : (live ? selectedProvider()?.model : null);
+    const node = el('article', {className: `chat-message chat-${role}${live ? ' is-new' : ''}`},
+      el('div', {className: 'chat-meta'}, el('strong', {}, role === 'user' ? 'You' : 'Assistant'), detail ? el('span', {}, detail) : null, live ? el('time', {}, clockTime()) : null),
+      text ? el('p', {className: 'pre-wrap'}, text) : null);
     if (role === 'assistant' && meta) {
       transcript.querySelectorAll('.repair-turn-footer .button').forEach(button => button.remove());
       const ids = actionIds(meta);
@@ -638,7 +684,7 @@ export async function render(container) {
     busy = true; send.disabled = true; provider.disabled = true;
     announce(continueTurn ? 'Continuing the turn. Waiting for the assistant.' : 'Message sent. Waiting for the assistant.');
     messages.replaceChildren();
-    if (!continueTurn && !retry) appendMessage('user', message);
+    if (!continueTurn && !retry) appendMessage('user', message, null, '', true);
     // Continue uses the context of the paused turn, even if the next-message note has been edited.
     const sentContext = repairSnapshot === undefined ? (target ? repairContext(target, errorTextEnabled(), operatorNotes.value) : null) : repairSnapshot;
     const body = {provider_id: provider.value, ...(chatId ? {chat_id: chatId} : {}), ...(sentContext ? {context: sentContext} : {})};
@@ -652,7 +698,7 @@ export async function render(container) {
       resumeId.value = chatId || '';
       if (!continueTurn) lastMessage = message;
       if (input.value === message) { input.value = ''; scheduleComposerSize(); }
-      const node = appendMessage('assistant', result?.content ?? '', {...(result && typeof result === 'object' ? result : {}), repairSnapshot: sentContext}, message || lastMessage);
+      const node = appendMessage('assistant', result?.content ?? '', {...(result && typeof result === 'object' ? result : {}), repairSnapshot: sentContext}, message || lastMessage, true);
       await placeProposals(node, result);
       await refreshApprovals().catch(error => { if (!signal.aborted) notice(messages, error); });
       const answer = typeof result?.content === 'string' ? result.content.trim().replace(/\s+/g, ' ') : '';
@@ -670,23 +716,44 @@ export async function render(container) {
       return false;
     } finally { busy = false; if (!signal.aborted) { send.disabled = !modelsAvailable; provider.disabled = !modelsAvailable; } }
   };
-  const send = el('button', {type: 'submit', className: 'button button-primary',disabled:true}, 'Send message',icon('arrow'));
+  const send = el('button', {type: 'submit', className: 'composer-send', disabled: true, 'aria-label': 'Send message', title: 'Send (Enter)'}, icon('send'));
   // Ask is the default: the server offers the model no tool that could create an approval,
   // so a question never comes back as a proposal, whatever the model decides to do.
-  const modeHint = el('span',{className:'muted',id:'composer-mode-hint'});
-  const modeRadio = (value, label) => el('label',{className:'composer-mode-option'},
-    el('input',{type:'radio',name:'composer-mode',value,'aria-describedby':'composer-mode-hint'}),el('span',{},label));
-  const modeGroup = el('fieldset',{className:'composer-mode'},el('legend',{className:'sr-only'},'What the AI may do'),
-    modeRadio('ask','Ask'),modeRadio('propose','Propose changes'));
-  const allowChanges = () => modeGroup.querySelector('input:checked')?.value === 'propose';
-  const setMode = mode => {
-    for (const option of modeGroup.querySelectorAll('input')) option.checked = option.value === mode;
-    modeHint.textContent = mode === 'propose' ? 'The AI may propose changes. You approve each one.'
-      : 'The AI answers and reads. It cannot propose changes.';
+  // Create workflow plans a new inactive workflow on one instance; it is Propose with that instance pinned.
+  const PLACEHOLDERS = {ask: 'Ask about an execution or workflow…', propose: 'Describe what to fix…', create: 'Describe the workflow to create…'};
+  const modeMenu = selectMenu({label: 'Mode', options: MODES, value: 'ask', className: 'composer-select', onChange: value => setMode(value, true)});
+  const allowChanges = () => mode !== 'ask';
+  const creationPick = selectMenu({label: 'Instance for the new workflow', className: 'composer-select',
+    options: [{value: '', label: 'Choose an instance'}, ...state.instances.map(row => ({value: row.id, label: row.name || row.id, glyph: 'instances'}))],
+    onChange: value => { if (value) beginCreation(value); }});
+  const creationRow = el('div', {className: 'composer-create', hidden: true}, el('span', {}, 'New workflow on'), creationPick.node);
+  const beginCreation = instanceId => {
+    setTarget({mode: 'repair', instance_id: instanceId}, true);
+    creationRow.hidden = true;
+    if (!input.value.trim()) input.value = 'Propose a new inactive workflow for this instance. ';
+    scheduleComposerSize(); input.focus();
   };
-  modeGroup.addEventListener('change', () => setMode(allowChanges() ? 'propose' : 'ask'));
+  const startCreation = () => {
+    if (!state.instances.length) { notice(messages, 'Connect an instance before creating a workflow.'); setMode('ask'); return; }
+    if (state.instanceId) { beginCreation(state.instanceId); return; }
+    creationRow.hidden = false; creationPick.button.focus();
+  };
+  const setMode = (next, chosen = false) => {
+    mode = MODES.some(item => item.value === next) ? next : 'ask';
+    modeMenu.value = mode;
+    input.placeholder = PLACEHOLDERS[mode];
+    if (mode !== 'create') creationRow.hidden = true;
+    paintToolSupport();
+    if (chosen && mode === 'create') startCreation();
+  };
+  input.id = 'assistant-message';
+  const form = el('form', {className: 'assistant-composer'}, creationRow,
+    el('label', {className: 'sr-only', for: 'assistant-message'}, 'Your message'), input, composerWarning,
+    el('div', {className: 'composer-foot'}, el('div', {className: 'composer-controls'}, modeMenu.node, provider.node),
+      el('span', {className: 'composer-hint'}, 'Enter to send · Shift+Enter for a new line'), send));
+  // Enter sends; Shift+Enter (and IME composition) keeps typing.
+  listen(input, 'keydown', event => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); form.requestSubmit(); } });
   setMode('ask');
-  const form = el('form', {className: 'assistant-composer'}, field('Your message', input), el('div',{className:'composer-foot'},modeGroup,modeHint,send));
   // Follow chat's end, not the document's end: the action rail follows the chat.
   // Detect the overflow owner so expanded repair layouts use the same policy as
   // desktop. Instant scrolling also respects prefers-reduced-motion.
@@ -723,7 +790,13 @@ export async function render(container) {
     composerFrame = 0;
     revealingComposer = false;
     if (signal.aborted) return;
-    if (!matchMedia('(max-width:700px)').matches) { input.style.removeProperty('height'); input.style.removeProperty('overflow-y'); followConversation(); return; }
+    // On larger screens the message box grows with its text, from one line to about eight.
+    if (!matchMedia('(max-width:700px)').matches) {
+      input.style.height = 'auto';
+      const border = input.offsetHeight - input.clientHeight, height = Math.min(Math.max(input.scrollHeight + border, 48), 200);
+      input.style.height = `${height}px`; input.style.overflowY = input.scrollHeight + border > 200 ? 'auto' : 'hidden';
+      followConversation(); return;
+    }
     const viewport = window.visualViewport;
     const visibleHeight = viewport?.height || document.documentElement.clientHeight;
     input.style.height = '44px';
@@ -755,7 +828,6 @@ export async function render(container) {
     if (busy || !input.value.trim() || !provider.value) return;
     await sendTurn({message: input.value});
   });
-  listen(provider, 'change', () => { chatId = null; resumeId.value=''; showWelcome(); paintToolSupport(); });
   const newChat = action('New conversation', () => { if (busy) return; chatId = null; input.value = ''; scheduleComposerSize(); resumeId.value = ''; showWelcome(); });
   const resumeId = el('input', {type: 'text', maxLength: 64, placeholder: 'Conversation ID', 'aria-label': 'Conversation ID'});
   // Recently opened conversations in this browser (ids only; transcripts stay server side).
@@ -774,7 +846,7 @@ export async function render(container) {
     try { localStorage.setItem(recentKey, JSON.stringify([{id, title: String(title || id).slice(0, 120), ts: Date.now()}, ...rows.filter(row => row.id !== id)].slice(0, 20))); } catch {}
     recentPicker.reload();
   }
-  const recentPicker = createIdPicker({label: 'Saved conversations', placeholder: 'Filter saved conversations',
+  const recentPicker = createIdPicker({label: 'Find a conversation', placeholder: 'Filter by title',
     load: async () => {
       const rows = readRecents();
       if (rows === null) throw new Error('Saved conversations could not be read from this browser.');
@@ -815,32 +887,24 @@ export async function render(container) {
     model.card.scrollIntoView({block: 'nearest'});
     model.card.focus({preventScroll: true});
   };
-  const scopeName=state.instances.find(row=>row.id===state.instanceId)?.name||'All instances';
-  const creationInstance=el('select',{},el('option',{value:''},'Choose an instance'),state.instances.map(row=>el('option',{value:row.id},row.name||row.id)));
-  const startCreation=action('Start creation plan',()=>{
-    if(busy)return;
-    if(!creationInstance.value){creationInstance.focus();return;}
-    setTarget({mode:'repair',instance_id:creationInstance.value},true);
-    input.value='Propose a new inactive workflow for this instance. ';input.focus();
-  });
-  startCreation.disabled=!state.instances.length;
-  const creationEntry=can('operator')?el('details',{className:'assistant-disclosure repair-create-entry'},el('summary',{},'Create workflow with AI'),
-    el('div',{className:'stack'},field('Instance for a new workflow',creationInstance),
-      el('p',{},'Describe the workflow in your message. Review its proposal before anything is created.'),startCreation)):null;
-  const chat=el('section',{className:'assistant-chat','aria-label':'Chat workspace'},
-    el('div',{className:'assistant-chat-toolbar'},field('Model',provider),el('div',{className:'tool-calling'},toolBadge,toolCheck),newChat),
-    repairBar,transcript,messages,form);
-  // Action review is what needs attention, so it leads; the three tools share one card below it.
-  const rail=el('aside',{className:'assistant-rail','aria-label':'Actions and conversation tools'},
-    el('section',{className:'assistant-approval-panel'},el('div',{className:'assistant-rail-heading'},el('h2',{},'Action review'),action('Refresh proposals',refreshApprovals)),approvals),
-    el('div',{className:'assistant-rail-group'},creationEntry,
-    el('details',{className:'assistant-disclosure'},el('summary',{},'Open a saved conversation'),el('div',{className:'stack'},recentPicker.node,field('Conversation ID',resumeId),resume)),
-    el('details',{className:'assistant-disclosure'},el('summary',{},'Context and privacy'),el('div',{},
-      el('p',{},`Workspace selection: ${scopeName}.`),
-      el('p',{},state.instanceId?`For instance-specific requests, include this ID: ${state.instanceId}`:'Include the instance ID when asking about a specific workflow or execution.'),
-      el('p',{},'Messages go to the selected model provider. Built-in tools share metadata; execution inputs, outputs and stored secrets are not sent automatically.'),
-      el('p',{},'With a repair target pinned, the workflow and a scrubbed error summary are also sent, with secret values masked. Open What the AI sees to review them.')))));
-  container.replaceChildren(polite,urgent,el('div',{className:'page-heading-row'},heading('AI workspace','Investigate executions. Review changes. Stay in control.'),can('admin')?action('Assistant settings',openSettings):null),el('div',{className:'assistant-layout'},chat,rail));
+  const chat=el('section',{className:'assistant-chat','aria-label':'Chat workspace'},repairBar,transcript,messages,form);
+  // Saved conversations open from the header, like a conversation switcher.
+  const savedChats=el('details',{className:'assistant-history'},el('summary',{className:'button button-ghost'},icon('history'),'Saved conversations'),
+    el('div',{className:'assistant-history-panel'},recentPicker.node,field('Conversation ID',resumeId),resume));
+  listen(savedChats,'keydown',event=>{if(event.key==='Escape'&&savedChats.open){event.stopPropagation();savedChats.open=false;savedChats.querySelector('summary').focus();}});
+  listen(document,'click',event=>{if(savedChats.open&&!savedChats.contains(event.target))savedChats.open=false;});
+  // Review leads the rail: it is what needs a person. The count and the last refresh replace a button wall.
+  const reviewCount=el('span',{className:'review-count'});
+  const reviewUpdated=el('span',{className:'review-updated'});
+  const refreshReview=el('button',{type:'button',className:'icon-button','aria-label':'Refresh proposals',title:'Refresh proposals'},icon('refresh'));
+  listen(refreshReview,'click',async()=>{refreshReview.disabled=true;try{await refreshApprovals();}catch(error){if(!signal.aborted)notice(messages,error);}finally{if(!signal.aborted)refreshReview.disabled=false;}});
+  const rail=el('aside',{className:'assistant-rail','aria-label':'Review and privacy'},
+    el('section',{className:'assistant-approval-panel'},el('div',{className:'assistant-rail-heading'},el('h2',{},'Review',reviewCount),reviewUpdated,refreshReview),approvals),
+    el('section',{className:'assistant-privacy'},el('h2',{},'What gets sent'),
+      el('p',{},'Your messages go to the selected model provider. Built-in tools share workflow and execution metadata; execution inputs, outputs and stored secrets are not sent.'),
+      el('p',{},'With a workflow pinned, its masked definition and a scrubbed error summary are sent too. Open What the AI sees to review them.')));
+  container.replaceChildren(polite,urgent,el('div',{className:'page-heading-row assistant-head'},heading('AI workspace','Ask about executions and workflows. Every change waits for your approval.'),
+    el('div',{className:'actions'},savedChats,newChat,can('admin')?action('Assistant settings',()=>openSettings()):null)),el('div',{className:'assistant-layout'},chat,rail));
   transcript.append(el('p',{className:'muted',role:'status'},'Loading assistant…'));
   paintTarget();
   if (parsed.rejected.length) notice(messages, `This repair link had invalid values, which were ignored: ${parsed.rejected.join(', ')}.`);
@@ -871,8 +935,27 @@ export async function render(container) {
     }
   };
   if (can('admin')) {
-    settings = el('details', {className: 'card assistant-settings'}, el('summary', {}, 'Providers and remote tools'));
+    // Models, remote tools and repair switches in one drawer: configured here, chosen in the composer.
+    settings = el('div', {className: 'assistant-settings'});
+    const closeDrawer = el('button', {type: 'button', className: 'peek-close', 'aria-label': 'Close settings'}, icon('close'));
+    const drawer = el('dialog', {className: 'peek settings-drawer', 'aria-labelledby': 'assistant-settings-title'},
+      el('header', {className: 'peek-head'}, el('div', {className: 'peek-heading'}, el('h2', {className: 'peek-title', id: 'assistant-settings-title'}, 'Assistant settings'),
+        el('p', {className: 'peek-meta'}, 'Models, remote tools and what repair conversations may send.')), closeDrawer),
+      el('div', {className: 'peek-body'}, settings));
+    listen(closeDrawer, 'click', () => drawer.close());
+    listen(drawer, 'click', event => { if (event.target !== drawer) return; const box = drawer.getBoundingClientRect();
+      if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) drawer.close(); });
+    // Page shortcuts must not act on the page behind the drawer.
+    listen(drawer, 'keydown', event => event.stopPropagation());
+    openSettings = () => {
+      if (!drawer.open) drawer.showModal();
+      if (!allowErrorText) renderRepairSettings();
+      settings.querySelector('input')?.focus();
+    };
     providerSetup(settings,refreshProviders,signal);
+    settings.append(el('section', {className: 'drawer-section'}, el('h3', {}, 'Selected model'),
+      el('p', {className: 'muted'}, 'A model must pass the tool-calling check to propose changes. The check sends one short request to the provider.'),
+      el('div', {className: 'tool-calling'}, toolBadge, toolCheck)));
     const serverId = el('input', {required: true, pattern: '[A-Za-z0-9_-]{1,64}', maxLength: 64});
     const url = el('input', {type: 'url', required: true});
     const mcpKey = el('input', {placeholder: '$MCP_KEY', autocomplete: 'off'});
@@ -889,9 +972,13 @@ export async function render(container) {
       if (signal.aborted) return;
       catalogs.replaceChildren(...result.data.map(server => {
         const output = el('div');
-        return el('div', {className: 'stack'}, el('h4', {}, server.id), el('p', {className: 'muted'}, server.url), action('Discover tools', async () => {
+        return el('div', {className: 'mcp-server'}, el('div', {className: 'mcp-server-head'}, el('h4', {}, server.id), el('span', {className: 'muted'}, server.url)), action('Discover tools', async () => {
           const catalog = await request(`/mcp/${encodeURIComponent(server.id)}/tools`);
-          if (!signal.aborted) output.replaceChildren(jsonView(catalog.data));
+          if (signal.aborted) return;
+          // Tool names and descriptions as a list; the full schema stays behind a disclosure.
+          const tools = Array.isArray(catalog?.data) ? catalog.data : Array.isArray(catalog?.data?.tools) ? catalog.data.tools : [];
+          output.replaceChildren(tools.length ? el('ul', {className: 'mcp-tools'}, tools.map(tool => el('li', {}, el('strong', {}, String(tool?.name || 'Unnamed tool')),
+            tool?.description ? el('span', {}, String(tool.description)) : null))) : el('p', {className: 'muted'}, 'This server lists no tools.'), rawDisclosure(catalog.data, 'Tool schemas'));
         }), output);
       }));
     };
@@ -940,15 +1027,14 @@ export async function render(container) {
         el('p', {className: 'muted'}, 'When on, repair context lists the names and trigger addresses of other active workflows on the same instance, so the AI can point a node at the right one instead of guessing. Nothing else from those workflows is sent.'), repairFeedback);
       if (repairSettingsError) notice(repairFeedback, repairSettingsError);
     };
-    listen(settings, 'toggle', () => { if (settings.open && !allowErrorText) renderRepairSettings(); });
-    container.append(settings);
+    container.append(drawer);
     loadServers().catch(error => { if (!signal.aborted) notice(messages, error); });
   }
   await Promise.allSettled([refreshProviders(), refreshApprovals(), loadRepairSettings()]).then(results => {
     if (!signal.aborted) results.slice(0, 2).forEach((result,index)=>{
       if(result.status !== 'rejected')return;
       notice(messages,result.reason);
-      if(index===0){provider.replaceChildren(el('option',{value:''},'Models unavailable'));transcript.replaceChildren(el('div',{className:'assistant-welcome'},el('h2',{},'Could not load models'),el('p',{},'Refresh the page to try again.')));}
+      if(index===0){provider.setOptions([{value:'',label:'Models unavailable'}]);transcript.replaceChildren(el('div',{className:'assistant-welcome'},el('h2',{},'Could not load models'),el('p',{},'Refresh the page to try again.')));}
     });
   });
   const timer = setInterval(() => {

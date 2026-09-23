@@ -31,7 +31,7 @@ PUT_SETTINGS = frozenset({'saveExecutionProgress', 'saveManualExecutions', 'save
 def choose_instance(page, value):
     """Pick an instance by ID ('' is All instances) in the top-bar switcher, a button with a listbox."""
     page.get_by_role('button', name=re.compile(r'^Selected instance:')).click()
-    page.locator(f'.select-menu-list [role=option][data-value="{value}"]').click()
+    page.locator(f'.scope-switcher .select-menu-list [role=option][data-value="{value}"]').click()
 
 def workflow_action(page, scope, name, instance, item):
     """Choose an item from a workflow row's More actions menu."""

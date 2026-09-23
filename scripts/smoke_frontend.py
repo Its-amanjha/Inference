@@ -183,7 +183,9 @@ def main() -> None:
                             assert page.locator('.assistant-chat').bounding_box()['width'] > 650
                             page.get_by_role('button', name='Connect model', exact=True).click()
                             expect(page.get_by_label('Connection name', exact=True)).to_be_focused()
-                            page.get_by_text('Providers and remote tools', exact=True).click()
+                            # Settings open in a drawer over the workspace; Escape closes it.
+                            page.keyboard.press('Escape')
+                            expect(page.get_by_role('dialog', name='Assistant settings')).to_have_count(0)
                             page.evaluate('scrollTo(0,0)')
                             page.screenshot(path=str(artifacts / 'assistant-desktop.png'), full_page=True)
                             page.set_viewport_size({'width':390,'height':844})

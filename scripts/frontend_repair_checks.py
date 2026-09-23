@@ -75,6 +75,14 @@ DEACTIVATE_WRITE = ('source', 'POST', f'workflows/{REPAIR_WORKFLOW_ID}/deactivat
 PUT_WRITE = ('source', 'PUT', f'workflows/{REPAIR_WORKFLOW_ID}')
 
 
+
+def close_settings(page):
+    """Settings open in a modal drawer over the workspace; close it once a check is done with it."""
+    drawer = page.locator('dialog.settings-drawer[open]')
+    if drawer.count():
+        page.keyboard.press('Escape')
+        expect(drawer).to_have_count(0)
+
 def call_api(page, path, method='GET', body=None):
     """Same-origin call through the app's CSRF-aware fetch; returns (status, JSON or None). Never prints bodies."""
     return page.evaluate('''async ([path, method, body]) => {
@@ -239,7 +247,9 @@ def send_chat(page, log, state, text, requests=1, propose=True):
     These checks exercise proposals, so they switch the composer to Propose changes; Ask is the page default."""
     before, writes, start = provider_count(state), len(state['writes']), len(log.responses)
     main = page.locator('#main')
-    main.get_by_label('Propose changes' if propose else 'Ask', exact=True).check()
+    # The mode is a dropdown in the composer (button "Mode: …" and a listbox).
+    main.get_by_role('button', name=re.compile(r'^Mode:')).click()
+    main.locator(f'.composer-controls .select-menu-list [role=option][data-value="{"propose" if propose else "ask"}"]').click()
     main.get_by_label(UI['message'], exact=True).fill(text)
     control(main, UI['send']).click()
     response = log.wait(start, is_chat, 'the chat response', timeout=90)
@@ -366,6 +376,7 @@ def exercise_tool_calling(page, log, state):
     page.get_by_role('heading', name=UI['heading'], exact=True).wait_for()
     tool_check_button(page)
     expect_badges(page, UI['badge_yes'])
+    close_settings(page)
     print('PASS: tool-calling check marks the scripted connection "Supports repair: yes"; a rate-limited re-check keeps it and does not retry.', flush=True)
 
 
@@ -692,6 +703,12 @@ def admin_switch_box(page, label):
     box = main.get_by_label(label, exact=True)
     try:
         box.wait_for(state='attached', timeout=2000)
+        # Assistant settings keep their switches in a drawer: open it when the switch is there but closed away.
+        if not box.is_visible():
+            settings = main.get_by_role('button', name=UI['settings_button'], exact=True)
+            if settings.count():
+                settings.first.click()
+            box.wait_for(state='visible', timeout=5000)
     except PlaywrightTimeout:
         settings = main.get_by_role('button', name=UI['settings_button'], exact=True)
         if settings.count():
@@ -718,6 +735,7 @@ def set_admin_switch(page, log, label, key, enabled):
         saved = log.wait(start, is_repair_settings_put, 'the repair settings save')
     assert saved.status == 200, f'Repair settings save: HTTP {saved.status} ({response_json(saved).get("code")})'
     assert ok(page, '/api/assistant/repair/settings').get(key) is enabled, 'Repair settings did not persist'
+    close_settings(page)
 
 
 def set_admin_error_text(page, log, enabled):

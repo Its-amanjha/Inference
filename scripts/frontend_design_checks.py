@@ -175,19 +175,19 @@ def exercise_design(page: Page, artifacts: Path) -> None:
             page.unroute('**/api/docker_mgr/status', docker_status)
         # Closed workspace sections must not add invisible scrollable content.
         page.evaluate("location.hash = 'assistant'")
-        page.get_by_text('Providers and remote tools', exact=True).wait_for()
+        page.locator('.assistant-chat').wait_for()
         # Mobile deliberately reserves room beneath the last controls for visible
         # notifications. Dismiss those before checking for unexplained blank space.
         while page.get_by_role('button', name='Dismiss notification', exact=True).count():
             page.get_by_role('button', name='Dismiss notification', exact=True).first.click()
         for width in (1440, 390):
             page.set_viewport_size({'width': width, 'height': 900})
-            for label in ('Open a saved conversation', 'Context and privacy', 'Providers and remote tools'):
+            for label in ('Saved conversations',):
                 summary = page.get_by_text(label, exact=True)
                 summary.click()
                 summary.click()
             geometry = page.evaluate("""() => {
-                const end = document.querySelector('.assistant-settings').getBoundingClientRect().bottom + scrollY;
+                const end = document.querySelector('.assistant-layout').getBoundingClientRect().bottom + scrollY;
                 return {end, height:document.documentElement.scrollHeight, viewport:innerHeight,
                     body:document.body.getBoundingClientRect().height,
                     overflow:[...document.querySelectorAll('body *')].map(n=>({tag:n.tagName,cls:String(n.className),id:n.id,bottom:n.getBoundingClientRect().bottom+scrollY,height:n.getBoundingClientRect().height})).filter(n=>n.height>0&&n.bottom>end+50).sort((a,b)=>b.bottom-a.bottom).slice(0,12)};
