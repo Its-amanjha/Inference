@@ -138,7 +138,10 @@ export async function render(container) {
       : el('span', {class: 'badge success'}, 'No errors reported');
 
     const workflowName = meta?.workflow || 'Workflow unknown';
-    const open = button(workflowName, () => openTrace(row, meta), 'ghost', {'aria-label': `Open trace details for ${workflowName}`});
+    // The name is the row's one inline action, styled as a title like Errors and Workflows (no pill, no glyph).
+    const open = el('button', {type: 'button', class: 'workflow-open', 'aria-label': `Open trace details for ${workflowName}`}, workflowName);
+    open.querySelector(':scope > svg')?.remove();
+    open.addEventListener('click', () => openTrace(row, meta));
     const execution = meta?.execution || null;
     const executionUrl = execution ? n8nUrl(row.instance_id, row.workflow_id, execution) : null;
     const workflowUrl = n8nUrl(row.instance_id, row.workflow_id);

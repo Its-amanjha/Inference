@@ -142,9 +142,7 @@ export async function render(container){
   // exists and preflight can only fail.
   if(state.instances.length<2){
     container.append(empty('Connect a second instance to promote','Promotion copies a workflow from one instance to another. Connect both first.',
-      can('admin')?[el('a',{class:'button ghost',href:'#instances'},'Open instances')]:[],'promote'),
-      messages,history);
-    await runs();
+      can('admin')?[el('a',{class:'button ghost',href:'#instances'},'Open instances')]:[],'promote'));
     return()=>controller.abort();
   }
 
@@ -164,7 +162,8 @@ export async function render(container){
   const activeSubflowPickers=new Map();
 
   function invalidate(){activeCredPickers.clear();activeSubflowPickers.clear();mappingBox.replaceChildren();resetPreview();}
-  function resetPreview(){version++;preview=null;previewContext=null;deploy.disabled=true;previewBody.replaceChildren(el('p',{className:'muted'},'Check changes to review a fresh source and target snapshot.'));}
+  function setPrimary(step){preflight.className=step==='preflight'?'button':'button ghost';deploy.className=step==='deploy'?'button':'button ghost';}
+  function resetPreview(){version++;preview=null;previewContext=null;deploy.disabled=true;setPrimary('preflight');previewBody.replaceChildren(el('p',{className:'muted'},'Check changes to review a fresh source and target snapshot.'));}
 
   // Source workflow combobox
   const workflowPicker=createIdPicker({
@@ -483,7 +482,7 @@ export async function render(container){
       previewContext=context;
       key=crypto.randomUUID();
       renderPreview(result,context);
-      deploy.disabled=!result.can_deploy;
+      deploy.disabled=!result.can_deploy;setPrimary(result.can_deploy?'deploy':'preflight');
     }catch(error){
       notice(messages,error);
     }finally{
@@ -491,13 +490,25 @@ export async function render(container){
     }
   });
 
-  const rawDisclosureNode=el('details',{className:'form-disclosure raw-json-disclosure'},
-    el('summary',{},icon('chevron'),'Edit raw mappings JSON (advanced)'),
-    el('div',{},
-      el('p',{className:'muted'},'Saved mappings are applied automatically. Use vault references such as $SERVICE, never plaintext secrets. New credential mappings require admin.'),
-      field('Credential IDs: source → target (JSON)',credential),
-      field('Secrets: source credential → vault reference (JSON)',secrets),
-      field('Subworkflow IDs: source → target (JSON)',subflows)));
+  const jsonChecks=[];
+  const jsonStatus=input=>{
+    const note=el('p',{className:'json-status',role:'status'});
+    const check=()=>{try{parseJsonWithComments(input.value||'{}');note.replaceChildren(icon('check'),'Valid JSON');note.classList.remove('is-error');}
+      catch(error){note.replaceChildren(icon('errors'),`Not valid JSON: ${error.message}`);note.classList.add('is-error');}};
+    input.addEventListener('input',check);jsonChecks.push(check);return note;
+  };
+  const jsonDone=el('button',{type:'button',className:'button'},icon('check'),'Done');
+  const jsonDialog=el('dialog',{className:'confirm-dialog json-dialog','aria-labelledby':'mappings-json-title'},
+    el('h2',{id:'mappings-json-title'},'Mappings as JSON'),
+    el('p',{className:'confirm-consequence'},'The same mappings as the pickers above, as text. Use vault references such as $SERVICE, never plaintext secrets. New credential mappings need an administrator.'),
+    field('Credential IDs: source → target',credential),jsonStatus(credential),
+    field('Secrets: source credential → vault reference',secrets),jsonStatus(secrets),
+    field('Subworkflow IDs: source → target',subflows),jsonStatus(subflows),
+    el('div',{className:'confirm-actions'},jsonDone));
+  jsonDone.addEventListener('click',()=>jsonDialog.close());
+  const editJson=el('button',{type:'button',className:'button ghost mapping-json-button'},icon('codelab'),'Edit mappings as JSON');
+  editJson.addEventListener('click',()=>{jsonChecks.forEach(check=>check());jsonDialog.showModal();credential.focus();});
+  const rawDisclosureNode=el('div',{className:'mapping-json-row'},editJson,jsonDialog);
 
   const chooser=formCard({
     title:'1. Choose source and target',

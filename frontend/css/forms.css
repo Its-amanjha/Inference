@@ -221,3 +221,12 @@ form.stack { gap:16px; }
 }
 .codelab-bar input[type=search] { min-height:40px; }
 @media (pointer:coarse),(max-width:700px) { .codelab-bar input[type=search],.codelab-field .select-menu-button { min-height:44px; } }
+
+/* Promote: mappings as JSON open in a dialog with a validity line under each map. */
+.mapping-json-row { display:flex; }
+dialog.json-dialog { width:min(640px,calc(100vw - 32px)); }
+.json-dialog textarea { min-height:96px; font-family:var(--font-mono); font-size:13px; }
+.json-dialog .field { margin:12px 0 4px; }
+.json-status { display:flex; align-items:center; gap:6px; margin:0 0 8px; font-size:12px; color:var(--color-success); }
+.json-status.is-error { color:var(--color-danger); }
+.json-status .icon { width:14px; height:14px; flex:none; }
