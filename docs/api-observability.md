@@ -14,11 +14,12 @@ Prompt, input/output content, secret attributes and raw exception text are remov
 
 | Route | Role and behavior |
 |---|---|
-| `GET /api/otel/traces` | Viewer; optional `instance_id`, `workflow_id` (pair it with `instance_id`), `limit` 1–100, `before` cursor; groups by instance and trace; each row carries `workflow_id`, `workflow_name` and `execution_id` when a span reported them, else null |
+| `GET /api/otel/traces` | Viewer; optional `instance_id`, `workflow_id` (pair it with `instance_id`), `limit` 1–100, `before` cursor; groups by instance and trace; the workflow filter selects whole traces; each row carries `workflow_id`, `workflow_name` and `execution_id` taken together from one span that reported them, else null |
+| `GET /api/otel/last-span` | Viewer; required `instance_id`; `start_ns` of the newest stored span (string) or null, from one indexed read |
 | `GET /api/otel/traces/{trace_id}` | Viewer; required `instance_id`, optional `limit` up to 2,000 and `after` cursor; spans with attributes, exact costs and provenance |
 | `GET /api/otel/summary` | Viewer; optional `instance_id`; actual span/trace/error counts |
 | `POST /api/otel/classify` | Operator + CSRF; JSON `instance_id`, `execution_id`, optional `zero_output_nodes` IDs |
-| `GET /api/errors` | Viewer; optional `instance_id`, `status=open/resolved`, `limit`, `before` |
+| `GET /api/errors` | Viewer; optional `instance_id`, `workflow_id` (pair it with `instance_id`), `status=open/resolved`, `limit`, `before` |
 | `POST /api/errors/{id}/resolve` | Operator + CSRF; marks an error resolved without deleting telemetry |
 | `POST /api/errors/{id}/reopen` | Operator + CSRF; returns a resolved error to the open queue (the Undo after Mark resolved) |
 | `GET/PUT /api/otel/retention` | Admin; PUT JSON `{"days":7}`, allowed 1–365 |

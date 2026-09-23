@@ -98,6 +98,14 @@ async def test_trace_list_names_the_workflow_and_filters_by_it(fleet):
     assert (labelled['workflow_id'],labelled['workflow_name'],labelled['execution_id'])==('wf-7','Order sync','4821')
     only=(await fleet.client.get('/api/otel/traces',params={'instance_id':instance,'workflow_id':'wf-7'})).json()['data']
     assert [row['trace_id'] for row in only]==['c'*32]
+    # A step without the workflow attribute still belongs to its trace when filtering by workflow.
+    assert (await send(fleet,token['token'],batch(trace='c'*32,span='e'*16))).status_code==200
+    only=(await fleet.client.get('/api/otel/traces',params={'instance_id':instance,'workflow_id':'wf-7'})).json()['data']
+    assert only[0]['span_count']==2 and only[0]['workflow_name']=='Order sync'
+    last=(await fleet.client.get('/api/otel/last-span',params={'instance_id':instance})).json()
+    starts=[int(row['start_ns']) for row in (await fleet.client.get('/api/otel/traces',params={'instance_id':instance})).json()['data']]
+    assert last['start_ns'] is not None and int(last['start_ns'])>=max(starts)
+    assert (await fleet.client.get('/api/otel/last-span',params={'instance_id':'missing'})).json()['start_ns'] is None
 
 
 async def test_confirmed_span_errors_are_triaged_once(fleet):
@@ -112,6 +120,7 @@ async def test_confirmed_span_errors_are_triaged_once(fleet):
     resolved=await fleet.client.post(f'/api/errors/{identifier}/resolve',headers=fleet.headers)
     assert resolved.status_code==200
     assert (await fleet.client.get('/api/errors',params={'status':'open'})).json()['data']==[]
+    assert (await fleet.client.get('/api/errors',params={'status':'resolved','instance_id':instance,'workflow_id':'no-such-workflow'})).json()['data']==[]
     reopened=await fleet.client.post(f'/api/errors/{identifier}/reopen',headers=fleet.headers)
     assert reopened.status_code==200 and reopened.json()['status']=='open'
     assert [row['id'] for row in (await fleet.client.get('/api/errors',params={'status':'open'})).json()['data']]==[identifier]

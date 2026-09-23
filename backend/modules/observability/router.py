@@ -172,26 +172,38 @@ async def traces(request: Request,instance_id: str | None=Query(default=None,max
     if instance_id:
         conditions.append('instance_id=?')
         params.append(instance_id)
-    # A workflow ID is only unique within its instance; callers pass both to name one workflow.
+    # A workflow ID is only unique within its instance; callers pass both to name one workflow. The filter
+    # selects whole traces, so steps that do not carry the workflow ID still count toward them.
     if workflow_id:
-        conditions.append('workflow_id=?')
-        params.append(workflow_id)
+        conditions.append('trace_id IN (SELECT trace_id FROM otel_spans WHERE workflow_id=?' + (' AND instance_id=?' if instance_id else '') + ')')
+        params.extend([workflow_id, instance_id] if instance_id else [workflow_id])
     where='WHERE '+' AND '.join(conditions) if conditions else ''
     having='HAVING MAX(id)<?' if before else ''
     if before:
         params.append(before)
     params.append(limit+1)
-    # Workflow and execution identity come from the spans that carry them, so a trace can be
-    # labelled by its workflow instead of its hex ID.
-    rows=await request.app.state.db.fetchall(f'SELECT instance_id,trace_id,MIN(start_ns) start_ns,MAX(end_ns) end_ns,COUNT(*) span_count,SUM(status=\'error\' OR health_status=\'error\') error_spans,'
-        f"MAX(NULLIF(workflow_id,'')) workflow_id,MAX(NULLIF(workflow_name,'')) workflow_name,MAX(NULLIF(execution_id,'')) execution_id,MAX(id) cursor "
+    rows=await request.app.state.db.fetchall(f'SELECT instance_id,trace_id,MIN(start_ns) start_ns,MAX(end_ns) end_ns,COUNT(*) span_count,SUM(status=\'error\' OR health_status=\'error\') error_spans,MAX(id) cursor '
         f'FROM otel_spans {where} GROUP BY instance_id,trace_id {having} ORDER BY cursor DESC LIMIT ?',params)
     more=len(rows)>limit
     rows=rows[:limit]
     for row in rows:
         row['start_ns']=str(row['start_ns'])
         row['end_ns']=str(row['end_ns'])
+        # Workflow and execution identity come together from one span that reported them, so a trace is
+        # labelled by its workflow instead of its hex ID and never mixes two spans' fields.
+        named=await request.app.state.db.fetchone("SELECT workflow_id,workflow_name,execution_id FROM otel_spans WHERE instance_id=? AND trace_id=? AND workflow_id<>'' ORDER BY start_ns,id LIMIT 1",
+                                                   (row['instance_id'],row['trace_id']))
+        row.update({key:(named or {}).get(key) or None for key in ('workflow_id','workflow_name','execution_id')})
     return {'data':rows,'next_cursor':str(rows[-1]['cursor']) if more else None}
+
+
+# When telemetry last arrived from one instance: one indexed read, not a grouping of its spans.
+@router.get('/last-span')
+async def last_span(request: Request,instance_id: str=Query(min_length=1,max_length=128)):
+    require_role(request,'viewer')
+    row=await request.app.state.db.fetchone('SELECT MAX(start_ns) start_ns FROM otel_spans WHERE instance_id=?',(instance_id,))
+    value=(row or {}).get('start_ns')
+    return {'instance_id':instance_id,'start_ns':str(value) if value is not None else None}
 
 
 @router.get('/traces/{trace_id}')

@@ -8,13 +8,17 @@ router=APIRouter()
 
 @router.get('')
 @router.get('/')
-async def errors(request: Request,instance_id: str | None=Query(default=None,max_length=128),status: Literal['open','resolved']='open',limit: int=Query(default=50,ge=1,le=100),before: int | None=Query(default=None,ge=1)):
+async def errors(request: Request,instance_id: str | None=Query(default=None,max_length=128),workflow_id: str | None=Query(default=None,max_length=128),
+                 status: Literal['open','resolved']='open',limit: int=Query(default=50,ge=1,le=100),before: int | None=Query(default=None,ge=1)):
     require_role(request,'viewer')
     conditions=['status=?']
     params=[status]
     if instance_id:
         conditions.append('instance_id=?')
         params.append(instance_id)
+    if workflow_id:
+        conditions.append('workflow_id=?')
+        params.append(workflow_id)
     if before:
         conditions.append('id<?')
         params.append(before)

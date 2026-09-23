@@ -146,6 +146,9 @@ async def test_definitely_rejected_activation_keeps_deployment_available(promoti
     listed=(await p.client.get('/api/n8n_promote/runs')).json()['data']
     assert (listed[0]['source_instance_id'],listed[0]['workflow_id'])==(p.source,'source-wf')
     assert listed[0]['created_at']
+    filtered=(await p.client.get('/api/n8n_promote/runs',params={'source_instance_id':p.source,'workflow_id':'source-wf'})).json()['data']
+    assert [row['id'] for row in filtered]==[listed[0]['id']]
+    assert (await p.client.get('/api/n8n_promote/runs',params={'workflow_id':'other-wf'})).json()['data']==[]
 
 
 async def test_restore_previous_version_checks_target_snapshot(promotion):

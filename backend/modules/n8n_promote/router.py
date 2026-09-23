@@ -352,10 +352,17 @@ async def execute(request,identifier,state):
 
 
 @router.get('/runs')
-async def runs(request: Request,limit: int=Query(default=50,ge=1,le=100)):
+async def runs(request: Request,limit: int=Query(default=50,ge=1,le=100),source_instance_id: str | None=Query(default=None,max_length=128),
+               workflow_id: str | None=Query(default=None,max_length=128)):
     actor=require_role(request,'operator')
-    rows=await request.app.state.db.fetchall('SELECT * FROM promotion_runs WHERE actor=? ORDER BY created_at DESC,id DESC LIMIT ?',(actor['username'],limit))
-    return {'data':[public_run(row,decode(request,row['state_enc'])) for row in rows]}
+    if not (source_instance_id or workflow_id):
+        rows=await request.app.state.db.fetchall('SELECT * FROM promotion_runs WHERE actor=? ORDER BY created_at DESC,id DESC LIMIT ?',(actor['username'],limit))
+        return {'data':[public_run(row,decode(request,row['state_enc'])) for row in rows]}
+    # Source and workflow sit in the encrypted run state, so matching happens after decoding.
+    rows=await request.app.state.db.fetchall('SELECT * FROM promotion_runs WHERE actor=? ORDER BY created_at DESC,id DESC LIMIT 1000',(actor['username'],))
+    runs=[public_run(row,decode(request,row['state_enc'])) for row in rows]
+    matched=[run for run in runs if (not source_instance_id or run['source_instance_id']==source_instance_id) and (not workflow_id or run['workflow_id']==workflow_id)]
+    return {'data':matched[:limit]}
 
 
 @router.get('/runs/{identifier}')
