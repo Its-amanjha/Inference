@@ -1,8 +1,10 @@
 import {api as request} from '../api.js';
 import {el,button,field,formCard,notice,empty,heading,table} from '../lib/html.js';
 import {icon,registerIcons} from '../lib/icons.js';
-import {confirmAction,actionMenu,stateBadge} from '../lib/confirm.js';
+import {confirmAction,stateBadge} from '../lib/confirm.js';
 import {openPeek,closePeek} from '../lib/peek.js';
+import {rowMenu} from '../lib/row-menu.js';
+import {segmented} from '../lib/select-menu.js';
 import {can} from '../state.js';
 import {relativeLabel} from '../lib/triage.js';
 import {probeSummary,reachabilityBadge,checkedLine,loadFailure,cachedProbe,rememberProbe,forgetProbe,checkConnection,fleetMetrics} from '../lib/payload.js';
@@ -50,10 +52,15 @@ export async function render(container) {
     el('div',{class:'fleet-metric-cell metric-operational'},el('h3',{},'Operational'),operationalNum),
     el('div',{class:'fleet-metric-cell metric-degraded'},el('h3',{},'Degraded'),degradedNum),
     el('div',{class:'fleet-metric-cell metric-unreachable'},el('h3',{},'Unreachable'),unreachableNum));
-  const filterAll=button('All instances',()=>setFilter('all'),'ghost fleet-filter-btn',{'aria-pressed':'true'});
-  const filterIssues=button('Issues only',()=>setFilter('issues'),'ghost fleet-filter-btn',{'aria-pressed':'false'});
+  // Two choices that switch often sit side by side, like the Errors status filter.
+  const instanceFilter=segmented({label:'Instance filter',options:[
+    {value:'all',label:'All instances',glyph:'instances'},
+    {value:'issues',label:'Issues only',glyph:'errors'},
+  ],value:'all',onChange:(next)=>setFilter(next)});
   const recheckAll=button('Check fleet',()=>checkAll(),'ghost');
-  const toolbar=el('div',{class:'fleet-toolbar'},el('div',{class:'fleet-filter-group'},filterAll,filterIssues),recheckAll);
+  // Filters stay out of the way until the first successful read finds instances.
+  const toolbar=el('div',{class:'fleet-toolbar'},instanceFilter.node,recheckAll);
+  toolbar.hidden=true;
   const tableWrap=el('div');
   container.append(rollup,toolbar,tableWrap);
   let writing=false;
@@ -209,21 +216,33 @@ export async function render(container) {
   function formatRow(entry){
     const {workflows,active,runs,failed}=numbers(entry);
     const rank=entry.probe?CLASS_RANK[classifyProbe(entry.probe)]??3:entry.failed?2:3;
-    const open=button('Details',()=>openDetails(entry),'ghost',{'aria-label':`Details for ${entry.item.name}`});
+    // The name is the row's one inline action: it opens the details panel, like Errors and Workflows.
+    const open=el('button',{type:'button',class:'workflow-open','aria-label':`Details for ${entry.item.name}`},entry.item.name);
+    open.querySelector(':scope > svg')?.remove();
+    open.addEventListener('click',()=>openDetails(entry));
     return [
-      {sortValue:entry.item.name.toLowerCase(),content:el('div',{class:'fleet-instance-cell'},el('strong',{},entry.item.name),el('span',{class:'muted fleet-instance-url'},entry.item.url))},
+      {sortValue:entry.item.name.toLowerCase(),content:el('div',{class:'fleet-instance-cell'},open,el('span',{class:'muted fleet-instance-url'},entry.item.url))},
       {sortValue:rank,content:entry.probe?reachabilityBadge(entry.probe):entry.failed?stateBadge('warning','Check failed',entry.failed):el('span',{class:'muted'},'—')},
       {sortValue:(entry.version||'').toLowerCase(),content:entry.version?el('span',{class:'mono'},entry.version):el('span',{class:'muted'},'—')},
       {sortValue:workflows??'',content:workflows===null?el('span',{class:'muted'},'—'):el('span',{},String(workflows),active!==null?el('span',{class:'muted'},` (${active} active)`):null)},
       {sortValue:runs??'',content:runs===null?el('span',{class:'muted'},'—'):String(runs)},
       {sortValue:failed??'',content:failed===null?el('span',{class:'muted'},'—'):String(failed)},
       {sortValue:telemetryLabel(entry),content:el('span',{class:entry.tele?'':'muted'},telemetryLabel(entry))},
-      {sortValue:'',content:open},
     ];
   }
   function visibleEntries(){
     if(currentFilter!=='issues')return entries;
     return entries.filter(entry=>['degraded','unreachable'].includes(classifyProbe(entry.probe)));
+  }
+  // Filter counts live in the toggle's own labels; the toggle keeps its icons.
+  function paintFilterCounts(){
+    const issues=entries.filter(entry=>['degraded','unreachable'].includes(classifyProbe(entry.probe))).length;
+    const segments=instanceFilter.node.querySelectorAll(':scope > .segment');
+    const paint=(node,text)=>{if(!node)return;
+      for(const child of node.childNodes)if(child.nodeType===Node.TEXT_NODE&&child.textContent.trim()){child.textContent=text;return;}
+      node.append(text);};
+    paint(segments[0],`All instances (${entries.length})`);
+    paint(segments[1],`Issues only (${issues})`);
   }
   function paintRows(){
     if(!fleetTable)return;
@@ -232,17 +251,19 @@ export async function render(container) {
     const focused=fleetTable.contains(document.activeElement)?document.activeElement.getAttribute('aria-label'):null;
     fleetTable.setRows(visibleEntries().map(formatRow));
     if(focused)fleetTable.querySelector(`[aria-label="${CSS.escape(focused)}"]`)?.focus({preventScroll:true});
-    const issues=entries.filter(entry=>['degraded','unreachable'].includes(classifyProbe(entry.probe))).length;
-    filterAll.textContent=`All instances (${entries.length})`;
-    filterIssues.textContent=`Issues only (${issues})`;
+    paintFilterCounts();
   }
   function setFilter(name){
     currentFilter=name;
-    filterAll.setAttribute('aria-pressed',String(name==='all'));
-    filterIssues.setAttribute('aria-pressed',String(name==='issues'));
+    instanceFilter.value=name;
     paintRows();
   }
   function paintRollup(){
+    // Nothing measured yet reads as a dash, never as zero.
+    if(!entries.length){
+      for(const node of [totalNum,operationalNum,degradedNum,unreachableNum]){node.textContent='—';node.classList.add('is-missing');node.classList.remove('is-zero');}
+      return;
+    }
     let operational=0,degraded=0,unreachable=0;
     for(const entry of entries){
       const kind=classifyProbe(entry.probe);
@@ -266,13 +287,13 @@ export async function render(container) {
     const actions=[button('Re-check connection',()=>checkEntry(entry,{paint,feedback,probeDetail}),'button',{'aria-label':`Re-check connection ${item.name}`})];
     if(can('admin')){
       actions.push(button('Edit',()=>{closePeek();edit(item);},'ghost',{'aria-label':`Edit connection ${item.name}`}),
-        actionMenu([button('Remove',()=>{closePeek();act(async()=>{
+        rowMenu([{label:'Remove',danger:true,onSelect:()=>{closePeek();act(async()=>{
           if(!await confirmAction({title:'Remove connection',target:item.name,
             consequence:'Inference stops reading this instance and deletes its saved API key. Workflows and executions in n8n are untouched.',
             confirmLabel:'Remove connection',danger:true}))return;
           await api('/api/n8n_proxy/instances/'+encodeURIComponent(item.id),{method:'DELETE'});
           forgetProbe(item.id);await load();window.dispatchEvent(new Event('instances-changed'));
-        });},'danger',{'aria-label':`Remove connection ${item.name}`})],`More actions for ${item.name}`));
+        });}}],`More actions for ${item.name}`));
     }
     if(entry.probe)probeDetail.replaceChildren(probeResult(entry.probe));
     const tele=telemetry(entry);
@@ -314,10 +335,12 @@ export async function render(container) {
     entries=result.data.map(item=>({item,probe:cachedProbe(item),evidence:null,version:null,tele:null,checking:false,checkSignal:checks.signal}));
     if(!entries.length){
       tableWrap.append(empty('No instances yet',can('admin')?'Add your first n8n instance with Add instance above.':'An administrator connects n8n instances.',[],'instances'));
-      paintRollup();filterAll.textContent='All instances (0)';filterIssues.textContent='Issues only (0)';
+      toolbar.hidden=true;
+      paintRollup();paintFilterCounts();
       return;
     }
-    fleetTable=table(['Instance','Reachability','Version','Workflows','Runs · 24h','Failed · 24h','Telemetry',''],
+    toolbar.hidden=false;
+    fleetTable=table(['Instance','Reachability','Version','Workflows','Runs · 24h','Failed · 24h','Telemetry'],
       entries.map(formatRow),{numeric:[3,4,5],sortable:{0:'text',1:'number',2:'text',3:'number',4:'number',5:'number',6:'text'},initialSort:{column:0,direction:'asc'}});
     tableWrap.append(fleetTable);
     paintRollup();paintRows();
