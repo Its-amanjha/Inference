@@ -27,14 +27,14 @@ export async function render(container){
   const current=()=>editor?editor.getValue():textarea.value;
   const keepEdits=async()=>loadedCode!==null&&current()!==loadedCode&&!await confirmAction({title:'Discard your edits',target:nodeNames.get(loadedNode)||loadedNode||'this node',
     consequence:'Loading replaces the code in the editor with the version saved in n8n. Your unsaved changes are lost.',confirmLabel:'Discard and load',danger:true});
-  const save=button('Deploy to n8n Code Node',async()=>{
+  const save=button('Deploy to n8n',async()=>{
     if(!snapshot||active||!can('operator'))return;
     const nodeName=nodeNames.get(loadedNode)||loadedNode;
     if(!await confirmAction({title:'Deploy code to n8n',target:nodeName,
-      consequence:`The code replaces that node's code in workflow ${loadedWorkflow}. The workflow must stay inactive, and its revision is checked before anything is written.`,
+      consequence:`The code replaces that node's code in ${workflowPicker.getName()||`workflow ${loadedWorkflow}`}. The workflow must stay inactive, and its revision is checked before anything is written.`,
       confirmLabel:'Deploy code'}))return;
     save.disabled=true;const saving=sequence;try{const result=await api(`/api/n8n_proxy/workflows/${encodeURIComponent(loadedWorkflow)}/nodes/${encodeURIComponent(loadedNode)}?instance_id=${encodeURIComponent(instance)}`,{method:'PUT',json:{expected_hash:snapshot.workflow_hash,code:editor?editor.getValue():textarea.value}});if(saving!==sequence)return;snapshot=result;loadedCode=current();messages.replaceChildren(el('p',{role:'status'},'Code saved and verified.'));}catch(error){if(saving!==sequence)return;snapshot=null;notice(messages,error);messages.append(el('p',{},'Reload the node before another deployment. Copy your edits first.'));}finally{save.disabled=!snapshot||!can('operator')||active;}});save.disabled=true;
-  const advanced=button('Use advanced editor',async()=>{try{const monaco=await loadMonaco();if(controller.signal.aborted||editor)return;editorHost.hidden=false;editor=monaco.editor.create(editorHost,{value:textarea.value,language,theme:'vs',automaticLayout:true,minimap:{enabled:false},fontSize:14,scrollBeyondLastLine:false});textarea.hidden=true;}catch(error){if(!controller.signal.aborted)notice(messages,error);}},'button ghost');
+  const advanced=button('Use advanced editor',async()=>{try{const monaco=await loadMonaco();if(controller.signal.aborted||editor)return;editorHost.hidden=false;editor=monaco.editor.create(editorHost,{value:textarea.value,language,theme:['dark','n8n'].includes(document.documentElement.dataset.theme)?'vs-dark':'vs',automaticLayout:true,minimap:{enabled:false},fontSize:14,scrollBeyondLastLine:false});textarea.hidden=true;}catch(error){if(!controller.signal.aborted)notice(messages,error);}},'button ghost');
   // The editor and its actions appear once there is code to edit.
   const foot=el('div',{class:'toolbar codelab-foot',hidden:true},save,button('Reload node',async()=>{if(await keepEdits())return;await readNode();},'button ghost'),advanced);
   const showEditor=shown=>{intro.hidden=shown;foot.hidden=!shown;if(!editor)textarea.hidden=!shown;else editorHost.hidden=!shown;};

@@ -3,22 +3,24 @@
 // bottom of the window. Arrow keys move between items, Escape or a click outside closes it, and
 // focus returns to the button.
 import {el} from './html.js';
-import {icon} from './icons.js';
+import {icon,actionIcon} from './icons.js';
 
 let sequence=0;
 
-// items: {label, onSelect, href, external, danger, disabled}; falsy items are skipped.
+// items: {label, onSelect, href, external, danger, disabled, glyph}; falsy items are skipped.
+// Every item leads with an icon: its glyph, the external-link mark for links out of the app, or the
+// action's usual icon (Delete, Promote, Explain…).
 export function rowMenu(items,label='More actions'){
   const id=`row-menu-${++sequence}`;
   const trigger=el('button',{type:'button',class:'row-menu-trigger','aria-label':label,title:label,'aria-haspopup':'menu','aria-expanded':'false','aria-controls':id,popovertarget:id},icon('more'));
   const list=el('div',{id,class:'row-menu',role:'menu','aria-label':label,popover:'auto'});
   const entries=items.filter(Boolean).map(item=>{
     const attrs={role:'menuitem',tabindex:'-1',class:`row-menu-item${item.danger?' is-danger':''}`};
+    const glyph=item.glyph?icon(item.glyph):item.external?icon('external'):actionIcon(item.label);
+    const lead=el('span',{class:'row-menu-icon','aria-hidden':'true'},glyph);
     const node=item.href
-      ?el('a',{...attrs,href:item.href,...(item.external?{target:'_blank',rel:'noopener noreferrer'}:{})},item.label,item.external?icon('external'):null)
-      :el('button',{...attrs,type:'button',disabled:item.disabled},item.label);
-    // el() gives buttons an action glyph; menu items stay text-only so buttons and links line up.
-    if(!item.href)node.querySelector(':scope > svg')?.remove();
+      ?el('a',{...attrs,href:item.href,...(item.external?{target:'_blank',rel:'noopener noreferrer'}:{})},lead,el('span',{},item.label))
+      :el('button',{...attrs,type:'button',disabled:item.disabled},lead,el('span',{},item.label));
     node.addEventListener('click',()=>{list.hidePopover?.();if(!item.href)item.onSelect?.();});
     return node;
   });

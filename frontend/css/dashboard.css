@@ -80,3 +80,6 @@
 .run-badge { display:inline-flex; align-items:center; gap:5px; }
 .run-badge>.icon { width:13px; height:13px; }
 .instance-connection>div:empty { display:none; }
+a.run-id { display:inline-flex; align-items:center; gap:3px; color:var(--selection-text); text-decoration:none; }
+a.run-id:hover { text-decoration:underline; text-underline-offset:3px; }
+a.run-id .icon { width:12px; height:12px; }

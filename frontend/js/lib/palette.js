@@ -2,6 +2,7 @@
 // instance. One text field (combobox) over a grouped listbox; arrows move,
 // Enter jumps, Escape closes, focus returns to the invoker.
 import {el} from './html.js';
+import {icon} from './icons.js';
 import {api} from '../api.js';
 import {state} from '../state.js';
 
@@ -24,7 +25,7 @@ export function openPalette(invoker) {
   const overlay = el('div', {class: 'palette-overlay'}, box);
 
   const views = [...document.querySelectorAll('.nav-group a[data-route]')].map(link => ({
-    group: 'Views', label: link.querySelector('span')?.textContent?.trim() || link.textContent.trim(),
+    group: 'Views', glyph: (link.getAttribute('href') || '#dashboard').slice(1), label: link.querySelector('span')?.textContent?.trim() || link.textContent.trim(),
     detail: null, href: link.getAttribute('href') || '#dashboard',
   }));
   let workflows = [], searchTimer = 0, searchVersion = 0;
@@ -45,7 +46,7 @@ export function openPalette(invoker) {
           try {
             const result = await api('/api/n8n_proxy/workflows?' + new URLSearchParams({instance_id: instance.id, name: needle, limit: '5'}), {signal: controller.signal});
             groups[index] = (result.data || []).map(row => ({
-              group: 'Workflows', label: row.name || row.id, detail: instance.name,
+              group: 'Workflows', glyph: 'workflows', label: row.name || row.id, detail: instance.name,
               href: '#workflows?' + new URLSearchParams({instance_id: instance.id, workflow_id: row.id}),
             }));
           } catch { groups[index] = []; }
@@ -61,7 +62,7 @@ export function openPalette(invoker) {
     const needle = input.value.trim().toLowerCase();
     const matches = [...views];
     for (const instance of state.instances) {
-      matches.push({group: 'Instances', label: instance.name, detail: instance.url,
+      matches.push({group: 'Instances', glyph: 'instances', label: instance.name, detail: instance.url,
         href: '#instances?telemetry=' + encodeURIComponent(instance.id)});
     }
     if (!needle) return matches;
@@ -82,6 +83,7 @@ export function openPalette(invoker) {
       }
       const node = el('li', {class: 'palette-option', role: 'option', id: `palette-option-${index}`,
         'aria-selected': String(index === active)},
+        item.glyph ? el('span', {class: 'palette-icon', 'aria-hidden': 'true'}, icon(item.glyph)) : null,
         el('span', {class: 'palette-label'}, item.label),
         item.detail ? el('span', {class: 'muted palette-detail'}, item.detail) : null);
       node.addEventListener('pointerdown', event => event.preventDefault());

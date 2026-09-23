@@ -466,7 +466,7 @@ def exercise_fleet(page, fixture_url, state):
         editor = page.get_by_role('textbox', name='Code editor', exact=True)
         expect(editor).to_have_value('return items;')
         editor.fill('return [];')
-        save = page.get_by_role('button', name='Deploy to n8n Code Node', exact=True)
+        save = page.get_by_role('button', name='Deploy to n8n', exact=True)
         save.click()
         # Deployment confirms in an in-app dialog that names the Code node.
         page.get_by_role('dialog', name='Deploy code to n8n').get_by_role('button', name='Deploy code', exact=True).click()

@@ -61,7 +61,7 @@
 @keyframes disclosure-enter { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
 @media(prefers-reduced-motion:no-preference) {
   .account-panel:not([hidden]),.picker-list:not([hidden]),.action-menu[open]>.action-menu-list,
-  .assistant-disclosure[open]>:not(summary),.assistant-settings[open]>:not(summary) { animation:disclosure-enter .16s ease-out; }
+  .assistant-disclosure[open]>:not(summary),.assistant-settings[open]>:not(summary),.triage-saved-dropdown[open] .triage-saved-panel { animation:disclosure-enter .16s ease-out; }
 }
 @media(prefers-reduced-motion:reduce) {
   .assistant-disclosure>summary::after,.assistant-settings>summary::after { transition:none; }
@@ -158,3 +158,19 @@
 .notes-blank h2 { margin:4px 0 0; font-size:16px; color:var(--color-ink-black); }
 .notes-blank p { margin:0; max-width:36ch; font-size:13px; }
 .notes-title::placeholder { font-size:15px; font-weight:400; }
+
+/* Remaining rules inside cards and menus go: panel headers, the account menu's theme block and the
+   in-flow More actions list are separated by space. */
+.panel-head { border-bottom:0; padding-bottom:8px; }
+.theme-choice { border-top:0; border-bottom:0; }
+.action-menu-list { border-top:0; padding-top:4px; }
+/* Nothing under 12px, and labels in sentence case. */
+.active-view-indicator .button,.picker-state { font-size:12px; }
+.flow-list li::before { font-size:12px; }
+.shortcuts-dialog h3 { font-size:13px; text-transform:none; letter-spacing:0; }
+/* Every control reaches 44px on a phone. */
+@media (pointer:coarse),(max-width:700px) {
+  .studio-tabs>.button,.notes-library-head .button,.notes-search .button,.triage-saved-panel-actions .button,
+  .active-view-indicator .button,.triage-open,.workflow-open,.picker-retry,.picker-clear,.theme-option span { min-height:44px; }
+  #toasts .toast-dismiss { width:44px; height:44px; }
+}

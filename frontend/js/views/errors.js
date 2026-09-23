@@ -477,7 +477,7 @@ export async function render(container){
       { label: 'Explain with AI', href: explainHref(row) },
       can('operator') ? { label: 'Repair with AI', href: repairHref(row) } : null,
       can('operator') && loadedStatus === 'open' ? { label: 'Mark resolved', onSelect: () => resolveRows([row]) } : null,
-      can('operator') && loadedStatus === 'resolved' ? { label: 'Reopen', onSelect: () => reopenRows([row]) } : null,
+      can('operator') && loadedStatus === 'resolved' ? { label: 'Reopen', glyph: 'history', onSelect: () => reopenRows([row]) } : null,
     ];
   }
 

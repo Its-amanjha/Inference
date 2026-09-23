@@ -75,7 +75,7 @@ export async function render(container) {
     const bulk=el('div',{class:'workflow-bulk',role:'region','aria-label':`Bulk actions on ${instance.name}`,hidden:true});
     messages.append(loadingState(`Waiting to load workflows on ${instance.name}…`));
     const entry={instance,list,messages,stamp,bulk,rows:[],selected:new Set(),cursor:null,loading:false,loaded:false};
-    entry.next=button('Next page',()=>load(entry,entry.cursor),'ghost');
+    entry.next=button('Next page',()=>load(entry,entry.cursor),'ghost');entry.next.hidden=true;
     entry.next.setAttribute('aria-label',`Next workflow page on ${instance.name}`);
     entry.retry=button('Refresh instance',()=>load(entry),'ghost',{'aria-label':`Refresh workflows on ${instance.name}`});
     sections.append(el('section',{class:'card stack','aria-label':`Workflows on ${instance.name}`},el('h2',{},instance.name),messages,stamp,bulk,list,el('div',{class:'toolbar'},entry.retry,entry.next)));
@@ -212,7 +212,7 @@ export async function render(container) {
       const menu=rowMenu([
         link?{label:'Open in n8n',href:link,external:true}:null,
         {label:'Promote',href:promoteHref(entry,row)},
-        {label:'Open in CodeLab',href:codelabHref(entry,row)},
+        {label:'Open in CodeLab',glyph:'codelab',href:codelabHref(entry,row)},
         can('operator')?{label:'Repair with AI',href:repairHref({instance_id:instance.id,workflow_id:row.id})}:null,
         can('operator')&&typeof row.active==='boolean'?{label:row.active?'Deactivate':'Activate',danger:row.active,onSelect:()=>setActive(entry,[row],!row.active)}:null,
       ],`More actions for ${name} on ${instance.name}`);
@@ -252,7 +252,8 @@ export async function render(container) {
       entry.list.replaceChildren(entry.rows.length?renderTable(entry):empty('No matching workflows','Try another name or create a workflow in this instance.',[button('Clear search',()=>{input.value='';searchFleet();},'ghost')],'search'));
       renderBulk(entry);
     } catch(error){if(!signal.aborted)entry.messages.replaceChildren(loadFailure(error,()=>load(entry,after),`Could not load workflows on ${entry.instance.name}`));}
-    finally{entry.loading=false;entry.next.disabled=searching||!entry.cursor;entry.retry.disabled=searching;}
+    // Next page shows only when the instance has another page.
+    finally{entry.loading=false;entry.next.hidden=!entry.cursor;entry.next.disabled=searching||!entry.cursor;entry.retry.disabled=searching;}
   }
   async function searchFleet(){
     if(searching||entries.some(entry=>entry.loading))return;
