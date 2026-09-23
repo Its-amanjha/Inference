@@ -111,10 +111,14 @@
 .shortcuts-dialog .confirm-actions .button { min-height:44px; }
 
 /* Connected: show the time, keep the state for assistive technology. Any other state shows its words. */
-/* The clock is a quiet pill: weekday and date in grey, the time in full weight with even digits. */
-.live-clock { display:inline-flex; align-items:center; gap:8px; min-height:32px; padding:0 12px; border:1px solid var(--border); border-radius:var(--radius-pill); background:var(--surface-card-surface); font-size:13px; line-height:1; }
+/* The clock is plain text, never a control: no border, background, hover state or focus target. */
+.live-clock { display:inline-flex; align-items:baseline; gap:8px; font-size:13px; line-height:1; color:var(--color-smoke); }
 .live-clock-date { color:var(--color-smoke); }
 .live-clock-time { font-weight:600; font-variant-numeric:tabular-nums; letter-spacing:.01em; color:var(--color-ink-black); }
+/* No keyboard shortcut discovery on touch: the Errors view button stays available on fine pointers only. */
+@media (pointer:coarse) {
+  button[aria-label="Keyboard shortcuts"] { display:none; }
+}
 /* Connected needs no dot: the clock itself says the page is live. The dot returns with any other state. */
 .live-status[data-state=live] .live-dot { display:none; }
 @media(max-width:700px) { .live-clock-date { display:none; } }
