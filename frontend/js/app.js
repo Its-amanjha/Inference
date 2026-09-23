@@ -4,6 +4,7 @@ import {state,can,applyPreferences} from './state.js';
 import {renderAuth} from './wizard.js';
 import {setTheme} from './themes.js';
 import {icon} from './lib/icons.js';
+import {openPalette} from './lib/palette.js';
 
 const routes = {'dashboard':'Overview','workflows':'Workflows','promote':'Promote','errors':'Errors','observe':'Observability','fleet-health':'Fleet health','codelab':'CodeLab','assistant':'AI workspace','containers':'Containers','notes':'Notes','backup':'Backups','secrets':'Secrets','instances':'Instances','settings':'Settings'};
 const adminOnly = new Set(['containers','backup','secrets']);
@@ -220,11 +221,18 @@ export function openShortcutsDialog(invoker) {
   const globalShortcuts = [
     { display: '?', description: 'Show keyboard shortcuts overlay' },
     { display: '/', description: 'Focus search or primary filter' },
+    { display: 'Ctrl+K', description: 'Open command palette' },
     { display: 'g d', description: 'Go to Overview' },
     { display: 'g e', description: 'Go to Errors' },
     { display: 'g w', description: 'Go to Workflows' },
     { display: 'g o', description: 'Go to Observability' },
-    { display: 'g a', description: 'Go to AI workspace' }
+    { display: 'g a', description: 'Go to AI workspace' },
+    { display: 'g f', description: 'Go to Fleet health' },
+    { display: 'g s', description: 'Go to Settings' },
+    { display: 'g i', description: 'Go to Instances' },
+    { display: 'g n', description: 'Go to Notes' },
+    { display: 'g b', description: 'Go to Backups' },
+    { display: 'g c', description: 'Go to CodeLab' }
   ];
 
   sections.push(
@@ -268,8 +276,16 @@ function matchShortcutKey(shortcut, eventKey) {
 
 function onKeyDown(e) {
   if (e.defaultPrevented) return;
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && String(e.key).toLowerCase() === 'k') {
+    if (isTyping(e)) return;
+    if (document.querySelector('dialog[open]')) return;
+    e.preventDefault();
+    openPalette();
+    return;
+  }
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   if (document.querySelector('dialog[open]')) return;
+  if (document.querySelector('.palette-overlay')) return;
   if (isTyping(e)) return;
 
   if (pendingSequence === 'g') {
