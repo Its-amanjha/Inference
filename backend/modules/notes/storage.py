@@ -159,8 +159,11 @@ class NotesStore:
                                 total += len(content)
                                 if len(results) >= MAX_FILES or total > MAX_SCAN_BYTES:
                                     raise NoteError(413, 'notes_scan_limit', 'Notes scan limit exceeded.')
-                                results.append({'path': path, 'revision': hashlib.sha256(content).hexdigest(),
-                                                'modified': datetime.fromtimestamp(info.st_mtime, timezone.utc).isoformat()})
+                                try:
+                                    modified = datetime.fromtimestamp(info.st_mtime, timezone.utc).isoformat()
+                                except (OSError, OverflowError, ValueError):
+                                    modified = None
+                                results.append({'path': path, 'revision': hashlib.sha256(content).hexdigest(), 'modified': modified})
             try:
                 with self._directory([]):
                     pass

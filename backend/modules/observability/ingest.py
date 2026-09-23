@@ -12,7 +12,22 @@ from google.protobuf.json_format import MessageToDict
 from google.protobuf.message import DecodeError
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
 
-from backend.modules.assistant.repair_context import cap_text, mask_text
+from backend.modules.assistant.repair_context import MASK, cap_text, mask_text
+
+# Error text is shown to every viewer. Repair's masking covers quoted assignments, bearer tokens, URL
+# credentials and long random runs; these add unquoted `name=value` / `name: value` pairs whose name says
+# secret, and keys shaped like provider keys (sk-..., ghp_..., xoxb-..., AKIA...).
+_UNQUOTED_SECRET = re.compile(r'(?i)(?<![A-Za-z0-9_-])([A-Za-z0-9_-]{0,48}(?:password|passwd|pwd|secret|token|api[_-]?key'
+                              r'|access[_-]?key|private[_-]?key|authorization|credential|session|cookie)\s*[:=]\s*)'
+                              r'(?!["\'\s]|\*{3})([^\s,;)\]}"\'&]{1,512})')
+_KEY_SHAPED = re.compile(r'(?<![A-Za-z0-9])(?:(?:sk|pk|rk)-[A-Za-z0-9_-]{8,}|xox[abpr]-[A-Za-z0-9-]{8,}|gh[pousr]_[A-Za-z0-9]{16,}'
+                         r'|AKIA[0-9A-Z]{16})')
+
+
+def mask_error_text(text: str) -> str:
+    text = mask_text(text)[0]
+    text = _UNQUOTED_SECRET.sub(lambda m: m.group(1) + MASK, text)
+    return _KEY_SHAPED.sub(MASK, text)
 
 MAX_BODY = 2 * 1024 * 1024
 MAX_DECOMPRESSED = 8 * 1024 * 1024
@@ -174,7 +189,7 @@ def _normalize(span: Any, resource: dict[str, Any]) -> dict[str, Any]:
         text = _text(message, 2048).strip() if code == 2 and isinstance(message, str) else ""
     except ValueError:
         text = ""  # Unusable error text never rejects the span; the record falls back to a generic line.
-    result["status_message"] = cap_text(mask_text(text)[0], 300)[0] if text else ""
+    result["status_message"] = cap_text(mask_error_text(text), 300)[0] if text else ""
     for name, keys in {
         "workflow_id": ("n8n.workflow.id", "workflow.id", "workflow_id"),
         "workflow_name": ("n8n.workflow.name", "workflow.name", "workflow_name"),

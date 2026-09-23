@@ -175,3 +175,14 @@ def test_directory_fsync_after_save_and_delete(tmp_path, monkeypatch):
     assert len(synced_directories) == 2
     store.delete('note.md', second['revision'])
     assert len(synced_directories) == 3
+
+
+def test_a_note_with_an_unusual_timestamp_still_lists(tmp_path):
+    store = NotesStore(tmp_path / 'vault')
+    store.write('old.md', 'old', None)
+    try:
+        os.utime(tmp_path / 'vault' / 'old.md', (-86400, -86400))
+    except (OSError, OverflowError, ValueError):
+        pytest.skip('This filesystem cannot store a pre-1970 time.')
+    [row] = store.list()
+    assert row['path'] == 'old.md'

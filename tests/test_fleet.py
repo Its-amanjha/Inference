@@ -296,3 +296,36 @@ async def test_cancellation_during_final_audit_preserves_confirmed_success(fleet
         await task
     events=await fleet.app.state.db.fetchall("SELECT outcome FROM audit_events WHERE action='fleet.workflow_activated' ORDER BY id")
     assert [event['outcome'] for event in events]==['intent','success']
+
+
+async def test_a_slow_fleet_scan_never_replaces_a_newer_check(fleet):
+    alpha=await add(fleet)
+    await add(fleet,'Beta','https://beta.example','beta-secret-key')
+    release=asyncio.Event()
+    alpha_down=False
+
+    async def alpha_reply(request):
+        if alpha_down:
+            raise httpx.ConnectError('down')
+        return httpx.Response(200,json={'data':[],'nextCursor':None})
+
+    async def beta_reply(request):
+        await release.wait()
+        return httpx.Response(200,json={'data':[],'nextCursor':None})
+
+    for path in ('/api/v1/workflows','/api/v1/executions'):
+        fleet.replies[('alpha.example','GET',path)]=alpha_reply
+        fleet.replies[('beta.example','GET',path)]=beta_reply
+    scan=asyncio.create_task(fleet.client.get('/api/n8n_proxy/health'))
+    for _ in range(200):
+        await asyncio.sleep(0.01)
+        if sum(1 for call in fleet.calls if call.url.host=='alpha.example')>=2:
+            break
+    await asyncio.sleep(0.05)
+    alpha_down=True
+    probe=await fleet.client.post(f'/api/n8n_proxy/instances/{alpha}/probe',headers=fleet.headers)
+    assert probe.status_code==200,probe.text
+    release.set()
+    assert (await scan).status_code==200
+    saved=next(row for row in (await fleet.client.get('/api/n8n_proxy/instances')).json()['data'] if row['id']==alpha)['last_probe']
+    assert saved['reachable'] is False and saved['checked_at']==probe.json()['checked_at']

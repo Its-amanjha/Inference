@@ -1,6 +1,7 @@
 import gzip
 import json
 import time
+from decimal import Decimal
 
 import httpx
 import pytest
@@ -75,8 +76,10 @@ async def test_trace_queries_keep_instances_separate_and_unknown_cost_null(fleet
     first,one=await issue(fleet)
     second=await add(fleet,'Other','https://other.example')
     _,two=await issue(fleet,second)
+    # An AI step (it names a model) with no price: the trace's AI cost is unknown, never zero.
+    unpriced=[{'key':'gen_ai.request.model','value':{'stringValue':'unpriced-model'}}]
     for token in (one,two):
-        assert (await send(fleet,token['token'],batch())).status_code==200
+        assert (await send(fleet,token['token'],batch(attributes=unpriced))).status_code==200
     traces=await fleet.client.get('/api/otel/traces')
     assert len(traces.json()['data'])==2
     assert traces.json()['data'][0]['workflow_name'] is None
@@ -177,7 +180,7 @@ async def test_a_failed_run_counts_its_failed_step_once(fleet):
 
 async def test_trace_cost_aggregate_preserves_all_stored_decimal_digits(fleet):
     instance,token=await issue(fleet)
-    await send(fleet,token['token'],batch())
+    await send(fleet,token['token'],batch(attributes=[{'key':'gen_ai.request.model','value':{'stringValue':'priced-model'}}]))
     exact='0.123456789012345678901234567890123456789'
     await fleet.app.state.db.execute('UPDATE otel_spans SET cost_exact=?',(exact,))
     r=await fleet.client.get('/api/otel/traces/'+'a'*32,params={'instance_id':instance})
@@ -259,3 +262,80 @@ async def test_one_error_per_failure_with_the_nodes_masked_message(fleet):
     # A node span that fails without a message still gets the generic line, and no second record appears.
     assert (await send(fleet,token['token'],payload({**root,'spanId':'3'*16,'status':{'code':2}}))).status_code==200
     assert len((await fleet.client.get('/api/errors',params={'instance_id':instance})).json()['data'])==1
+
+
+def _otlp(*spans):
+    return {'resourceSpans':[{'resource':{'attributes':[]},'scopeSpans':[{'spans':list(spans)}]}]}
+
+
+def _span(trace,span_id,name,status,message=None,attrs=(),parent=None,ints=()):
+    now=time.time_ns()
+    result={'traceId':trace,'spanId':span_id,'name':name,'startTimeUnixNano':str(now-2000),'endTimeUnixNano':str(now),
+            'status':{'code':status,**({'message':message} if message else {})},
+            'attributes':[{'key':k,'value':{'stringValue':v}} for k,v in attrs]+[{'key':k,'value':{'intValue':str(v)}} for k,v in ints]}
+    if parent:
+        result['parentSpanId']=parent
+    return result
+
+
+# Real n8n 2.x: the execution ID rides on the root workflow span only.
+_ROOT=[('n8n.workflow.id','wf-1'),('n8n.workflow.name','Orders'),('n8n.execution.id','ex1')]
+
+
+async def _records(fleet,instance):
+    rows=(await fleet.client.get('/api/errors',params={'instance_id':instance})).json()['data']
+    return [(row['node_name'],row['execution_id'],row['workflow_id']) for row in rows]
+
+
+async def test_a_failure_keeps_its_run_identity_whichever_span_arrives_first(fleet):
+    instance,token=await issue(fleet)
+    node=[('n8n.node.name','HTTP Request')]
+    # Root first, node in a later batch: the node's record borrows the run's execution and workflow.
+    await send(fleet,token['token'],_otlp(_span('c'*32,'4'*16,'workflow.execute',2,'Workflow failed',_ROOT)))
+    await send(fleet,token['token'],_otlp(_span('c'*32,'5'*16,'node HTTP Request',2,'Request failed',node,parent='4'*16)))
+    assert await _records(fleet,instance)==[('HTTP Request','ex1','wf-1')]
+    # Node first: the root, arriving later, fills the node's record in.
+    await send(fleet,token['token'],_otlp(_span('d'*32,'6'*16,'node HTTP Request',2,'Request failed',node,parent='7'*16)))
+    await send(fleet,token['token'],_otlp(_span('d'*32,'7'*16,'workflow.execute',2,'Workflow failed',
+                                                [('n8n.workflow.id','wf-1'),('n8n.workflow.name','Orders'),('n8n.execution.id','ex2')])))
+    assert sorted(await _records(fleet,instance))==[('HTTP Request','ex1','wf-1'),('HTTP Request','ex2','wf-1')]
+    filtered=(await fleet.client.get('/api/errors',params={'instance_id':instance,'workflow_id':'wf-1'})).json()['data']
+    assert len(filtered)==2
+
+
+async def test_classification_does_not_add_back_a_recorded_failure(fleet):
+    instance,token=await issue(fleet)
+    node=[('n8n.node.name','HTTP Request'),('n8n.node.id','n1'),('n8n.workflow.id','wf-1')]
+    await send(fleet,token['token'],_otlp(_span('a'*32,'2'*16,'node HTTP Request',2,'Request failed',node,parent='1'*16),
+                                          _span('a'*32,'1'*16,'workflow.execute',2,'Workflow failed',_ROOT)))
+    await send(fleet,token['token'],_otlp(_span('b'*32,'3'*16,'workflow.execute',2,'Workflow failed',[('n8n.workflow.id','wf-1'),('n8n.execution.id','ex2')])))
+    before=await _records(fleet,instance)
+    assert len(before)==2
+    for execution in ('ex1','ex2'):
+        r=await fleet.client.post('/api/otel/classify',headers=fleet.headers,json={'instance_id':instance,'execution_id':execution})
+        assert r.status_code==200,r.text
+    assert sorted(await _records(fleet,instance))==sorted(before)
+
+
+async def test_stored_error_text_masks_unquoted_secrets(fleet):
+    instance,token=await issue(fleet)
+    message='Auth failed: api_key=abcd1234efgh5678 (password=Hunter2024!) x-api-key: 9f8e7d6c5b4a3921 key sk-ab12cd34ef56'
+    await send(fleet,token['token'],_otlp(_span('e'*32,'8'*16,'node HTTP Request',2,message,[('n8n.node.name','HTTP Request')])))
+    stored=(await fleet.client.get('/api/errors',params={'instance_id':instance})).json()['data'][0]['error_message']
+    for secret in ('abcd1234efgh5678','Hunter2024!','9f8e7d6c5b4a3921','sk-ab12cd34ef56'):
+        assert secret not in stored
+    assert stored.startswith('Auth failed: api_key=')
+
+
+async def test_trace_cost_totals_count_ai_steps_of_the_whole_trace(fleet):
+    instance,token=await issue(fleet)
+    await fleet.client.put('/api/otel/prices/gpt-test',headers=fleet.headers,json={'input_per_million':'1','output_per_million':'2'})
+    ai=[('gen_ai.request.model','gpt-test')]
+    usage=(('gen_ai.usage.input_tokens',1000),('gen_ai.usage.output_tokens',500))
+    await send(fleet,token['token'],_otlp(_span('f'*32,'9'*16,'workflow.execute',1),
+                                          _span('f'*32,'a'*16,'node Chat',1,attrs=ai,ints=usage,parent='9'*16)))
+    first=(await fleet.client.get('/api/otel/traces/'+'f'*32,params={'instance_id':instance,'limit':1})).json()
+    # A step that is not an AI call is never "unpriced", and the total covers steps beyond the returned page.
+    assert first['unknown_cost_spans']==0 and first['ai_spans']==1
+    priced=Decimal(first['known_cost_usd'])
+    assert first['cost_usd'] is None or Decimal(first['cost_usd'])==priced

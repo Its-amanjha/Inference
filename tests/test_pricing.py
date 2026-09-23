@@ -54,10 +54,25 @@ def test_missing_special_rate_marks_estimate_and_priority_is_atomic():
 
 
 def test_decimal_precision_is_not_lost_for_large_counts():
-    value = 123456789012345678901234567890
-    result = calculate_cost('x', value, 0, {'x': {
-        'input_per_million': '1', 'output_per_million': '0'}})
-    assert result['cost_usd'] == '123456789012345678901234.56789'
+    result = calculate_cost('x', 99_999_999, 0, {'x': {
+        'input_per_million': '0.123456789', 'output_per_million': '0'}})
+    assert result['cost_usd'] == '12.345678776543211'
+
+
+def test_absurd_token_counts_are_unusable_not_priced():
+    prices = {'x': {'input_per_million': '1', 'output_per_million': '1'}}
+    assert calculate_cost('x', 100_000_001, 0, prices)['cost_usd'] is None
+    assert calculate_cost('x', 0, 2**63 - 1, prices)['cost_usd'] is None
+
+
+def test_prices_come_before_the_local_ollama_zero():
+    """Overrides, live and bundled prices apply first; local Ollama is free only when nothing prices it."""
+    prices = {'llama3.2:3b': {'input_per_million': '0.3', 'output_per_million': '1.2', 'source': 'override'}}
+    priced = calculate_cost('llama3.2:3b', 2_000_000, 500_000, prices, provider='ollama')
+    assert priced['cost_usd'] == '1.2' and priced['pricing_source'] == 'override'
+    assert calculate_cost('llama3.2:3b', 10, 5, {}, provider='Ollama')['cost_usd'] == '0'
+    # Ollama Cloud models bill per token, so they are never free by default.
+    assert calculate_cost('gpt-oss:120b-cloud', 10, 5, {}, provider='ollama')['cost_usd'] is None
 
 
 def test_null_optional_rates_are_unknown_category_rates_not_invalid_prices():

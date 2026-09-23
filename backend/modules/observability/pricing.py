@@ -9,8 +9,17 @@ def select_prices(overrides: dict, live: dict, bundled: dict) -> dict:
     return {**bundled, **live, **overrides}
 
 
+# More than any single model call reports; a larger count is treated as unusable, not priced.
+MAX_TOKENS = 100_000_000
+
+
 def _count(value: Any) -> bool:
-    return type(value) is int and value >= 0
+    return type(value) is int and 0 <= value <= MAX_TOKENS
+
+
+def _local_ollama(provider: str | None, model: str | None) -> bool:
+    """Ollama with a model that is not an Ollama Cloud one (their tags end in "cloud")."""
+    return str(provider or '').lower() == 'ollama' and not str(model or '').lower().endswith('cloud')
 
 
 def _rate(value: Any) -> Decimal:
@@ -41,11 +50,14 @@ def calculate_cost(
         return unknown
     if reasoning_tokens is not None and (tokens_out is None or reasoning_tokens > tokens_out):
         return unknown
-    if provider == 'ollama':
-        return {'cost_usd': '0', 'pricing_source': 'ollama',
-                'price_timestamp': None, 'estimated': False}
     entry = prices.get(model) if model is not None else None
-    if not isinstance(entry, dict) or tokens_in is None or tokens_out is None:
+    if not isinstance(entry, dict):
+        # Last layer: a local Ollama model has no provider charge when no price applies to it.
+        if _local_ollama(provider, model):
+            return {'cost_usd': '0', 'pricing_source': 'ollama',
+                    'price_timestamp': None, 'estimated': False}
+        return unknown
+    if tokens_in is None or tokens_out is None:
         return unknown
     cached, reasoning = cached_tokens or 0, reasoning_tokens or 0
     try:

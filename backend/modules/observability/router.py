@@ -112,14 +112,28 @@ async def span_error(tx,span):
     summary=span.get('status_message') or GENERIC_ERROR
     workflow_key=hashlib.sha256(f"{span['instance_id']}:{span['trace_id']}:workflow".encode()).hexdigest()
     if span.get('node_name') or span.get('node_id'):
+        if not (span.get('workflow_id') and span.get('execution_id')):
+            known=await tx.fetchone("SELECT workflow_id,workflow_name,execution_id FROM otel_spans WHERE instance_id=? AND trace_id=? "
+                                    "AND (workflow_id<>'' OR execution_id<>'') ORDER BY (COALESCE(node_name,'')='' AND COALESCE(node_id,'')='') DESC,id LIMIT 1",
+                                    (span['instance_id'],span['trace_id']))
+            if known:
+                span={**span,**{key:span.get(key) or known[key] for key in ('workflow_id','workflow_name','execution_id')}}
         await error_record(tx,span,summary=summary)
         # The root span may have arrived first, in an earlier batch.
         await tx.execute('DELETE FROM errors WHERE error_key=?',(workflow_key,))
         return
-    failed_node=await tx.fetchone("SELECT 1 FROM otel_spans WHERE instance_id=? AND trace_id=? AND status='error' AND (node_name<>'' OR node_id<>'') LIMIT 1",
-                                  (span['instance_id'],span['trace_id']))
-    if not failed_node:
+    failed_nodes=await tx.fetchall("SELECT span_id FROM otel_spans WHERE instance_id=? AND trace_id=? AND status='error' AND (node_name<>'' OR node_id<>'')",
+                                   (span['instance_id'],span['trace_id']))
+    if not failed_nodes:
         await error_record(tx,span,summary=summary,key=workflow_key)
+        return
+    # The failure is already on record under its node; give that record the identity this root carries.
+    for row in failed_nodes:
+        key=hashlib.sha256(f"{span['instance_id']}:{span['trace_id']}:{row['span_id']}".encode()).hexdigest()
+        await tx.execute("UPDATE errors SET workflow_id=CASE WHEN COALESCE(workflow_id,'')='' THEN ? ELSE workflow_id END,"
+                         "workflow_name=CASE WHEN COALESCE(workflow_name,'') IN ('','Unknown Workflow') AND ?<>'' THEN ? ELSE workflow_name END,"
+                         "execution_id=CASE WHEN COALESCE(execution_id,'')='' THEN ? ELSE execution_id END WHERE error_key=?",
+                         (span.get('workflow_id',''),span.get('workflow_name',''),span.get('workflow_name',''),span.get('execution_id',''),key))
 
 
 async def price_snapshot(tx):
@@ -233,19 +247,23 @@ async def trace(trace_id: str,request: Request,instance_id: str=Query(min_length
         fail(404,'trace_not_found','Trace was not found.')
     more=len(rows)>limit
     rows=rows[:limit]
-    values=[Decimal(row['cost_exact']) for row in rows if row['cost_exact'] is not None]
+    # Totals cover the whole trace; only AI steps (a model or token counts) carry a price, so only they can lack one.
+    costs=await request.app.state.db.fetchall('SELECT cost_exact,model,tokens_in,tokens_out FROM otel_spans WHERE instance_id=? AND trace_id=?',(instance_id,trace_id))
+    ai_rows=[row for row in costs if row['model'] is not None or row['tokens_in'] is not None or row['tokens_out'] is not None]
+    values=[Decimal(row['cost_exact']) for row in ai_rows if row['cost_exact'] is not None]
     with localcontext() as context:
         context.prec=max(28,max((v.adjusted() for v in values),default=0)-min((v.as_tuple().exponent for v in values),default=0)+len(str(len(values)))+3)
         known=sum(values,Decimal(0))
-    unknown=sum(row['cost_exact'] is None for row in rows)
+    unknown=sum(row['cost_exact'] is None for row in ai_rows)
+    plain=lambda value:(lambda text:text.rstrip('0').rstrip('.') if '.' in text else text)(format(value,'f'))
     for row in rows:
         row['id']=str(row['id'])
         row['start_ns']=str(row['start_ns'])
         row['end_ns']=str(row['end_ns'])
         row['attributes']=json.loads(row.pop('attributes_json'))
         row['pricing']=json.loads(row.pop('pricing_json') or '{}')
-    return {'data':rows,'next_cursor':rows[-1]['id'] if more else None,'cost_usd':None if unknown else str(known),
-            'known_cost_usd':str(known),'unknown_cost_spans':unknown,'cost_scope':'returned_page'}
+    return {'data':rows,'next_cursor':rows[-1]['id'] if more else None,'cost_usd':None if unknown else plain(known),'ai_spans':len(ai_rows),
+            'known_cost_usd':plain(known),'unknown_cost_spans':unknown,'cost_scope':'trace'}
 
 
 # Failed steps of one trace (used inside GROUP BY instance_id,trace_id). n8n marks both the failing node's
@@ -254,7 +272,7 @@ async def trace(trace_id: str,request: Request,instance_id: str=Query(min_length
 _FAILED="(status='error' OR health_status='error')"
 _NODE="(COALESCE(node_name,'')<>'' OR COALESCE(node_id,'')<>'')"
 FAILED_STEPS=(f'(SUM({_FAILED} AND {_NODE})+CASE WHEN SUM({_FAILED} AND {_NODE})=0 '
-              f'THEN SUM({_FAILED} AND NOT {_NODE}) ELSE 0 END)')
+              f'THEN MIN(1,SUM({_FAILED} AND NOT {_NODE})) ELSE 0 END)')
 
 
 @router.get('/summary')
@@ -262,9 +280,8 @@ async def summary(request: Request,instance_id: str | None=Query(default=None,ma
     require_role(request,'viewer')
     where='WHERE instance_id=?' if instance_id else ''
     params=(instance_id,) if instance_id else ()
-    counts=await request.app.state.db.fetchone(f'SELECT COUNT(*) spans,COUNT(DISTINCT instance_id || \':\' || trace_id) traces,'
-        f'(SELECT COALESCE(SUM(steps),0) FROM (SELECT {FAILED_STEPS} steps FROM otel_spans {where} GROUP BY instance_id,trace_id)) error_spans '
-        f'FROM otel_spans {where}',params+params)
+    counts=await request.app.state.db.fetchone(f'SELECT COALESCE(SUM(n),0) spans,COUNT(*) traces,COALESCE(SUM(steps),0) error_spans '
+        f'FROM (SELECT COUNT(*) n,{FAILED_STEPS} steps FROM otel_spans {where} GROUP BY instance_id,trace_id)',params)
     counts['incomplete_is_failure']=False
     return counts
 
@@ -382,7 +399,7 @@ async def classify_instance(body,request,client,authorize,generation=None):
             await tx.execute('INSERT INTO execution_cursors(key,value_json) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json',(cache_key,json.dumps(snapshot)))
             for span,result in zip(spans,results,strict=True):
                 await tx.execute("UPDATE otel_spans SET health_status=?,error_type=?,error_summary=?,silent=?,checked_at=datetime('now') WHERE id=?",(result['health_status'],result.get('error_type'),result.get('error_summary'),int(result.get('silent',False)),span['id']))
-                if result['health_status']=='error':
+                if result['health_status']=='error' and span['status']!='error':
                     await error_record(tx,span,result.get('error_type') or 'ExecutionError',result.get('error_summary') or 'Execution failure confirmed.')
     await audit.record(request,'telemetry.classified',body.instance_id,{'execution_id':body.execution_id})
     return {'data':results}

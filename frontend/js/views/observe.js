@@ -14,14 +14,16 @@ registerIcons({
 });
 
 // Decimal-point shifting preserves every digit of server-priced costs.
+// A USD amount (a decimal string) for reading: dollars from $1, cents below, and two significant digits for
+// fractions of a cent so a real cost never reads as zero. The exact amount stays in the data.
 export function cents(value) {
   if (value === null || value === undefined) return 'Unknown';
-  const match = String(value).match(/^([+-]?)(\d+)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/);
-  if (!match) return String(value) + ' USD';
-  const digits = match[2] + (match[3] || ''), point = match[2].length + Number(match[4] || 0) + 2;
-  if (Math.abs(point) > 1000) return String(value) + ' USD';
-  const shifted = point <= 0 ? '0.' + '0'.repeat(-point) + digits : point >= digits.length ? digits + '0'.repeat(point - digits.length) : digits.slice(0, point) + '.' + digits.slice(point);
-  return match[1] + shifted.replace(/^0+(?=\d)/, '') + ' ¢';
+  const usd = Number(value);
+  if (!Number.isFinite(usd)) return `${value} USD`;
+  if (usd === 0) return '$0';
+  if (Math.abs(usd) >= 1) return `$${usd.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+  const c = usd * 100;
+  return `${Math.abs(c) >= 1 ? c.toLocaleString('en-US', {maximumFractionDigits: 2}) : c.toLocaleString('en-US', {maximumSignificantDigits: 2})} ¢`;
 }
 
 // Recorded nanosecond spans rendered as readable elapsed time; negative ranges are reported as unknown.
@@ -303,18 +305,16 @@ export async function render(container) {
         const result = await api('/api/otel/traces/' + encodeURIComponent(row.trace_id) + '?' + params, {signal: controller.signal});
         if (controller.signal.aborted || !dialog.isConnected) return;
         if (!after) {
-          const aiSteps = result.data.filter(span => span.model != null || span.tokens_in != null || span.tokens_out != null);
-          const unpriced = aiSteps.filter(span => span.cost_exact == null).length;
-          if (!aiSteps.length) {
-            // No AI steps on this page means no cost line at all, not a zero cost.
-            running.replaceChildren();
-          } else {
-            running.replaceChildren(
-              peekFacts([
-                ['AI cost', unpriced ? `Unknown (${unpriced} AI ${unpriced === 1 ? 'step' : 'steps'} unpriced)` : cents(result.known_cost_usd)],
-              ]),
-              el('p', {className: 'muted'}, 'Costs cover the steps on this page. Only AI steps carry a price.'));
-          }
+          // The server totals every AI step of the run, not just this page. No AI steps: no cost line at all.
+          const aiSteps = Number(result.ai_spans || 0), unpriced = Number(result.unknown_cost_spans || 0);
+          const known = Number(result.known_cost_usd || 0) > 0;
+          const unpricedText = `${unpriced} AI ${unpriced === 1 ? 'step' : 'steps'} without a price`;
+          if (!aiSteps) running.replaceChildren();
+          else running.replaceChildren(
+            peekFacts([
+              ['AI cost', !unpriced ? cents(result.known_cost_usd) : known ? `At least ${cents(result.known_cost_usd)} · ${unpricedText}` : `Unknown · ${unpricedText}`],
+            ]),
+            el('p', {className: 'muted'}, 'All AI steps of this run, priced when each step arrived. Other steps carry no price.'));
         }
         const roots = !after ? result.data.filter(span => !span.parent_id) : [];
         const root = roots.length === 1 ? roots[0] : null;

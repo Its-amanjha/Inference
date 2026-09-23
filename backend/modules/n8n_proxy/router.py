@@ -118,7 +118,8 @@ async def saved_probes(db: Any,instance_ids: list[str]) -> dict[str,dict[str,Any
 
 
 async def save_probe(tx: Any,instance_id: str,result: dict[str,Any]) -> None:
-    await tx.execute("INSERT INTO documents(key,value_json) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=datetime('now')",
+    await tx.execute("INSERT INTO documents(key,value_json) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=datetime('now') "
+                     "WHERE COALESCE(json_extract(documents.value_json,'$.checked_at'),'')<=json_extract(excluded.value_json,'$.checked_at')",
                      (f'instance_probe:{instance_id}',json.dumps({'instance_id':instance_id,**{key:result.get(key) for key in PROBE_FIELDS}})))
 
 
@@ -295,6 +296,7 @@ async def health(request: Request) -> dict[str,Any]:
     # Completed checks are saved like a probe's, unless the connection changed while they ran.
     before={row['id']:row for row in rows}
     async with request.app.state.db.transaction() as tx:
+        await require_current_role(request,'viewer',tx)
         for result in results:
             if 'checked_at' not in result:
                 continue
