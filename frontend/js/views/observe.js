@@ -3,7 +3,9 @@ import {state,pageSize} from '../state.js';
 import {el,button,heading,table,empty} from '../lib/html.js';
 import {icon,registerIcons} from '../lib/icons.js';
 import {loadingState,loadFailure,asOf} from '../lib/payload.js';
-import {instanceName,relativeLabel} from '../lib/triage.js';
+import {instanceName,relativeLabel,n8nUrl} from '../lib/triage.js';
+import {openPeek,peekFacts,peekSection,peekCopy,closePeek} from '../lib/peek.js';
+import {rowMenu} from '../lib/row-menu.js';
 
 registerIcons({
   'span-failed':'M12 3 2 20h20L12 3z M12 10v4 M12 17h.01',
@@ -51,20 +53,15 @@ export async function render(container) {
 
   const summaryStrip = el('div', {class: 'observe-summary-strip', role: 'region', 'aria-label': 'Telemetry summary metrics'},
     el('div', {class: 'observe-metric-cell'}, el('h3', {}, 'Total traces'), tracesNum),
-    el('div', {class: 'observe-metric-cell'}, el('h3', {}, 'Total spans'), spansNum),
-    el('div', {class: 'observe-metric-cell metric-error'}, el('h3', {}, 'Error spans'), errorSpansNum),
+    el('div', {class: 'observe-metric-cell'}, el('h3', {}, 'Total steps'), spansNum),
+    el('div', {class: 'observe-metric-cell metric-error'}, el('h3', {}, 'Error steps'), errorSpansNum),
     el('div', {class: 'observe-metric-cell'}, el('h3', {}, 'Error rate'), errorRateNum)
   );
 
   const messages = el('div');
   const stamp = el('div');
   const list = el('div');
-
-  const detail = el('section', {className: 'card stack observe-waterfall-panel', hidden: true, 'aria-label': 'Trace waterfall inspection'});
-  const detailMessages = el('div');
-  const detailStamp = el('div');
-  const detailContent = el('div', {class: 'stack'});
-  detail.append(detailMessages, detailStamp, detailContent);
+  const announcer = el('div', {class: 'sr-only', role: 'status'});
 
   // Filter & pagination controls
   const refresh = button('Refresh', () => load(), 'ghost');
@@ -83,7 +80,7 @@ export async function render(container) {
     messages,
     // Traces and their pagination share one card, like the error list.
     el('section', {class: 'card result-card'}, list, el('div', {class: 'result-card-foot'}, next)),
-    detail
+    announcer
   );
 
   function setFilter(filter) {
@@ -117,27 +114,13 @@ export async function render(container) {
         el('dd', {}, typeof value === 'object' ? JSON.stringify(value) : String(value))))));
   }
 
-  async function copyText(text, btn) {
-    try { await navigator.clipboard.writeText(text); }
-    catch {
-      const area = el('textarea', {value: text, readonly: true, style: 'position:fixed;opacity:0'});
-      document.body.append(area); area.select();
-      try { document.execCommand('copy'); } catch {} area.remove();
-    }
-    if (btn?.isConnected) {
-      const label = btn.textContent; btn.textContent = 'Copied';
-      setTimeout(() => { if (btn.isConnected) btn.textContent = label; }, 1500);
-    }
+  async function copyId(text, what) {
+    try { await navigator.clipboard.writeText(text); announcer.textContent = `Copied ${what}.`; }
+    catch { announcer.textContent = 'Copying is not available in this browser.'; }
   }
 
-  function idLine(id, kind, row) {
-    if (!id) return null;
-    const code = el('code', {class: 'mono'}, id.length > 16 ? id.slice(0, 16) + '…' : id);
-    code.title = id;
-    const copy = button('Copy', () => copyText(id, copy), 'ghost', {'aria-label': `Copy ${kind} ID for ${row.trace_id}`});
-    return el('span', {class: 'trace-id-line'}, code, copy);
-  }
-
+  // One control per row: the workflow name opens the waterfall beside the list.
+  // Identifiers and the way back into n8n live behind the row's menu.
   function formatTableRow(row, meta) {
     const instName = instanceName(row.instance_id);
     const startMs = Number(BigInt(row.start_ns) / 1000000n);
@@ -152,19 +135,28 @@ export async function render(container) {
 
     const healthBadge = errorCount > 0
       ? el('span', {class: 'badge error'}, `${errorCount} error${errorCount === 1 ? '' : 's'}`)
-      : el('span', {class: 'badge success'}, 'Healthy');
+      : el('span', {class: 'badge success'}, 'No errors reported');
 
     const workflowName = meta?.workflow || 'Workflow unknown';
+    const open = button(workflowName, () => openTrace(row, meta), 'ghost', {'aria-label': `Open trace details for ${workflowName}`});
+    const execution = meta?.execution || null;
+    const executionUrl = execution ? n8nUrl(row.instance_id, row.workflow_id, execution) : null;
+    const workflowUrl = n8nUrl(row.instance_id, row.workflow_id);
+    const menu = rowMenu([
+      {label: 'Copy trace ID', onSelect: () => copyId(row.trace_id, 'trace ID')},
+      execution ? {label: 'Copy execution ID', onSelect: () => copyId(execution, 'execution ID')} : null,
+      executionUrl ? {label: 'Open execution in n8n', href: executionUrl, external: true}
+        : workflowUrl ? {label: 'Open workflow in n8n', href: workflowUrl, external: true} : null,
+    ], `More actions for ${workflowName}`);
 
     return [
-      {sortValue: workflowName.toLowerCase(), content: el('strong', {}, workflowName)},
-      {sortValue: row.trace_id, content: el('div', {class: 'trace-ids'}, idLine(row.trace_id, 'trace', row), idLine(meta?.execution, 'execution', row))},
+      {sortValue: workflowName.toLowerCase(), content: open},
       {sortValue: instName, content: instName},
       {sortValue: startMs, content: startEl},
       {sortValue: Number(durNs), content: durFormatted},
       {sortValue: Number(row.span_count), content: String(row.span_count)},
       {sortValue: errorCount, content: healthBadge},
-      button('View waterfall', () => inspect(row), 'button ghost', {'aria-label': `View waterfall for ${workflowName} ${row.trace_id}`})
+      {sortValue: '', content: menu},
     ];
   }
 
@@ -189,175 +181,125 @@ export async function render(container) {
     }
   }
 
-  let returnFocusEl = null;
-  let returnFallbackEl = null;
-
-  function closeInspection() {
-    detail.hidden = true;
-    inspection?.abort();
-    if (returnFocusEl?.isConnected) {
-      returnFocusEl.focus();
-    } else if (returnFallbackEl?.isConnected) {
-      if (!returnFallbackEl.hasAttribute('tabindex')) returnFallbackEl.setAttribute('tabindex', '-1');
-      returnFallbackEl.focus();
-    }
-  }
-
-  detail.addEventListener('keydown', event => {
-    if (event.key === 'Escape' && !detail.hidden) {
-      event.stopPropagation();
-      closeInspection();
-    }
-  });
-
-  async function inspect(row, after = null) {
-    inspection?.abort();
-    const current = new AbortController();
-    inspection = current;
-
-    const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    if (!after && active) {
-      returnFocusEl = active;
-      returnFallbackEl = active.closest('main, [role="main"], #app, .view-content, .content, section') || active.parentElement || list || null;
-    }
-
-    detail.hidden = false;
-    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
-    detail.scrollIntoView({behavior: reducedMotion ? 'auto' : 'smooth', block: 'nearest'});
-
-    detailMessages.replaceChildren(loadingState(`Loading trace ${row.trace_id}…`));
-    try {
-      const params = new URLSearchParams({instance_id: row.instance_id, limit: String(pageSize())});
-      if (after) params.set('after', String(after));
-
-      const result = await api('/api/otel/traces/' + encodeURIComponent(row.trace_id) + '?' + params, {signal: current.signal});
-      if (current.signal.aborted || controller.signal.aborted) return;
-
-      detailMessages.replaceChildren();
-      detailStamp.replaceChildren(asOf());
-
-      const closeBtn = button('Close inspection', closeInspection, 'ghost');
-      const panelHeading = el('h2', {tabindex: '-1'}, `Trace ${row.trace_id}`);
-
-      const headerRow = el('div', {class: 'observe-waterfall-head'},
-        el('div', {class: 'observe-waterfall-title'},
-          panelHeading,
-          el('p', {class: 'muted'}, `Instance: ${instanceName(row.instance_id)} · ${result.data.length} span(s) on this page`)
-        ),
-        closeBtn
-      );
-
-      const aiCostStrip = el('div', {class: 'observe-ai-strip'},
-        el('div', {class: 'observe-ai-stat'},
-          el('span', {class: 'stat-label'}, 'AI cost'),
-          el('span', {class: 'stat-value'}, cents(result.known_cost_usd))
-        ),
-        el('div', {class: 'observe-ai-stat'},
-          el('span', {class: 'stat-label'}, 'Steps without a price'),
-          el('span', {class: 'stat-value'}, `${result.unknown_cost_spans} step(s)`)
-        )
-      );
-
-      const provenanceNote = el('p', {className: 'muted'}, 'Costs cover the spans on this page. Only AI steps carry a price.');
-
-      detailContent.replaceChildren(headerRow, aiCostStrip, provenanceNote);
-      if (!after) {
-        panelHeading.focus();
+  // The waterfall for one trace, rendered beside the list: cost facts first, then
+  // every step as a compact row with its detail on demand.
+  function spanNodes(spans, start) {
+    const totalDuration = spans.reduce((max, span) => {
+      const end = BigInt(span.end_ns);
+      return end > max ? end : max;
+    }, start + 1n) - start || 1n;
+    const rulerTicks = el('div', {class: 'waterfall-ruler-ticks'},
+      el('span', {}, '0 ms'),
+      el('span', {}, elapsed(totalDuration / 4n)),
+      el('span', {}, elapsed(totalDuration / 2n)),
+      el('span', {}, elapsed((totalDuration * 3n) / 4n)),
+      el('span', {}, elapsed(totalDuration))
+    );
+    const nodes = [el('div', {class: 'waterfall-ruler-wrap', 'aria-hidden': 'true'}, rulerTicks)];
+    for (const span of spans) {
+      const spanStart = BigInt(span.start_ns);
+      const spanEnd = BigInt(span.end_ns);
+      const spanDuration = spanEnd - spanStart;
+      const offset = Number((spanStart - start) * 10000n / totalDuration) / 100;
+      const width = Math.max(0.3, Number(spanDuration * 10000n / totalDuration) / 100);
+      const status = span.health_status || span.status || 'Unknown';
+      const failed = span.status === 'error' || span.health_status === 'error';
+      const description = `${span.name}: ${failed ? 'failed, ' : ''}starts at ${elapsed(spanStart - start)}, duration ${elapsed(spanDuration)}, status ${status}`;
+      // Only AI steps carry a price: other nodes show no cost at all, never "Unknown".
+      const ai = span.model != null || span.tokens_in != null || span.tokens_out != null;
+      const bar = el('div', {className: failed ? 'waterfall-bar failed' : 'waterfall-bar',
+        role: 'img', 'aria-label': description, title: description});
+      bar.style.marginLeft = `${Math.max(0, Math.min(100, offset))}%`;
+      bar.style.width = `${Math.max(0.3, Math.min(100 - offset, width))}%`;
+      const spanActions = el('div', {class: 'span-actions'});
+      if (span.workflow_id) {
+        spanActions.append(
+          el('a', {class: 'button ghost', href: '#workflows?' + new URLSearchParams({instance_id: span.instance_id, workflow_id: span.workflow_id})}, 'Workflows'),
+          el('a', {class: 'button ghost', href: `#assistant?mode=repair&instance_id=${encodeURIComponent(span.instance_id)}&workflow_id=${encodeURIComponent(span.workflow_id)}`}, 'Repair with AI')
+        );
       }
-
-      if (!result.data.length) {
-        detailContent.append(empty('No further spans', 'This trace has no spans on this page.'));
-        return;
+      if (failed) {
+        spanActions.append(el('a', {class: 'button ghost', href: `#errors?instance_id=${encodeURIComponent(span.instance_id)}`}, 'View errors'));
       }
-
-      const start = result.data.reduce((min, span) => BigInt(span.start_ns) < min ? BigInt(span.start_ns) : min, BigInt(result.data[0].start_ns));
-      const end = result.data.reduce((max, span) => BigInt(span.end_ns) > max ? BigInt(span.end_ns) : max, start + 1n);
-      const totalDuration = end - start || 1n;
-
-      // Time scale ruler
-      const rulerTicks = el('div', {class: 'waterfall-ruler-ticks'},
-        el('span', {}, '0 ms'),
-        el('span', {}, elapsed(totalDuration / 4n)),
-        el('span', {}, elapsed(totalDuration / 2n)),
-        el('span', {}, elapsed((totalDuration * 3n) / 4n)),
-        el('span', {}, elapsed(totalDuration))
-      );
-      const rulerWrap = el('div', {class: 'waterfall-ruler-wrap', 'aria-hidden': 'true'}, rulerTicks);
-      detailContent.append(rulerWrap);
-
-      for (const span of result.data) {
-        const spanStart = BigInt(span.start_ns);
-        const spanEnd = BigInt(span.end_ns);
-        const spanDuration = spanEnd - spanStart;
-
-        const offset = Number((spanStart - start) * 10000n / totalDuration) / 100;
-        const width = Math.max(0.3, Number(spanDuration * 10000n / totalDuration) / 100);
-
-        const status = span.health_status || span.status || 'Unknown';
-        const failed = span.status === 'error' || span.health_status === 'error';
-        const description = `${span.name}: ${failed ? 'failed, ' : ''}starts at ${elapsed(spanStart - start)}, duration ${elapsed(spanDuration)}, status ${status}`;
-        // Only AI steps carry a price: other nodes show no cost at all, never "Unknown".
-        const ai = span.model != null || span.tokens_in != null || span.tokens_out != null;
-
-        const bar = el('div', {
-          className: failed ? 'waterfall-bar failed' : 'waterfall-bar',
-          role: 'img',
-          'aria-label': description,
-          title: description
-        });
-        bar.style.marginLeft = `${Math.max(0, Math.min(100, offset))}%`;
-        bar.style.width = `${Math.max(0.3, Math.min(100 - offset, width))}%`;
-
-        // Diagnostic / repair actions for spans
-        const spanActions = el('div', {class: 'span-actions'});
-        if (span.workflow_id) {
-          spanActions.append(
-            el('a', {class: 'button ghost', href: '#workflows'}, 'Workflows'),
-            el('a', {class: 'button ghost', href: `#assistant?mode=repair&instance_id=${encodeURIComponent(span.instance_id)}&workflow_id=${encodeURIComponent(span.workflow_id)}`}, 'Repair with AI')
-          );
-        }
-        if (failed) {
-          spanActions.append(el('a', {class: 'button ghost', href: `#errors?instance_id=${encodeURIComponent(span.instance_id)}`}, 'View Errors'));
-        }
-
-        const summaryNode = el('summary', {class: 'waterfall-row'},
+      nodes.push(el('details', {class: 'waterfall-span'},
+        el('summary', {class: 'waterfall-row'},
           el('span', {class: 'waterfall-name'},
             failed ? el('span', {className: 'span-failed'}, icon('span-failed'), 'Failed') : null,
             el('span', {class: 'waterfall-node'}, span.name),
             ai ? el('span', {class: 'waterfall-cost'}, cents(span.cost_exact)) : null),
-          el('span', {class: 'waterfall-track'}, bar));
-
-        const errorGuidance = failed && (span.error_summary || span.error_type)
-          ? el('div', {class: 'instance-diagnostic-box is-unreachable'},
-              icon('alert'),
-              el('div', {},
-                el('strong', {}, `${span.error_type || 'ExecutionError'}: `),
-                span.error_summary || 'Span execution failed.'
-              )
-            )
-          : null;
-
-        const info = el('details', {class: 'waterfall-span'},
-          summaryNode,
-          errorGuidance,
-          el('p', {className: 'muted'}, `Status: ${status} · Duration: ${elapsed(spanDuration)}` +
-            (ai ? ` · Model: ${span.model || 'Unreported'} · Input tokens: ${span.tokens_in ?? 'Unknown'} · Output tokens: ${span.tokens_out ?? 'Unknown'}` : '')),
-          ai ? factList('Price', span.pricing) : null,
-          factList('Attributes', span.attributes),
-          spanActions.childElementCount ? spanActions : null
-        );
-
-        detailContent.append(info);
-      }
-
-      if (result.next_cursor) {
-        detailContent.append(button('Next span page', () => inspect(row, result.next_cursor), 'button ghost'));
-      }
-    } catch (error) {
-      if (!controller.signal.aborted && !current.signal.aborted) {
-        detailMessages.replaceChildren(loadFailure(error, () => inspect(row, after), `Could not load trace ${row.trace_id}`));
-      }
+          el('span', {class: 'waterfall-track'}, bar)),
+        failed && (span.error_summary || span.error_type)
+          ? el('div', {class: 'instance-diagnostic-box is-unreachable'}, icon('alert'),
+              el('div', {}, el('strong', {}, `${span.error_type || 'ExecutionError'}: `),
+                span.error_summary || 'Span execution failed.')) : null,
+        el('p', {className: 'muted'}, `Status: ${status} · Duration: ${elapsed(spanDuration)}` +
+          (ai ? ` · Model: ${span.model || 'Unreported'} · Input tokens: ${span.tokens_in ?? 'Unknown'} · Output tokens: ${span.tokens_out ?? 'Unknown'}` : '')),
+        ai ? factList('Price', span.pricing) : null,
+        factList('Attributes', span.attributes),
+        spanActions.childElementCount ? spanActions : null));
     }
+    return nodes;
+  }
+
+  function openTrace(row, meta) {
+    const workflow = meta?.workflow || 'Workflow unknown';
+    const execution = meta?.execution || null;
+    const startMs = Number(BigInt(row.start_ns) / 1000000n);
+    const startDate = new Date(startMs);
+    const started = Number.isNaN(startDate.getTime()) ? null : startDate;
+    const executionUrl = execution ? n8nUrl(row.instance_id, row.workflow_id, execution) : null;
+    const workflowUrl = n8nUrl(row.instance_id, row.workflow_id);
+    const running = el('div', {class: 'stack', role: 'status'}, loadingState(`Loading steps for ${workflow}…`));
+    const steps = el('div', {class: 'stack'});
+    const dialog = openPeek({
+      eyebrow: instanceName(row.instance_id),
+      title: workflow,
+      meta: started ? `Started ${started.toLocaleString()}` : 'Start time unknown',
+      sections: [
+        peekFacts([
+          ['Trace ID', peekCopy(row.trace_id, 'trace ID')],
+          ['Execution', execution ? peekCopy(execution, 'execution ID') : 'Not recorded'],
+          ['Started', started ? el('time', {datetime: started.toISOString(), title: started.toLocaleString()}, relativeLabel(started)) : null],
+        ]),
+        running,
+        peekSection('Steps', steps),
+      ],
+      actions: [
+        executionUrl ? el('a', {class: 'button', href: executionUrl, target: '_blank', rel: 'noopener noreferrer'}, 'Open execution in n8n')
+          : workflowUrl ? el('a', {class: 'button', href: workflowUrl, target: '_blank', rel: 'noopener noreferrer'}, 'Open workflow in n8n') : null,
+        row.workflow_id ? el('a', {class: 'button ghost', href: `#assistant?mode=repair&instance_id=${encodeURIComponent(row.instance_id)}&workflow_id=${encodeURIComponent(row.workflow_id)}`}, 'Repair with AI') : null,
+      ],
+    });
+    const load = async (after = null) => {
+      const params = new URLSearchParams({instance_id: row.instance_id, limit: String(pageSize())});
+      if (after) params.set('after', String(after));
+      try {
+        const result = await api('/api/otel/traces/' + encodeURIComponent(row.trace_id) + '?' + params, {signal: controller.signal});
+        if (controller.signal.aborted || !dialog.isConnected) return;
+        if (!after) {
+          running.replaceChildren(
+            peekFacts([
+              ['AI cost', cents(result.known_cost_usd)],
+              ['Steps without a price', `${result.unknown_cost_spans} step(s)`],
+            ]),
+            el('p', {className: 'muted'}, 'Costs cover the steps on this page. Only AI steps carry a price.'));
+        }
+        if (!result.data.length) {
+          if (!after) steps.append(el('p', {className: 'muted'}, 'No steps on this page.'));
+        } else {
+          const start = result.data.reduce((min, span) => BigInt(span.start_ns) < min ? BigInt(span.start_ns) : min, BigInt(result.data[0].start_ns));
+          steps.append(...spanNodes(result.data, start));
+        }
+        if (result.next_cursor) {
+          const more = button('Next steps', () => { more.disabled = true; load(result.next_cursor).finally(() => more.remove()); }, 'ghost');
+          steps.append(more);
+        }
+      } catch (error) {
+        if (!controller.signal.aborted && dialog.isConnected)
+          running.replaceChildren(loadFailure(error, () => load(after), `Could not load steps for ${workflow}`));
+      }
+    };
+    load();
   }
 
   async function load(before = null) {
@@ -406,15 +348,15 @@ export async function render(container) {
             ? allRowsData.filter(r => Number(r.error_spans || 0) > 0)
             : allRowsData;
 
-          tracesTable = table(['Workflow', 'Trace', 'Instance', 'Started', 'Duration', 'Spans', 'Health', ''], displayRows.map(row => formatTableRow(row, metas.get(row.instance_id + ':' + row.trace_id))), {
-            numeric: [5],
-            sortable: {0: 'text', 1: 'text', 2: 'text', 3: 'number', 4: 'number', 5: 'number', 6: 'number'},
-            initialSort: {column: 3, direction: 'desc'}
+          tracesTable = table(['Workflow', 'Instance', 'Started', 'Duration', 'Steps', 'Health', ''], displayRows.map(row => formatTableRow(row, metas.get(row.instance_id + ':' + row.trace_id))), {
+            numeric: [4],
+            sortable: {0: 'text', 1: 'text', 2: 'number', 3: 'number', 4: 'number', 5: 'number'},
+            initialSort: {column: 2, direction: 'desc'}
           });
           list.replaceChildren(tracesTable);
         } else {
           tracesTable = null;
-          list.replaceChildren(empty('Waiting for telemetry', 'Create an exporter token in Instances and connect your n8n telemetry exporter.', [el('a', {class: 'button ghost', href: '#instances?telemetry=' + encodeURIComponent(instance || '')}, 'Set up telemetry')]));
+          list.replaceChildren(empty('Waiting for telemetry', 'Create an exporter token in Instances and connect your n8n telemetry exporter.', [el('a', {class: 'button ghost', href: '#instances?telemetry=' + encodeURIComponent(instance || '')}, 'Set up telemetry')], 'observe'));
         }
       }
     } catch (error) {
@@ -431,6 +373,6 @@ export async function render(container) {
   load();
   return () => {
     controller.abort();
-    inspection?.abort();
+    closePeek();
   };
 }
