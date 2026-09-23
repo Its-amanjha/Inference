@@ -45,11 +45,11 @@ export async function render(container) {
   let tracesTable = null;
   let allRowsData = [];
 
-  // Summary strip
-  const tracesNum = el('p', {class: 'metric-number'}, '0');
-  const spansNum = el('p', {class: 'metric-number'}, '0');
-  const errorSpansNum = el('p', {class: 'metric-number'}, '0');
-  const errorRateNum = el('p', {class: 'metric-number'}, '0%');
+  // Summary strip: dashes until the first successful read, "Unavailable" on failure, never 0.
+  const tracesNum = el('p', {class: 'metric-number is-missing'}, '—');
+  const spansNum = el('p', {class: 'metric-number is-missing'}, '—');
+  const errorSpansNum = el('p', {class: 'metric-number is-missing'}, '—');
+  const errorRateNum = el('p', {class: 'metric-number is-missing'}, '—');
 
   const summaryStrip = el('div', {class: 'observe-summary-strip', role: 'region', 'aria-label': 'Telemetry summary metrics'},
     el('div', {class: 'observe-metric-cell'}, el('h3', {}, 'Total traces'), tracesNum),
@@ -160,6 +160,15 @@ export async function render(container) {
     ];
   }
 
+  function paintSummary(values) {
+    const cells = [[tracesNum, values?.traces], [spansNum, values?.spans], [errorSpansNum, values?.errors], [errorRateNum, values?.rate]];
+    for (const [node, value] of cells) {
+      node.textContent = value === null || value === undefined ? (values ? 'Unavailable' : '—') : String(value);
+      node.classList.toggle('is-missing', value === null || value === undefined);
+    }
+    errorSpansNum.classList.toggle('is-zero', !values || Number(values.errors) === 0);
+  }
+
   async function loadSummary() {
     try {
       const params = new URLSearchParams();
@@ -172,12 +181,10 @@ export async function render(container) {
       const errorSpans = Number(summaryData.error_spans || 0);
       const errorRate = spans > 0 ? ((errorSpans / spans) * 100).toFixed(1) + '%' : '0%';
 
-      tracesNum.textContent = String(traces);
-      spansNum.textContent = String(spans);
-      errorSpansNum.textContent = String(errorSpans);
-      errorRateNum.textContent = errorRate;
+      paintSummary({traces, spans, errors: errorSpans, rate: errorRate});
     } catch {
-      // Summary error should not block trace list
+      // A failed summary reads as unavailable, never as zero, and never blocks the trace list.
+      if (!controller.signal.aborted) paintSummary(null);
     }
   }
 

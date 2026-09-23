@@ -60,13 +60,15 @@
 .fleet-metric-cell .metric-number { font-family:var(--font-display); font-weight:600; color:var(--color-ink-black); font-size:26px; line-height:1.2; margin:0; letter-spacing:-.03em; font-variant-numeric:tabular-nums; }
 .fleet-metric-cell.metric-operational .metric-number { color:#006c43; }
 .fleet-metric-cell.metric-degraded .metric-number { color:#815000; }
-.fleet-metric-cell.metric-unreachable .metric-number { color:#a80b30; }
+.fleet-metric-cell.metric-unreachable .metric-number:not(.is-zero) { color:#a80b30; }
 [data-theme=dark] .fleet-metric-cell.metric-operational .metric-number,
 [data-theme=n8n] .fleet-metric-cell.metric-operational .metric-number { color:#91e5bc; }
 [data-theme=dark] .fleet-metric-cell.metric-degraded .metric-number,
 [data-theme=n8n] .fleet-metric-cell.metric-degraded .metric-number { color:#f4d18a; }
-[data-theme=dark] .fleet-metric-cell.metric-unreachable .metric-number,
-[data-theme=n8n] .fleet-metric-cell.metric-unreachable .metric-number { color:#ffafc1; }
+[data-theme=dark] .fleet-metric-cell.metric-unreachable .metric-number:not(.is-zero),
+[data-theme=n8n] .fleet-metric-cell.metric-unreachable .metric-number:not(.is-zero) { color:#ffafc1; }
+/* A number that could not be counted reads as plain secondary text, never as zero. */
+.metric-number.is-missing { font-size:14px; font-weight:500; color:var(--color-smoke); }
 
 .fleet-toolbar { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px; }
 .fleet-filter-group { display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
@@ -111,9 +113,9 @@
 .observe-metric-cell { background:var(--surface-card-surface); border:1px solid var(--border); border-radius:14px; padding:14px 16px; display:flex; flex-direction:column; gap:4px; }
 .observe-metric-cell h3 { font-family:var(--font-body); font-size:13px; font-weight:500; line-height:1.35; margin:0; color:var(--color-smoke); }
 .observe-metric-cell .metric-number { font-family:var(--font-display); font-weight:600; color:var(--color-ink-black); font-size:26px; line-height:1.2; margin:0; letter-spacing:-.03em; font-variant-numeric:tabular-nums; }
-.observe-metric-cell.metric-error .metric-number { color:#a80b30; }
-[data-theme=dark] .observe-metric-cell.metric-error .metric-number,
-[data-theme=n8n] .observe-metric-cell.metric-error .metric-number { color:#ffafc1; }
+.observe-metric-cell.metric-error .metric-number:not(.is-zero) { color:#a80b30; }
+[data-theme=dark] .observe-metric-cell.metric-error .metric-number:not(.is-zero),
+[data-theme=n8n] .observe-metric-cell.metric-error .metric-number:not(.is-zero) { color:#ffafc1; }
 
 .observe-toolbar { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; }
 .observe-filter-group { display:flex; flex-wrap:wrap; align-items:center; gap:6px; }

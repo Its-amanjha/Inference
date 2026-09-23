@@ -42,8 +42,8 @@ export async function render(container) {
     el('div',{class:'page-heading-row'},heading('Instances','Connections, health and telemetry for every n8n instance.'),add?el('div',{class:'actions'},add):null),
     messages,editor);
   const rollup=el('div',{class:'fleet-summary-strip',role:'region','aria-label':'Fleet health totals'});
-  const totalNum=el('p',{class:'metric-number'},'0'),operationalNum=el('p',{class:'metric-number'},'0'),
-    degradedNum=el('p',{class:'metric-number'},'0'),unreachableNum=el('p',{class:'metric-number'},'—');
+  const totalNum=el('p',{class:'metric-number is-missing'},'—'),operationalNum=el('p',{class:'metric-number is-missing'},'—'),
+    degradedNum=el('p',{class:'metric-number is-missing'},'—'),unreachableNum=el('p',{class:'metric-number is-missing'},'—');
   rollup.append(
     el('div',{class:'fleet-metric-cell'},el('h3',{},'Total instances'),totalNum),
     el('div',{class:'fleet-metric-cell metric-operational'},el('h3',{},'Operational'),operationalNum),
@@ -249,6 +249,8 @@ export async function render(container) {
     operationalNum.textContent=String(operational);
     degradedNum.textContent=String(degraded);
     unreachableNum.textContent=entries.length?String(unreachable):'—';
+    for(const node of [totalNum,operationalNum,degradedNum,unreachableNum])node.classList.remove('is-missing');
+    unreachableNum.classList.toggle('is-zero',unreachable===0);
   }
   function openDetails(entry){
     const item=entry.item;
