@@ -2,7 +2,8 @@ import {api as request} from '../api.js';
 import {el,button,field,formCard,notice,empty,heading,jsonView} from '../lib/html.js';
 import {icon} from '../lib/icons.js';
 import {can} from '../state.js';
-import {confirmAction,actionMenu,stateBadge,humanize} from '../lib/confirm.js';
+import {confirmAction,stateBadge,humanize} from '../lib/confirm.js';
+import {rowMenu} from '../lib/row-menu.js';
 
 const BUNDLE_STATES={ready:['success','Running'],stopped:['','Stopped'],deploying:['info','Deploying'],starting:['info','Starting'],stopping:['info','Stopping'],deleting:['info','Removing'],partial:['warning','Partial'],uncertain:['warning','Outcome unknown'],removed:['','Removed']};
 const STATUS_LABELS={available:'Docker engine',transport:'Transport',version:'Version',api_version:'API version'};
@@ -53,9 +54,7 @@ export async function render(container){
   };
   const act=async fn=>{try{await fn();}catch(e){if(!signal.aborted)notice(messages,e);}};
   function emptyInventory(){
-    return engineAvailable
-      ? empty('No owned bundles','Provision a matching n8n and task runner pair. Existing host containers remain outside this inventory.',[button('Provision your first bundle',provision)],'containers')
-      : empty('No owned bundles','Remote n8n connections are managed in Instances. This inventory only lists Docker bundles created by Inference.',[el('a',{class:'button ghost',href:'#instances'},'Open instances')],'containers');
+    return empty('No owned bundles','Provision a matching n8n and task runner pair. Existing host containers remain outside this inventory.',[button('Provision your first bundle',provision)],'containers');
   }
   async function checkEngine(){
     try{
@@ -64,18 +63,26 @@ export async function render(container){
     }catch(error){
       if(signal.aborted)return;
       if(error.code!=='docker_unavailable')throw error;
+      // Without Docker this page is one explanation, not an inventory with a disabled action.
       engineAvailable=false;
+      list.replaceChildren();
       service.replaceChildren(el('section',{class:'card docker-unavailable',role:'status'},icon('containers'),el('div',{},
         el('h2',{},'Docker management is unavailable on this server.'),
         el('p',{},'Your connected n8n instances can still be monitored and managed through their APIs. This page only manages containers on the server running Inference.'),
+        el('a',{class:'button ghost',href:'#instances'},'Open instances'),
         el('details',{},el('summary',{},'How to enable container management'),el('p',{},'Run Inference on a Linux host with an accessible Docker Unix socket. Adding a VPS URL in Instances does not grant access to that VPS\u2019s Docker engine.')))));
-    }finally{provisionButton.disabled=!engineAvailable;}
+    }finally{provisionButton.hidden=!engineAvailable;}
   }
   async function refresh(){
-    await Promise.allSettled([act(checkEngine),act(load)]);
-    if(!signal.aborted&&list.querySelector('.empty'))list.replaceChildren(emptyInventory());
+    await act(checkEngine);
+    if(signal.aborted)return;
+    if(engineAvailable)await act(load);
+    else list.replaceChildren();
   }
-  async function load(){const result=await api('/api/docker_mgr/bundles',{signal});list.replaceChildren();for(const item of result.data){
+  async function load(){
+    // With no engine there is no inventory to show; the explanation above stands alone.
+    if(!engineAvailable){list.replaceChildren();return;}
+    const result=await api('/api/docker_mgr/bundles',{signal});list.replaceChildren();for(const item of result.data){
     const detail=el('div'),id=encodeURIComponent(item.id),name=item.name||item.id,base='/api/docker_mgr/bundles/'+id;
     if(results.has(item.id))detail.append(el('p',{role:'status'},results.get(item.id)));
     // Operations reload the inventory so status and the offered actions stay current, even after a failure.
@@ -102,7 +109,9 @@ export async function render(container){
     if(item.status==='ready'){primary.push(lifecycle('stop','button'));more.push(reconcile('ghost'));}
     else if(item.status==='stopped'){primary.push(lifecycle('start','button'));more.push(reconcile('ghost'));}
     else{more.push(reconcile('ghost'),lifecycle('start','ghost'),lifecycle('stop','ghost'));}
-    const actions=el('div',{class:'toolbar'},primary,inspect,actionMenu([...more,remove,purge],`More actions for ${name}`));
+    // Secondary operations live behind one More actions menu; the primary Start/Stop stays visible.
+    const overflow=[...more,remove,purge].map(node=>({label:node.textContent.trim(),danger:node.classList.contains('danger'),onSelect:()=>node.click()}));
+    const actions=el('div',{class:'toolbar'},primary,inspect,rowMenu(overflow,`More actions for ${name}`));
     list.append(el('section',{class:'card stack'},el('div',{class:'title-row'},el('h2',{},name),bundleBadge(item.status)),item.version?el('p',{class:'muted'},'n8n '+item.version):null,actions,detail));}
     if(!result.data.length)list.append(emptyInventory());}
   function provision(){
