@@ -2,6 +2,7 @@ import {api as request,apiFetch} from '../api.js';
 import {el,button,field,formCard,notice,empty,heading,table} from '../lib/html.js';
 import {can,pageSize} from '../state.js';
 import {confirmAction,actionMenu,stateBadge,humanize} from '../lib/confirm.js';
+import {describeCode} from '../lib/payload.js';
 import {rowMenu} from '../lib/row-menu.js';
 
 const RUN_STATES={succeeded:'success',success:'success',failed:'error',partial:'warning',uncertain:'warning',running:'info',deleting:'info'};
@@ -9,7 +10,7 @@ const S3_KEYS=['endpoint','bucket','region','prefix','credentials_ref'];
 
 function runStatus(run){
   const label=run.status==='deleted'?'Local file deleted':humanize(run.status);
-  return el('span',{class:'run-status'},stateBadge(RUN_STATES[run.status]||'',label,run.status),run.code?el('span',{class:'muted'},run.code):null);
+  return el('span',{class:'run-status'},stateBadge(RUN_STATES[run.status]||'',label,run.status),run.code?el('span',{class:'muted'},describeCode(run.code)):null);
 }
 
 export async function render(container){
@@ -41,11 +42,11 @@ export async function render(container){
       hasFile?button('Download',()=>act(()=>download('/api/backups/runs/'+id+'/download')),'ghost',{'aria-label':`Download backup from ${when}`}):null,
       more.length?rowMenu(more,`More actions for backup from ${when}`):null);
   }
-  async function runs(append=false){const result=await api('/api/backups/runs?limit='+pageSize()+(append&&next?'&before='+encodeURIComponent(next):''),{signal});next=result.next_cursor;if(!append)history.replaceChildren();history.querySelector('[data-more]')?.remove();if(result.data.length){const page=table(['Created','Status','Remote','Actions'],result.data.map(r=>[new Date(r.created_at*1000).toLocaleString(),runStatus(r),r.remote_status||'—',runActions(r)]));const existing=append?history.querySelector('table'):null;if(existing)existing.querySelector('tbody').append(...page.querySelector('tbody').children);else history.append(page);}if(!result.data.length&&!append){const scheds=await api('/api/backups/schedules',{signal});const runnable=scheds.data.find(s=>s.enabled);history.append(empty('No backups yet',runnable?'The first run appears here. Use Run now on a schedule to start one.':'Runs appear here once a schedule exists.',[],'backup'));}if(next){const more=button('Load older runs',()=>act(()=>runs(true)),'ghost');more.dataset.more='true';history.append(more);}}
+  async function runs(append=false){const result=await api('/api/backups/runs?limit='+pageSize()+(append&&next?'&before='+encodeURIComponent(next):''),{signal});next=result.next_cursor;if(!append)history.replaceChildren();history.querySelector('[data-more]')?.remove();if(result.data.length){const page=table(['Created','Status','Remote','Actions'],result.data.map(r=>[new Date(r.created_at*1000).toLocaleString(),runStatus(r),r.remote_status?humanize(r.remote_status):'—',runActions(r)]));const existing=append?history.querySelector('table'):null;if(existing)existing.querySelector('tbody').append(...page.querySelector('tbody').children);else history.append(page);}if(!result.data.length&&!append){const scheds=await api('/api/backups/schedules',{signal});const runnable=scheds.data.find(s=>s.enabled);history.append(empty('No backups yet',runnable?'The first run appears here. Use Run now on a schedule to start one.':'Runs appear here once a schedule exists.',[],'backup'));}if(next){const more=button('Load older runs',()=>act(()=>runs(true)),'ghost');more.dataset.more='true';history.append(more);}}
   function scheduleCard(s){
     const id=encodeURIComponent(s.id);
     const main=s.enabled
-      ?button('Run now',()=>act(async()=>{const result=await api('/api/backups/schedules/'+id+'/run',{method:'POST'});notice(messages,'Backup outcome: '+result.status);await runs();await load();}),'ghost',{'aria-label':`Run backup now: ${s.name}`})
+      ?button('Run now',()=>act(async()=>{const result=await api('/api/backups/schedules/'+id+'/run',{method:'POST'});notice(messages,'Backup outcome: '+humanize(result.status)+'.');await runs();await load();}),'ghost',{'aria-label':`Run backup now: ${s.name}`})
       :button('Enable',()=>act(async()=>{await api('/api/backups/schedules/'+id,{method:'PUT',json:{name:s.name,interval_minutes:s.interval_minutes,passphrase_ref:s.passphrase_ref,enabled:true,s3:s.s3?Object.fromEntries(S3_KEYS.map(key=>[key,s.s3[key]||''])):null}});await load();notice(messages,'Schedule '+s.name+' enabled. The next automatic backup runs in '+s.interval_minutes+' minutes.');}),'ghost',{'aria-label':`Enable schedule ${s.name}`});
     const remove=button('Delete schedule',()=>act(async()=>{
       if(!await confirmAction({title:'Delete schedule',target:s.name,consequence:'Automatic backups from this schedule stop. Existing archives remain.',confirmLabel:'Delete schedule',danger:true}))return;
@@ -54,8 +55,8 @@ export async function render(container){
     return el('section',{class:'card stack'},
       el('div',{class:'title-row'},el('h3',{},s.name),stateBadge(s.enabled?'success':'',s.enabled?'Enabled':'Paused')),
       el('p',{},'Every '+s.interval_minutes+' minutes'),
-      el('p',{class:'muted'},'Next: '+new Date(s.next_run_at*1000).toLocaleString()),
-      s.enabled?null:el('p',{class:'muted'},'Enable this schedule to run a backup.'),
+      s.enabled?el('p',{class:'muted'},'Next: '+new Date(s.next_run_at*1000).toLocaleString())
+        :el('p',{class:'muted'},'Paused schedules do not run. Enable this schedule to run a backup.'),
       el('div',{class:'toolbar'},main,button('Edit',()=>edit(s),'ghost',{'aria-label':`Edit schedule ${s.name}`}),actionMenu([remove],`More actions for ${s.name}`)));
   }
   let scheduleCount=0;
