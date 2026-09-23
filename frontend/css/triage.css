@@ -124,7 +124,7 @@
   .triage-bulk-actions { width:100%; }
   .triage-bulk-actions .button { min-height:44px; flex:1; }
   .undo-bar .button { min-height:44px; }
-  /* Each row becomes a stacked card of label/value pairs. */
+  /* Each row becomes a compact card: the first cell is its title, the rest are short label/value lines. */
   .table-wrap:not(.table-scroll) { max-height:none; overflow:visible; scrollbar-gutter:auto; }
   .table-wrap.triage-table-wrap { border:0; border-radius:0; background:transparent; }
   .table-wrap:not(.table-scroll) table:not(.table-scroll),
@@ -134,16 +134,17 @@
   :is(.triage-table, .table-wrap:not(.table-scroll) table:not(.table-scroll)),
   :is(.triage-table, .table-wrap:not(.table-scroll) table:not(.table-scroll)) :is(tbody, tr, td) { display:block; }
   :is(.triage-table, .table-wrap:not(.table-scroll) table:not(.table-scroll)) thead { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
-  :is(.triage-table, .table-wrap:not(.table-scroll) table:not(.table-scroll)) tbody tr { height:auto; margin-bottom:10px; padding:4px 14px; border:1px solid var(--border); border-radius:12px; background:var(--surface-card-surface); }
+  :is(.triage-table, .table-wrap:not(.table-scroll) table:not(.table-scroll)) tbody tr { height:auto; margin-bottom:8px; padding:10px 14px; border:1px solid var(--border); border-radius:12px; background:var(--surface-card-surface); }
   :is(.triage-table, .table-wrap:not(.table-scroll) table:not(.table-scroll)) tbody tr:hover { background:var(--surface-card-surface); }
   :is(.triage-table, .table-wrap:not(.table-scroll) table:not(.table-scroll)) tbody tr.is-selected { background:var(--selection-fill); border-color:var(--selection-text); }
-  :is(.triage-table, .table-wrap:not(.table-scroll) table:not(.table-scroll)) td { display:grid; grid-template-columns:minmax(76px,28%) minmax(0,1fr); gap:12px; align-items:baseline; width:auto; min-width:0; padding:9px 0; border-bottom:1px solid var(--border); text-align:left; white-space:normal; }
+  :is(.triage-table, .table-wrap:not(.table-scroll) table:not(.table-scroll)) td { display:grid; grid-template-columns:minmax(72px,30%) minmax(0,1fr); gap:10px; align-items:baseline; justify-items:start; width:auto; min-width:0; padding:3px 0; border-bottom:0; text-align:left; white-space:normal; }
+  .table-wrap:not(.table-scroll) table:not(.table-scroll, .triage-table) tbody tr td:first-child { grid-template-columns:minmax(0,1fr); padding-bottom:6px; font-weight:500; }
+  .table-wrap:not(.table-scroll) table:not(.table-scroll, .triage-table) tbody tr td:first-child::before { content:none; }
   :is(.triage-table, .table-wrap:not(.table-scroll) table:not(.table-scroll)) td.triage-select-cell { align-items:center; min-height:44px; }
   .triage-checkbox-label { justify-content:flex-start; }
   :is(.triage-table, .table-wrap:not(.table-scroll) table:not(.table-scroll)) td::before { content:attr(data-label); color:var(--color-smoke); font-size:12px; font-weight:500; }
   :is(.triage-table, .table-wrap:not(.table-scroll) table:not(.table-scroll)) td:is(:not([data-label]),[data-label=""])::before { content:none; }
   :is(.triage-table, .table-wrap:not(.table-scroll) table:not(.table-scroll)) td:is(:not([data-label]),[data-label=""]) { grid-template-columns:minmax(0,1fr); }
-  :is(.triage-table, .table-wrap:not(.table-scroll) table:not(.table-scroll)) tbody tr td:last-child { border-bottom:0; }
   :is(.triage-table, .table-wrap:not(.table-scroll) table:not(.table-scroll)) :is(.triage-num, .num, td.num) { text-align:left; }
   :is(.triage-table, .table-wrap:not(.table-scroll) table:not(.table-scroll)) td :is(.toolbar, .actions) { justify-content:flex-start; flex-wrap:wrap; margin:0; gap:6px; }
   :is(.triage-table, .table-wrap:not(.table-scroll) table:not(.table-scroll)) td :is(.toolbar, .actions) .button,

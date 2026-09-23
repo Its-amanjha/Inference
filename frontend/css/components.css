@@ -324,11 +324,12 @@ dialog.peek::backdrop { background:rgba(10,12,16,.35); }
 @media (max-width:700px) {
   dialog.peek { width:100vw; border-left:0; }
   .peek-close,.peek-copy { width:44px; height:44px; }
-  .peek-foot .button { flex:1 1 100%; min-height:44px; }
+  /* Two actions per row, so a panel's actions stay a short block instead of a wall. */
+  .peek-foot .button { flex:1 1 calc(50% - 4px); min-width:0; min-height:44px; }
 }
 
 /* Controls that only make sense with a keyboard. */
-@media (pointer:coarse) { .hide-on-touch { display:none !important; } }
+@media (pointer:coarse), (max-width:700px) { .hide-on-touch { display:none !important; } }
 
 /* A workflow's page in the details panel: short lists of runs, traces and promotions. */
 .peek-runs { display:flex; flex-direction:column; gap:6px; margin:0; padding:0; list-style:none; font-size:13px; }
