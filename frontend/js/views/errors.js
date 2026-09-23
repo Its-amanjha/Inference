@@ -236,7 +236,7 @@ export async function render(container){
   );
 
   container.append(
-    heading('Error triage', 'Confirmed errors and evidence-based findings, newest first.'),
+    heading('Error triage', 'Failures from every instance, newest first. Open one to see what happened.'),
     commandStrip,
     contextStrip,
     undoBar,
@@ -537,12 +537,12 @@ export async function render(container){
     if(!rows.length){
       selectedIds.clear();
       updateSelectionUI();
-      content.replaceChildren(empty('Nothing to triage',loadedStatus==='open'?'No open errors right now.':'No resolved errors yet.',loadedStatus==='resolved'?[button('Check again',()=>load(),'ghost'),button('Back to Open',()=>{status.value='open';selectedIds.clear();load();},'ghost')]:[button('Check again',()=>load(),'ghost')]));
+      content.replaceChildren(empty('Nothing to triage',loadedStatus==='open'?'No open errors right now.':'No resolved errors yet.',loadedStatus==='resolved'?[button('Check again',()=>load(),'ghost'),button('Back to Open',()=>{status.value='open';selectedIds.clear();load();},'ghost')]:[button('Check again',()=>load(),'ghost')],'check'));
       return;
     }
     if(!shown.length){
       updateSelectionUI();
-      content.replaceChildren(empty('No loaded errors of this type',cursor?'Choose All, or load older errors to look further back.':'Choose All to see the other loaded errors.',[button('Show all types',()=>setFilter('all'),'ghost')]));
+      content.replaceChildren(empty('No loaded errors of this type',cursor?'Choose All, or load older errors to look further back.':'Choose All to see the other loaded errors.',[button('Show all types',()=>setFilter('all'),'ghost')],'filter'));
       return;
     }
 

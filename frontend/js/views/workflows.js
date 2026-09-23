@@ -14,8 +14,8 @@ const plural=(count,word)=>`${count} ${word}${count===1?'':'s'}`;
 export async function render(container) {
   const controller=new AbortController(), signal=controller.signal;
   const instances=state.instances.filter(item=>!state.instanceId||item.id===state.instanceId);
-  container.append(heading('Workflows','Search your fleet. Every action stays tied to the instance shown on its section.'));
-  if(!instances.length){container.append(empty('Connect an instance','Add an n8n instance to browse its workflows.',[el('a',{class:'button ghost',href:'#instances'},'Open instances')]));return()=>controller.abort();}
+  container.append(heading('Workflows','Every workflow on every instance. Open one to see its steps.'));
+  if(!instances.length){container.append(empty('Connect an instance','Add an n8n instance to browse its workflows.',[el('a',{class:'button ghost',href:'#instances'},'Open instances')],'instances'));return()=>controller.abort();}
   const input=el('input',{type:'search',placeholder:'Workflow name',maxLength:120,autocomplete:'off',role:'combobox','aria-autocomplete':'list','aria-expanded':'false','aria-controls':'workflow-suggestions'}),sections=el('div',{class:'stack'});
   const suggestions=el('ul',{id:'workflow-suggestions',class:'picker-list',role:'listbox','aria-label':'Workflow suggestions',hidden:true});
   const suggestionStatus=el('span',{class:'sr-only',role:'status'});
@@ -209,7 +209,7 @@ export async function render(container) {
       if(signal.aborted)return;
       entry.cursor=result.next_cursor;entry.rows=result.data||[];entry.selected.clear();
       entry.messages.replaceChildren();entry.stamp.replaceChildren(asOf());entry.loaded=true;
-      entry.list.replaceChildren(entry.rows.length?renderTable(entry):empty('No matching workflows','Try another name or create a workflow in this instance.',[button('Clear search',()=>{input.value='';searchFleet();},'ghost')]));
+      entry.list.replaceChildren(entry.rows.length?renderTable(entry):empty('No matching workflows','Try another name or create a workflow in this instance.',[button('Clear search',()=>{input.value='';searchFleet();},'ghost')],'search'));
       renderBulk(entry);
     } catch(error){if(!signal.aborted)entry.messages.replaceChildren(loadFailure(error,()=>load(entry,after),`Could not load workflows on ${entry.instance.name}`));}
     finally{entry.loading=false;entry.next.disabled=searching||!entry.cursor;entry.retry.disabled=searching;}

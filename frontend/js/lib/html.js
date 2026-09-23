@@ -68,8 +68,9 @@ export function notice(container, error, options = {}) {
 export function heading(title, description = '') { const route=location.hash.slice(1).split('?')[0]||'dashboard';return el('header',{class:'page-heading'},el('div',{class:'heading-title'},el('span',{class:'heading-icon'},icon(route)),el('h1',{},title)),description ? el('p',{},description) : null); }
 // options.actions (array of Nodes: links, buttons or both) renders a centred action
 // row below the body. Omitting it renders exactly the historic two-argument output.
-export function empty(title, body = '', actions = []) {
-  const node = el('section',{class:'card empty'},icon('inbox'),el('h2',{},title),el('p',{},body));
+// glyph names the page's subject (lock for secrets, backup for backups…); inbox is the fallback.
+export function empty(title, body = '', actions = [], glyph = 'inbox') {
+  const node = el('section',{class:'card empty'},icon(glyph),el('h2',{},title),el('p',{},body));
   const list = Array.isArray(actions) ? actions : (actions instanceof Node ? [actions] : []);
   if (list.length) node.append(el('div',{class:'empty-actions'},...list));
   return node;

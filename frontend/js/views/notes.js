@@ -41,7 +41,7 @@ export async function render(container){
         el('span',{class:'notes-item-name'},name),folder?el('span',{class:'notes-item-folder'},folder):null,n.excerpt?el('span',{class:'notes-item-excerpt'},n.excerpt):null));
       item.firstChild.addEventListener('click',()=>act(()=>open(n.path)));return item;}));
     if(!data.data.length)list.append(el('li',{class:'notes-list-empty'},empty(search.value?'No matching notes':'No notes yet',search.value?'Try another search.':'Runbooks and fleet notes live here.',
-      search.value?[button('Clear search',()=>{search.value='';act(load);},'ghost')]:can('operator')?[button('Create your first note',startNote)]:[])));
+      search.value?[button('Clear search',()=>{search.value='';act(load);},'ghost')]:can('operator')?[button('Create your first note',startNote)]:[],search.value?'search':'notes')));
     markActive();
   }
   const startNote=()=>{selection++;loadedPath=null;revision=null;path.value='';path.readOnly=false;content.value='';showPreview();links.replaceChildren();markActive();path.focus();};

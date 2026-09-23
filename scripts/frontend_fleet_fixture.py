@@ -665,6 +665,6 @@ def exercise_fleet_search(page, ids, state):
     # Metric values are plain text named by their label, so screen readers hear the label first.
     total = page.get_by_role('article', name='Total workflows', exact=True)
     expect(total.locator('.metric-number')).to_have_text('2')
-    executions = page.get_by_role('article', name='Saved executions · 24h', exact=True)
+    executions = page.get_by_role('article', name='Runs · 24h', exact=True)
     expect(executions.locator('.metric-number')).to_have_text('0')
     print('PASS: dashboard aggregates both instances and shows real zero saved executions.', flush=True)

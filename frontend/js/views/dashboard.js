@@ -2,7 +2,7 @@ import {api} from '../api.js';
 import {state,can} from '../state.js';
 import {el,button,heading,table,empty} from '../lib/html.js';
 import {icon,registerIcons} from '../lib/icons.js';
-import {severityPill,relativeTime,instanceName,explainHref,repairHref} from '../lib/triage.js';
+import {severityPill,relativeTime,instanceName,explainHref,repairHref,n8nUrl} from '../lib/triage.js';
 import {loadingState,loadFailure,asOf,cachedProbe,fleetMetrics} from '../lib/payload.js';
 
 
@@ -39,7 +39,7 @@ export async function render(container) {
   const scoped=instance?state.instances.filter(row=>row.id===instance):state.instances;
   function renderFleet(metrics) {
     fleet.replaceChildren();
-    if(!scoped.length){fleet.append(empty('Connect your first instance','Connect your automation environment to see workflows and execution history.',[el('a',{class:'button ghost',href:'#instances'},icon('add'),'Open instances')]));return;}
+    if(!scoped.length){fleet.append(empty('Connect your first instance','Connect your automation environment to see workflows and execution history.',[el('a',{class:'button ghost',href:'#instances'},icon('add'),'Open instances')],'instances'));return;}
     // One row per instance: name with its last connection check, then the numbers an operator compares.
     // A value the scan could not count is a dash with a reason on hover, never a zero.
     const count=(done,value)=>done&&Number.isFinite(value)?value:null;
@@ -81,7 +81,7 @@ export async function render(container) {
     const ms=to-from;
     return ms<1000?`${ms} ms`:ms<60000?`${(ms/1000).toFixed(ms<10000?1:0)} s`:ms<3600000?`${Math.round(ms/60000)} min`:`${(ms/3600000).toFixed(1)} h`;
   }
-  function emptyExecutions(){return state.instances.length?empty('Choose an instance','Pick one at the top of the page to see its runs.',[el('a',{class:'button ghost',href:'#instances'},'Open instances')]):empty('No instances connected',can('admin')?'Connect an n8n instance in Instances, then pick it in the switcher at the top of the page to see its recent executions.':'An administrator needs to connect an n8n instance before recent executions can appear.',can('admin')?[el('a',{class:'button ghost',href:'#instances'},'Open instances')]:[]);}
+  function emptyExecutions(){return state.instances.length?empty('Choose an instance','Pick one in the switcher at the top of the page to see its runs.',[],'play'):empty('No instances connected',can('admin')?'Connect an n8n instance in Instances, then pick it in the switcher at the top of the page to see its recent executions.':'An administrator needs to connect an n8n instance before recent executions can appear.',can('admin')?[el('a',{class:'button ghost',href:'#instances'},'Open instances')]:[],'instances');}
   renderFleet();
   async function refresh() {
     if(busy||controller.signal.aborted)return;busy=true;refreshButton.disabled=true;
@@ -139,13 +139,13 @@ export async function render(container) {
         const partial={workflows:metrics.workflows===null&&wfDone.length?cover(wfDone):null,
           executions:metrics.executions_24h===null&&exDone.length?cover(exDone):null};
         const incomplete=metrics.data.filter(row=>!row.workflows_complete||!row.executions_complete);
-        for(const [index,[label,value,glyph,hint]] of [['Confirmed silent-error spans · 24h',metrics.confirmed_silent_error_spans_24h,'errors'],['Saved executions · 24h',executions,'play',partial.executions],['Success rate · completed runs',rate,'check',partial.executions],['Total workflows',workflows,'workflows',partial.workflows]].entries()){
+        for(const [index,[label,value,glyph,hint]] of [['Silent failures · 24h',metrics.confirmed_silent_error_spans_24h,'errors'],['Runs · 24h',executions,'play',partial.executions],['Success rate',rate,'check',partial.executions],['Total workflows',workflows,'workflows',partial.workflows]].entries()){
           const unknown=value===null,text=unknown?'Unavailable':String(value),labelId=`metric-label-${index}`,valueId=`metric-value-${index}`;
           const detail=unknown?(incomplete.length?'Coverage incomplete':'Not reported'):hint;
           // The label names the metric via an h2 heading; the value is associated with it via aria-describedby.
           stats.append(el('article',{class:`card metric-cell${unknown?' metric-unknown':''}`,'aria-labelledby':labelId,'aria-describedby':valueId},el('div',{class:'metric-label'},icon(glyph),el('h3',{class:'muted metric-title',id:labelId,'aria-describedby':valueId},label)),el('p',{class:`metric-number${unknown||text.length>12?' metric-text':''}`,id:valueId},text),detail?el('p',{class:'metric-hint'},detail):null));
         }
-        coverage.append(el('details',{class:'coverage-details'},el('summary',{},'How these metrics are counted'),el('p',{},`${metrics.scope} Success rate excludes running/waiting executions. Silent-error spans count only received telemetry. Window ends ${new Date(metrics.window_end).toLocaleString()}.`)));
+        coverage.append(el('details',{class:'coverage-details'},el('summary',{},'How these metrics are counted'),el('p',{},`${metrics.scope} Success rate counts finished runs only, not running or waiting ones. Silent failures count only what an instance's telemetry reported. Window ends ${new Date(metrics.window_end).toLocaleString()}.`)));
         if(incomplete.length){
           const missing=row=>!row.workflows_complete&&!row.executions_complete?'workflow and execution history incomplete':!row.workflows_complete?'workflow list incomplete':'execution history incomplete';
           coverage.prepend(el('section',{class:'coverage-partial',role:'status'},icon('info'),el('div',{},
@@ -164,7 +164,10 @@ export async function render(container) {
           // Time and execution are shown only when the record carries them.
           const parts=[el('span',{},`${instanceName(row.instance_id)} · ${row.node_name||'Workflow'} · ${occurrences}`),row.occurred_at?relativeTime(row.occurred_at):null,row.execution_id?el('span',{},`Execution ${row.execution_id}`):null].filter(Boolean);
           findings.append(el('article',{class:'finding-row'},el('div',{class:'finding-title'},el('strong',{},row.workflow_name),severityPill(row.error_type)),
-            el('p',{},row.error_message),el('div',{class:'finding-meta'},parts.flatMap((part,position)=>position?[el('span',{class:'finding-sep','aria-hidden':'true'},'·'),part]:[part]),el('span',{class:'finding-actions'},el('a',{href:explainHref(row)},'Explain with AI'),can('operator')?el('a',{href:repairHref(row),'aria-label':`Repair workflow ${row.workflow_name} with AI`},'Repair with AI'):null))));
+            el('p',{},row.error_message),el('div',{class:'finding-meta'},parts.flatMap((part,position)=>position?[el('span',{class:'finding-sep','aria-hidden':'true'},'·'),part]:[part]),el('span',{class:'finding-actions'},
+            // The failing run in n8n comes first; AI help follows it, as on the Errors page.
+            row.execution_id&&n8nUrl(row.instance_id,row.workflow_id,row.execution_id)?el('a',{href:n8nUrl(row.instance_id,row.workflow_id,row.execution_id),target:'_blank',rel:'noopener noreferrer','aria-label':`Open execution ${row.execution_id} of ${row.workflow_name} in n8n`},'Open in n8n',icon('external')):null,
+            el('a',{href:explainHref(row)},'Explain with AI'),can('operator')?el('a',{href:repairHref(row),'aria-label':`Repair workflow ${row.workflow_name} with AI`},'Repair with AI'):null))));
         }
       }
       if(index===0&&results[0].status==='fulfilled'&&!results[0].value)feed.append(emptyExecutions());
@@ -181,7 +184,7 @@ export async function render(container) {
             el('span',{class:'run-duration'},duration(row.startedAt,row.stoppedAt,row.status)),
             el('span',{class:'run-id'},String(row.id)),
           ];
-        }),{numeric:[3,4],className:'runs-table'}):empty('No recent executions','This instance returned no execution records.',[button('Refresh executions',()=>refresh(),'ghost')]));
+        }),{numeric:[3,4],className:'runs-table'}):empty('No recent executions','This instance returned no execution records.',[button('Refresh executions',()=>refresh(),'ghost')],'play'));
       }
       }));
     }finally{busy=false;refreshButton.disabled=false;}

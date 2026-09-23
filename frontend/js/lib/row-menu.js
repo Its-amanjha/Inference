@@ -3,12 +3,7 @@
 // bottom of the window. Arrow keys move between items, Escape or a click outside closes it, and
 // focus returns to the button.
 import {el} from './html.js';
-import {icon,registerIcons} from './icons.js';
-
-registerIcons({
-  more:[['circle',{cx:'5',cy:'12',r:'1.2'}],['circle',{cx:'12',cy:'12',r:'1.2'}],['circle',{cx:'19',cy:'12',r:'1.2'}]],
-  external:'M15 3h6v6 M10 14 21 3 M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6',
-});
+import {icon} from './icons.js';
 
 let sequence=0;
 

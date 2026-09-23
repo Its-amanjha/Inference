@@ -51,10 +51,11 @@ def exercise_admin(page):
 
     passphrase = secrets.token_urlsafe(24)
     page.evaluate("location.hash = 'secrets'")
-    page.get_by_role('button', name='Create secret', exact=True).click()
+    # One verb throughout: the page's Add secret opens the form, whose submit is also Add secret.
+    page.get_by_role('button', name='Add secret', exact=True).click()
     page.get_by_label('Vault name', exact=True).fill('BROWSER_BACKUP')
     page.get_by_label('New secret value', exact=True).fill(passphrase)
-    page.get_by_role('button', name='Save encrypted secret', exact=True).click()
+    page.get_by_role('button', name='Add secret', exact=True).click()
     page.get_by_text('Secret saved.', exact=True).wait_for()
     expect(page.get_by_text('$BROWSER_BACKUP', exact=True)).to_have_count(1)
     assert passphrase not in page.locator('body').inner_text()

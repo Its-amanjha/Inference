@@ -4,6 +4,11 @@ const paths = {...lucideIcons};
 export function registerIcons(map) {
   for(const [name,value] of Object.entries(map))if(!(name in paths))paths[name]=value;
 }
+// Shared by row menus and every "Open in n8n" link.
+registerIcons({
+  more:[['circle',{cx:'5',cy:'12',r:'1.2'}],['circle',{cx:'12',cy:'12',r:'1.2'}],['circle',{cx:'19',cy:'12',r:'1.2'}]],
+  external:'M15 3h6v6 M10 14 21 3 M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6',
+});
 export function actionIcon(label) {
   if(typeof label!=='string')return null;
   const match=[[/^(Connect model|Connect provider)/i,'test'],[/^(Providers and remote tools)/i,'settings'],[/^(Context and privacy|What the AI sees)/i,'shield'],[/^(Assistant settings|Configure|Settings)/i,'settings'],[/^(AI workspace|Explain|Repair|Continue)/i,'assistant'],[/^(Code editor)/i,'codelab'],[/^(Check|Re-check|Test)/i,'test'],[/^(Provision)/i,'containers'],[/^(Preview|View|Inspect)/i,'eye'],[/^(Open|Load|Resume)/i,'arrow'],[/^(Retry|Reconcile|Restore)/i,'refresh'],[/^(Send)/i,'send'],[/^(Copy)/i,'copy'],[/^(Clear|Reset)/i,'close'],[/^(Filter)/i,'filter'],[/^(Refresh|Test connection)/i,'refresh'],[/^(Save|Create admin)/i,'save'],[/^(Add|New|Create)/i,'add'],[/^Edit/i,'edit'],[/^(Delete|Remove|Purge)/i,'delete'],[/^(Activate|Start|Run now)/i,'play'],[/^(Deactivate|Stop|Disable)/i,'stop'],[/^(Confirm|Mark resolved|Enable)/i,'check'],[/^Cancel/i,'close'],[/^(Download|Export)/i,'download'],[/^(Inspect|Search|Discover)/i,'search'],[/^Sign out/i,'logout'],[/^(Deploy|Promote)/i,'promote']].find(([pattern])=>pattern.test(label));

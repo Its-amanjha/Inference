@@ -46,3 +46,12 @@ dialog.confirm-dialog::backdrop { background:rgba(10,12,16,.5); }
 .confirm-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:12px; }
 .confirm-actions .button { margin-top:0; }
 @media(max-width:480px) { .confirm-actions { flex-direction:column-reverse; } .confirm-actions .button { width:100%; } }
+
+/* Secrets: one row per reference with Replace and a menu; spacing, not rules, separates rows. */
+.secret-row { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px 16px; padding:6px 0; }
+.secret-row code { font-family:var(--font-mono); font-size:13px; color:var(--color-ink-black); overflow-wrap:anywhere; }
+.secret-row-actions { display:flex; align-items:center; gap:4px; }
+.secret-row-actions .button { margin:0; min-height:36px; }
+.backup-run-actions { flex-wrap:nowrap; align-items:center; gap:4px; margin:0; }
+.backup-run-actions .button { margin:0; }
+@media (max-width:700px) { .secret-row-actions .button { min-height:44px; } }
