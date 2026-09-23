@@ -29,16 +29,6 @@
 
 /* Ask / Propose changes: a two-option segmented control built on native radios. */
 
-
-@media(max-width:700px) {
-  
-  
-}
-
-.assistant-settings>summary { display:flex; align-items:center; gap:8px; list-style:none; }
-.assistant-settings>summary::-webkit-details-marker { display:none; }
-.assistant-settings>summary::after { content:''; width:7px; height:7px; border-right:1.5px solid currentColor; border-bottom:1.5px solid currentColor; transform:rotate(-45deg); margin-left:auto; flex:none; transition:transform .16s ease-out; }
-.assistant-settings[open]>summary::after { transform:rotate(45deg); }
 /* Closed disclosure descendants must not retain off-page layout boxes. */
 .assistant-page details:not([open])>:not(summary) { display:none; }
 .docker-unavailable { display:flex; align-items:flex-start; gap:14px; }
@@ -51,10 +41,7 @@
    open, so on some Chromium builds it never appeared. Selects use the native picker again. */
 @keyframes disclosure-enter { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
 @media(prefers-reduced-motion:no-preference) {
-  .account-panel:not([hidden]),.picker-list:not([hidden]),.action-menu[open]>.action-menu-list,.assistant-settings[open]>:not(summary),.triage-saved-dropdown[open] .triage-saved-panel { animation:disclosure-enter .16s ease-out; }
-}
-@media(prefers-reduced-motion:reduce) {
-  .assistant-settings>summary::after { transition:none; }
+  .account-panel:not([hidden]),.picker-list:not([hidden]),.triage-saved-dropdown[open] .triage-saved-panel { animation:disclosure-enter .16s ease-out; }
 }
 
 /* Loading is quiet, inset and shaped like the content it will replace. */
@@ -88,7 +75,7 @@
 .workflow-search-field .picker-option>span { min-width:0; flex:1; }
 .workflow-search-field .picker-name,.workflow-search-field .picker-id { display:block; max-width:none; margin-left:0; white-space:normal; overflow-wrap:anywhere; }
 /* Provider setup is opened from Assistant settings; it sits below the workspace, not beside it. */
-@media(min-width:901px) { #studio-chat>.assistant-settings { margin-top:24px; } }
+
 /* No divider lines inside cards: sections, list items and action rows are separated by space,
    not by rules. Structural edges (top bar, sidebar, table rows, the docked chat composer) keep theirs. */
 .decision-section,.proposal-section,.proposal-footer,.repair-rail-item { border-top:0; }
@@ -102,9 +89,7 @@
    as a title, then the editor and a live preview side by side. Space separates regions, not rules. */
 .notes-shell { display:grid; grid-template-columns:minmax(220px,280px) minmax(0,1fr); min-height:min(680px,calc(100dvh - 220px)); border:1px solid var(--border); border-radius:var(--radius-card); background:var(--surface-card-surface); overflow:hidden; }
 .notes-library { display:flex; flex-direction:column; gap:12px; min-width:0; padding:20px 16px; background:var(--surface-page-canvas); }
-.notes-library-head { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:0 4px; }
-.notes-library-head h2 { margin:0; font-size:15px; }
-.notes-library-head .button { min-height:32px; padding:4px 12px; font-size:13px; }
+
 .notes-search { position:relative; display:flex; }
 .notes-search input { flex:1; min-width:0; padding-left:36px; }
 .notes-search>.icon { position:absolute; left:12px; top:50%; width:16px; height:16px; transform:translateY(-50%); color:var(--color-smoke); pointer-events:none; }
@@ -157,15 +142,14 @@
    in-flow More actions list are separated by space. */
 .panel-head { border-bottom:0; padding-bottom:8px; }
 .theme-choice { border-top:0; border-bottom:0; }
-.action-menu-list { border-top:0; padding-top:4px; }
+
 /* Nothing under 12px, and labels in sentence case. */
 .active-view-indicator .button,.picker-state { font-size:12px; }
 .flow-list li::before { font-size:12px; }
-.shortcuts-dialog h3 { font-size:13px; text-transform:none; letter-spacing:0; }
+
 /* Every control reaches 44px on a phone. */
 @media (pointer:coarse),(max-width:700px) {
-  .studio-tabs>.button,.notes-library-head .button,.notes-search .button,.triage-saved-panel-actions .button,
-  .active-view-indicator .button,.triage-open,.workflow-open,.picker-retry,.picker-clear,.theme-option span { min-height:44px; }
+  .studio-tabs>.button,.notes-search .button,.triage-saved-panel-actions .button,.active-view-indicator .button,.triage-open,.workflow-open,.picker-retry,.picker-clear,.theme-option span { min-height:44px; }
   #toasts .toast-dismiss { width:44px; height:44px; }
 }
 

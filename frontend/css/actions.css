@@ -12,15 +12,6 @@
 [data-theme=dark] .confirm-dialog .button.danger:hover:not(:disabled),[data-theme=n8n] .confirm-dialog .button.danger:hover:not(:disabled) { background:#a8182d; border-color:#e8475d; color:#ffffff; }
 
 /* Overflow menu: expands in flow on its own row, so no ancestor overflow can clip it. */
-.action-menu { min-width:0; }
-.toolbar>.action-menu[open] { flex-basis:100%; }
-.action-menu>summary { display:inline-flex; align-items:center; gap:8px; min-height:36px; padding:0 16px; border:1px solid color-mix(in srgb,var(--color-smoke) 85%,var(--surface-card-surface)); border-radius:50px; color:var(--color-ink-black); font-weight:500; cursor:pointer; list-style:none; user-select:none; }
-.action-menu>summary::-webkit-details-marker { display:none; }
-.action-menu>summary:hover { background:var(--color-ash-mist); }
-.action-menu>summary .icon { width:16px; height:16px; transition:transform .15s ease-out; }
-.action-menu[open]>summary .icon { transform:rotate(180deg); }
-.action-menu-list { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:12px; padding-top:12px; border-top:1px solid var(--border); }
-[data-theme=n8n] .action-menu>summary { border-radius:8px; }
 
 /* State shown next to the control that changes it. */
 

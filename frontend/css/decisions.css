@@ -31,7 +31,7 @@
 .decision-facts { margin:0; padding-left:18px; font-size:12px; line-height:1.6; color:var(--color-smoke); overflow-wrap:anywhere; }
 .decision-card>p,.decision-probe>p { margin:0; }
 .decision-probe { gap:12px; }
-.decision-summary { margin:8px 0; font-size:14px; font-weight:500; line-height:1.45; color:var(--color-ink-black); overflow-wrap:anywhere; }
+
 .approval-card .decision-head { margin-bottom:8px; }
 .approval-card .decision-head>h3 { font-size:14px; line-height:1.45; letter-spacing:0; }
 .approval-card>p { margin:8px 0; }
@@ -44,7 +44,6 @@
 
 /* Assistant settings headings sat flush against the preceding content. */
 .assistant-page .assistant-settings .provider-setup>h3:first-child { margin-top:24px; }
-.assistant-page .assistant-settings[open]>h3 { margin-top:32px; }
 
 [data-theme=dark] .decision-blocking .decision-section-title,[data-theme=dark] .decision-blocking .decision-list li>.icon,
 [data-theme=n8n] .decision-blocking .decision-section-title,[data-theme=n8n] .decision-blocking .decision-list li>.icon { color:#ffafc1; }
@@ -71,9 +70,6 @@
 .metric-number.is-missing { font-size:14px; font-weight:500; color:var(--color-smoke); }
 
 .fleet-toolbar { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px; }
-.fleet-filter-group { display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
-.fleet-filter-btn { min-height:32px; padding:0 12px; font-size:13px; border-radius:20px; }
-.fleet-filter-btn[aria-pressed="true"] { background:var(--selection-fill); color:var(--selection-text); border-color:var(--selection-text); font-weight:600; }
 
 /* Tone comes from a tinted fill and the icon's colour, never from a side stripe. */
 .instance-diagnostic-box { display:flex; align-items:flex-start; gap:10px; padding:12px; border-radius:10px; background:color-mix(in srgb,var(--color-warning) 12%,var(--surface-card-surface)); font-size:13px; line-height:1.45; }
@@ -91,9 +87,6 @@
 [data-theme=n8n] .observe-metric-cell.metric-error .metric-number:not(.is-zero) { color:#ffafc1; }
 
 .observe-toolbar { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; }
-.observe-filter-group { display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
-.observe-filter-btn { min-height:32px; padding:0 12px; font-size:13px; border-radius:20px; }
-.observe-filter-btn[aria-pressed="true"] { background:var(--selection-fill); color:var(--selection-text); border-color:var(--selection-text); font-weight:600; }
 
 /* Waterfall ruler & track */
 .waterfall-ruler-wrap { position:relative; height:24px; margin:16px 0 8px; border-bottom:1px solid var(--border); font-size:12px; font-variant-numeric:tabular-nums; color:var(--color-smoke); }

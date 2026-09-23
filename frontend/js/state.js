@@ -21,4 +21,3 @@ export function isOwnEvent(name) {
   if (--entry.count <= 0) ownEvents.delete(name);
   return true;
 }
-export const instanceQuery = () => state.instanceId ? `?instance_id=${encodeURIComponent(state.instanceId)}` : '';

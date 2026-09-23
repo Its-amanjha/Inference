@@ -2,7 +2,7 @@ import {api} from '../api.js';
 import {state,pageSize,can} from '../state.js';
 import {el,button,heading,table,empty} from '../lib/html.js';
 import {icon,registerIcons} from '../lib/icons.js';
-import {loadingState,loadFailure,asOf} from '../lib/payload.js';
+import {loadingState,loadFailure} from '../lib/payload.js';
 import {instanceName,relativeLabel,relativePhrase,n8nUrl,repairHref} from '../lib/triage.js';
 import {openPeek,peekFacts,peekSection,peekCopy,closePeek} from '../lib/peek.js';
 import {rowMenu} from '../lib/row-menu.js';

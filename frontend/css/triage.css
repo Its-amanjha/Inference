@@ -88,9 +88,7 @@
 .triage-severity,.triage-when { white-space:nowrap; }
 
 .triage-subject { min-width:16rem; width:40%; }
-.triage-title { display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 8px; }
-.triage-title strong { color:var(--color-ink-black); font-weight:600; overflow-wrap:anywhere; }
-.triage-title .triage-node { color:var(--color-smoke); overflow-wrap:anywhere; }
+
 .triage-table .triage-message { margin:2px 0 0; max-width:72ch; color:var(--color-graphite); overflow-wrap:anywhere; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:1; line-clamp:1; overflow:hidden; }
 .triage-table .triage-message.triage-missing { color:var(--color-smoke); }
 /* The row title opens the details panel. */

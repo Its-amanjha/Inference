@@ -16,7 +16,6 @@ from backend import audit
 from backend.auth_gate import fail, require_current_role, require_role, token_hash
 from backend.database import _settle
 from backend.modules.n8n_proxy.client import N8nClient, instance_guard
-from backend.modules.n8n_proxy.router import resource_id
 from .ingest import IngestError, parse_traces
 from .classifier import classify, _terminal_ns
 from .pricing import calculate_cost, select_prices

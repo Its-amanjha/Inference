@@ -47,7 +47,7 @@ class SecurityMiddleware:
                 headers=list(message.get('headers',[]))
                 headers.extend([(b'x-content-type-options',b'nosniff'),(b'x-frame-options',b'DENY'),
                                 (b'referrer-policy',b'no-referrer'),
-                                (b'content-security-policy',b"default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; worker-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'")])
+                                (b'content-security-policy',b"default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; font-src 'self' https://cdnjs.cloudflare.com; worker-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'")])
                 # Raw, unversioned ES modules and theme JSON must not drift across releases.
                 headers.append((b'cache-control',b'no-store'))
                 message={**message,'headers':headers}

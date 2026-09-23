@@ -114,7 +114,6 @@ export async function render(container) {
       else section.feedback.append(el('p',{class:'load-progress',role:'status'},el('span',{class:'loading-spinner','aria-hidden':'true'}),el('span',{'aria-hidden':'true'},'Updating…'),el('span',{class:'sr-only'},`Refreshing ${section.label}…`)));
     }
     try {
-      const query=instance?`?instance_id=${encodeURIComponent(instance)}`:'';
       const errorQuery=new URLSearchParams({status:'open',limit:'4'});if(instance)errorQuery.set('instance_id',instance);
       const requests=[
         recentRuns(),

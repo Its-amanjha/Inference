@@ -156,9 +156,6 @@
 .repair-rail-link { display:inline-flex; align-items:center; width:fit-content; min-height:24px; font-size:12px; font-weight:500; color:var(--selection-text); }
 
 /* Entry links on the overview investigation queue. */
-.finding-meta .finding-actions { display:inline-flex; flex-wrap:wrap; align-items:center; gap:4px 16px; margin-left:auto; }
-.finding-meta .finding-actions a { display:inline-flex; align-items:center; gap:4px; min-height:24px; margin-left:0; }
-.finding-meta .finding-actions a .icon { width:13px; height:13px; }
 
 @media(max-width:900px) {
   .assistant-chat:has(> .repair-bar:not([hidden])) { height:680px; }
@@ -178,7 +175,7 @@
   .repair-target-actions { width:100%; margin-left:0; }
   .repair-target-actions .button { flex:1 1 0; }
   .repair-target .button,.proposal-card .proposal-actions .button,.proposal-preconditions .button,.repair-turn-footer .button,.repair-turn-retry .button { min-height:44px; }
-  .repair-rail-link,.finding-meta .finding-actions a,.repair-check { min-height:44px; }
+  .repair-rail-link,.repair-check { min-height:44px; }
   .proposal-card { padding:14px; }
   .proposal-actions .button { flex:1 1 auto; }
   /* 232px of readable code is 30 characters, so an 82-character line showed 37% of itself behind

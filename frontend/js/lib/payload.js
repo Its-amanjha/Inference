@@ -86,24 +86,6 @@ export async function fleetMetrics({signal,fresh=false,instance=null}={}){
   try{const metrics=await api('/api/n8n_proxy/dashboard'+(instance?`?instance_id=${encodeURIComponent(instance)}`:''),{signal});rememberFleetMetrics(metrics,instance);return metrics;}
   catch(error){if(error?.name==='AbortError'||!cached)throw error;return cached.metrics;}
 }
-// Availability, throughput and error rate for one instance, from the dashboard scan. A value the scan
-// could not count is shown as a dash, never as zero.
-export function instanceStats(evidence){
-  const known=(complete,value)=>complete&&Number.isFinite(value);
-  const workflows=known(evidence?.workflows_complete,evidence?.observed_workflows);
-  const runs=known(evidence?.executions_complete,evidence?.observed_executions_24h);
-  const terminal=runs&&Number.isFinite(evidence.terminal)?evidence.terminal:null;
-  const successes=Number.isFinite(evidence?.successes)?evidence.successes:null;
-  const rate=terminal?`${Math.round(successes/terminal*100)}%`:null;
-  const items=[
-    ['Workflows',workflows?String(evidence.observed_workflows):'—',workflows&&Number.isFinite(evidence.active_workflows)?`${evidence.active_workflows} active`:null],
-    ['Runs · 24h',runs?String(evidence.observed_executions_24h):'—',null],
-    ['Success rate',rate??'—',terminal?`of ${terminal} finished`:runs?'No finished runs':null],
-    ['Failed · 24h',terminal!==null&&successes!==null?String(terminal-successes):'—',null],
-  ];
-  return el('dl',{class:'instance-stats'},items.map(([label,value,note])=>el('div',{class:'instance-stat'},
-    el('dt',{},label),el('dd',{},el('span',{class:'instance-stat-value'},value),note?el('span',{class:'instance-stat-note'},note):null))));
-}
 export function forgetProbe(instanceId){
   const {key,rows}=probeCache();if(!key)return;delete rows[instanceId];
   try{sessionStorage.setItem(key,JSON.stringify(rows));}catch{/* Storage may be disabled. */}

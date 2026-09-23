@@ -31,8 +31,8 @@
 /* Ghost/secondary button outlines are the button's visual identity (WCAG 1.4.11),
    so they use the 3:1 --control-border instead of the decorative --border.
    forms.css loads after components.css, so this border-color wins at equal specificity. */
-.ghost,button.secondary,.button-ghost { border-color:var(--control-border); }
-.ghost:hover:not(:disabled),button.secondary:hover:not(:disabled),.button-ghost:hover:not(:disabled) { border-color:var(--control-border-hover); }
+.ghost,.button-ghost { border-color:var(--control-border); }
+.ghost:hover:not(:disabled),.button-ghost:hover:not(:disabled) { border-color:var(--control-border-hover); }
 
 /* Searchable ID picker: the search box keeps the raw id, the in-flow listbox shows
    human labels with the id as secondary text. In-flow so card overflow never clips it. */
@@ -84,7 +84,6 @@
 :where(select[multiple]) { background-image:none; padding:6px 12px; }
 :where(input[type=checkbox],input[type=radio]) { width:16px; height:16px; margin:0; flex:none; accent-color:var(--action-fill); cursor:pointer; }
 .control-mono { font-family:var(--font-mono); font-size:13px; }
-.control-narrow { max-width:160px; }
 
 /* Secret values: masked, monospaced once revealed, one toggle instead of the browser's own. */
 .control-secret { position:relative; display:flex; align-items:center; min-width:0; }
@@ -179,7 +178,7 @@ form.stack { gap:16px; }
   .form-card-head { padding:16px 16px 0; }
   .form-card-body { padding:16px; }
   .form-card-foot { padding:4px 16px 16px; }
-  .button,.action-menu>summary,.card-head-row .button,td .button,.auth-card .form>.button { min-height:44px; }
+  .button,.card-head-row .button,td .button,.auth-card .form>.button { min-height:44px; }
   /* Wide tables scroll inside their focusable region instead of crushing their cells; the triage table stacks instead. */
   .table-wrap table:not(.triage-table) { min-width:560px; }
   .form-actions { width:100%; margin-left:0; }

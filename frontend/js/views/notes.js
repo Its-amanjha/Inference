@@ -1,5 +1,5 @@
 import {api as request} from '../api.js';
-import {el,button,notice,empty,heading} from '../lib/html.js';
+import {el,button,notice,heading} from '../lib/html.js';
 import {icon} from '../lib/icons.js';
 import {can,expectOwnEvent,cancelOwnEvent} from '../state.js';
 import {renderMarkdown} from '../lib/markdown.js';

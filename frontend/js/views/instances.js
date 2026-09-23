@@ -64,7 +64,7 @@ export async function render(container) {
   const tableWrap=el('div');
   container.append(rollup,toolbar,tableWrap);
   let writing=false;
-  let generation=0,checks=null,currentFilter='all',fleetTable=null,entries=[],versions={};
+  let generation=0,checks=null,currentFilter='all',fleetTable=null,entries=[];
   const api=async(path,options={})=>{
     if(signal.aborted)throw new DOMException('View closed','AbortError');
     const write=options.method&&options.method!=='GET';
@@ -73,15 +73,13 @@ export async function render(container) {
     try{return await request(path,options);}finally{if(write)writing=false;}
   };
   const act=async fn=>{try{await fn();}catch(e){if(!signal.aborted)notice(messages,e);}};
-  async function copyText(text,btn){
+  async function copyText(text){
     try{await navigator.clipboard.writeText(text);}
     catch{
       const area=el('textarea',{value:text,readonly:true,style:'position:fixed;opacity:0'});
       document.body.append(area);area.select();
       try{document.execCommand('copy');}catch{}area.remove();
     }
-    if(btn?.isConnected){const label=btn.textContent;btn.textContent='Copied';
-      setTimeout(()=>{if(btn.isConnected)btn.textContent=label;},1500);}
   }
   // Per-instance telemetry setup: exporter URL, env snippet, last received span,
   // and (administrators only) token create-shown-once-copy / list / revoke.
@@ -89,7 +87,7 @@ export async function render(container) {
   function copyIcon(getText,what){
     const node=el('button',{type:'button',class:'peek-copy','aria-label':`Copy ${what}`,title:`Copy ${what}`},icon('copy'));
     node.addEventListener('click',async()=>{
-      await copyText(getText(),null);
+      await copyText(getText());
       node.dataset.copied='';setTimeout(()=>delete node.dataset.copied,1500);
       const status=node.closest('dialog')?.querySelector('.peek-status');if(status)status.textContent=`Copied ${what}.`;
     });

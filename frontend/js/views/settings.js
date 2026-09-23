@@ -2,7 +2,7 @@ import {icon} from '../lib/icons.js';
 import {parseTimestamp} from '../lib/triage.js';
 import {api as request} from '../api.js';
 import {el,button,field,formCard,notice,heading,table,empty} from '../lib/html.js';
-import {state,can,pageSize} from '../state.js';
+import {state,can} from '../state.js';
 import {confirmAction,stateBadge,humanize} from '../lib/confirm.js';
 import {segmented} from '../lib/select-menu.js';
 

@@ -1,8 +1,5 @@
-// Action hierarchy helpers: target-naming confirmations, overflow menus and state badges.
+// Action hierarchy helpers: target-naming confirmations and state badges.
 import {el,button,field} from './html.js';
-import {icon,registerIcons} from './icons.js';
-
-registerIcons({chevron:'m6 9 6 6 6-6'});
 
 let active=null, sequence=0;
 
@@ -15,14 +12,6 @@ export function stateBadge(kind,label,raw){
   return el('span',{class:kind?`badge ${kind}`:'badge',title:raw===undefined||raw===null?undefined:String(raw)},label);
 }
 
-// Overflow actions expand in flow so card and panel overflow never clips them.
-export function actionMenu(items,label='More actions'){
-  const list=el('div',{class:'action-menu-list'},items.filter(Boolean));
-  const summary=el('summary',{},el('span',{},label),icon('chevron'));
-  const menu=el('details',{class:'action-menu'},summary,list);
-  menu.addEventListener('keydown',event=>{if(event.key==='Escape'&&menu.open){event.stopPropagation();menu.open=false;summary.focus();}});
-  return menu;
-}
 
 // Asks for one value in the app's dialog instead of a browser prompt. Resolves the trimmed text, or null when cancelled.
 export function askText({title,label,description,value='',confirmLabel='Continue',placeholder}={}){
