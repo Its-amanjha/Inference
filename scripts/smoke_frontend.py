@@ -214,13 +214,16 @@ def main() -> None:
                             code:host.querySelector('pre code')?.textContent,
                             links:[...host.querySelectorAll('a')].map(a=>a.getAttribute('href')),
                             dangerous:host.querySelectorAll('script,img,iframe,object,style,[onerror]').length};
+                        renderMarkdown(host, 'See [[Deploy]] and [[Missing|the plan]].', {wikilink: target => target === 'Deploy' ? '#notes?path=Deploy.md' : null});
+                        result.wikilinks = [...host.querySelectorAll('.wikilink')].map(n => [n.localName, n.getAttribute('href'), n.textContent]);
                         renderMarkdown(host, 'x\\n'.repeat(5001));
                         result.large = host.querySelectorAll('pre').length;
                         return result;
                     }''')
                     assert markdown == {'heading':'Title', 'bold':'bold', 'emphasis':'italic', 'list':3,
                         'quote':'quotation', 'code':'<script>alert(1)</script>',
-                        'links':['https://example.com'], 'dangerous':0, 'large':1}, markdown
+                        'links':['https://example.com'], 'dangerous':0, 'large':1,
+                        'wikilinks':[['a', '#notes?path=Deploy.md', 'Deploy'], ['span', None, 'the plan']]}, markdown
                     page.reload(wait_until='domcontentloaded')
                     page.get_by_role('button', name='Smoke.md', exact=True).click()
                     expect(page.get_by_label('Markdown content')).to_have_value('# Local smoke\n<script>window.compromised=true</script>')

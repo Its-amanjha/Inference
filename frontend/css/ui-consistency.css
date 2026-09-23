@@ -136,7 +136,7 @@
   .notes-editor,.notes-preview { min-height:240px; }
   .notes-main { padding:16px; }
   .notes-head { flex-wrap:wrap; }
-  .notes-actions { width:100%; justify-content:flex-end; }
+  .notes-head:has(>.notes-title:not([hidden])) .notes-actions { width:100%; justify-content:flex-end; }
 }
 /* Notes with nothing open: a short prompt in the pane instead of an empty editor. */
 .notes-blank { display:flex; flex:1; flex-direction:column; align-items:center; justify-content:center; gap:8px; min-height:320px; text-align:center; color:var(--color-smoke); }
@@ -145,6 +145,12 @@
 .notes-blank h2 { margin:4px 0 0; font-size:16px; color:var(--color-ink-black); }
 .notes-blank p { margin:0; max-width:36ch; font-size:13px; }
 .notes-title::placeholder { font-size:15px; font-weight:400; }
+/* A saved note's title: its folders, quieter, then its name. Only a new note shows the path field. */
+.notes-crumb { flex:1; min-width:0; margin:0; display:flex; flex-wrap:wrap; align-items:baseline; gap:6px; font-size:20px; font-weight:600; letter-spacing:-.01em; overflow-wrap:anywhere; }
+.notes-crumb-folder,.notes-crumb-sep { font-size:14px; font-weight:500; color:var(--color-smoke); }
+.notes-head [hidden] { display:none; }
+/* [[Links]] to notes read as links; one to a note that does not exist yet stays quiet. */
+.markdown-preview .wikilink.is-missing { color:var(--color-smoke); text-decoration:underline dotted; text-underline-offset:3px; cursor:help; }
 
 /* Remaining rules inside cards and menus go: panel headers, the account menu's theme block and the
    in-flow More actions list are separated by space. */

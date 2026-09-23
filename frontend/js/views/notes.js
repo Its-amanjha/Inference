@@ -1,9 +1,11 @@
 import {api as request} from '../api.js';
 import {el,button,notice,empty,heading} from '../lib/html.js';
 import {icon} from '../lib/icons.js';
-import {can} from '../state.js';
+import {can,expectOwnEvent} from '../state.js';
 import {renderMarkdown} from '../lib/markdown.js';
 import {confirmAction} from '../lib/confirm.js';
+import {rowMenu} from '../lib/row-menu.js';
+import {relativeLabel} from '../lib/triage.js';
 
 // One workspace: the library on the left, the open note on the right with its editor and a live
 // preview side by side. Paths name notes, so the path is the note's title.
@@ -11,7 +13,7 @@ export async function render(container){
   const controller=new AbortController(),signal=controller.signal;
   const messages=el('div'),list=el('ul',{class:'notes-list'});
   const search=el('input',{type:'search',placeholder:'Search notes','aria-label':'Search notes'});
-  let revision=null,loadedPath=null,selection=0,previewTimer=0,savedText=null,editing=false;
+  let revision=null,loadedPath=null,selection=0,previewTimer=0,savedText=null,editing=false,known=[];
   // Opening another note or starting a new one replaces the editor, so unsaved text is only dropped on request.
   const unsaved=()=>editing&&(loadedPath?content.value!==savedText:Boolean(path.value.trim()||content.value.trim()));
   const keepText=async()=>unsaved()&&!await confirmAction({title:'Discard your changes',target:loadedPath||path.value.trim()||'New note',
@@ -30,40 +32,76 @@ export async function render(container){
     try{return await request(path,options);}finally{if(write)writing=false;}
   };
   const act=async fn=>{try{await fn();}catch(e){if(!signal.aborted)notice(messages,e);}};
-  const showPreview=()=>{renderMarkdown(preview,content.value);if(!content.value.trim())preview.replaceChildren(el('p',{class:'notes-preview-empty'},'The preview appears here as you write.'));};
+  // [[Name]] resolves the way the server's backlinks do: beside the open note, then from the top of the
+  // library, then by file name when exactly one note has it.
+  const resolveLink=target=>{
+    let name=target.split('#')[0].trim();const from=loadedPath||path.value.trim();
+    if(!name)return from||null;
+    if(!/\.md$/i.test(name))name+='.md';
+    const fold=value=>value.toLowerCase(),folder=from.includes('/')?from.slice(0,from.lastIndexOf('/')+1):'';
+    for(const candidate of [folder+name,name]){const hit=known.find(row=>fold(row.path)===fold(candidate));if(hit)return hit.path;}
+    const named=name.includes('/')?[]:known.filter(row=>fold(row.path.split('/').pop())===fold(name));
+    return named.length===1?named[0].path:null;
+  };
+  const noteHref=notePath=>'#notes?'+new URLSearchParams({path:notePath});
+  const showPreview=()=>{renderMarkdown(preview,content.value,{wikilink:target=>{const hit=resolveLink(target);return hit?noteHref(hit):null;}});if(!content.value.trim())preview.replaceChildren(el('p',{class:'notes-preview-empty'},'The preview appears here as you write.'));};
   content.addEventListener('input',()=>{clearTimeout(previewTimer);previewTimer=setTimeout(showPreview,250);},{signal});
+  // A note link opens in place, so unsaved text is still guarded.
+  preview.addEventListener('click',event=>{
+    const link=event.target.closest?.('a.wikilink');if(!link)return;
+    event.preventDefault();act(()=>open(new URLSearchParams(link.getAttribute('href').split('?')[1]).get('path')));
+  },{signal});
   const markActive=()=>{for(const item of list.querySelectorAll('.notes-item'))item.toggleAttribute('aria-current',item.dataset.path===loadedPath);};
   const split=notePath=>{const parts=String(notePath).split('/');const file=parts.pop();return {name:file.replace(/\.md$/i,''),folder:parts.join('/')};};
 
   async function open(notePath){if(notePath!==loadedPath&&await keepText())return;const token=++selection;const note=await api('/api/notes/note?path='+encodeURIComponent(notePath),{signal});if(token!==selection)return;
-    showEditor(true);loadedPath=note.path;path.value=note.path;path.readOnly=true;revision=note.revision;content.value=note.content;savedText=note.content;editing=true;showPreview();markActive();syncDelete();
+    showEditor(true);loadedPath=note.path;path.value=note.path;revision=note.revision;content.value=note.content;savedText=note.content;editing=true;showPreview();markActive();syncDelete();
+    history.replaceState(history.state,'',noteHref(note.path));
     const backlinks=await api('/api/notes/backlinks?path='+encodeURIComponent(notePath),{signal});if(token!==selection)return;
     links.replaceChildren(backlinks.data.length?el('div',{},el('h3',{},'Linked from'),el('ul',{class:'backlinks'},...backlinks.data.map(n=>el('li',{},button(n.path,()=>act(()=>open(n.path)),'ghost'))))):'');
   }
   async function load(){const data=await api(search.value?'/api/notes/search?q='+encodeURIComponent(search.value):'/api/notes',{signal});
+    if(!search.value)known=data.data;
     list.replaceChildren(...data.data.map(n=>{const {name,folder}=split(n.path);
+      const modified=n.modified?new Date(n.modified):null,meta=[folder,modified&&!isNaN(modified)?relativeLabel(modified):''].filter(Boolean).join(' · ');
       const item=el('li',{class:'notes-item','data-path':n.path},el('button',{type:'button',class:'notes-item-button','aria-label':n.path},
-        el('span',{class:'notes-item-name'},name),folder?el('span',{class:'notes-item-folder'},folder):null,n.excerpt?el('span',{class:'notes-item-excerpt'},n.excerpt):null));
+        el('span',{class:'notes-item-name'},name),meta?el('span',{class:'notes-item-folder'},meta):null,n.excerpt?el('span',{class:'notes-item-excerpt'},n.excerpt):null));
       item.firstChild.addEventListener('click',()=>act(()=>open(n.path)));return item;}));
     if(!data.data.length)list.append(el('li',{class:'notes-list-empty'},empty(search.value?'No matching notes':'No notes yet',search.value?'Try another search.':'Runbooks and fleet notes live here.',
       search.value?[button('Clear search',()=>{search.value='';act(load);},'ghost')]:[],search.value?'search':'notes')));
     markActive();syncDelete();
   }
-  const startNote=async()=>{if(await keepText())return;selection++;showEditor(true);editing=true;savedText=null;loadedPath=null;revision=null;path.value='';path.readOnly=false;content.value='';showPreview();links.replaceChildren();markActive();syncDelete();path.focus();};
+  const startNote=async()=>{if(await keepText())return;selection++;showEditor(true);editing=true;savedText=null;loadedPath=null;revision=null;path.value='';content.value='';showPreview();links.replaceChildren();markActive();syncDelete();path.focus();};
   const saveNote=()=>act(async()=>{
     if(!path.reportValidity())return;
+    expectOwnEvent('notes.changed');
     const result=await api('/api/notes/note',{method:'PUT',json:{path:path.value,content:content.value,expected_revision:revision}});
-    revision=result.revision;loadedPath=result.path;path.readOnly=true;content.value=result.content;savedText=result.content;showPreview();syncDelete();notice(messages,'Note saved.');await load();
+    revision=result.revision;loadedPath=result.path;content.value=result.content;savedText=result.content;showPreview();syncDelete();
+    messages.replaceChildren();notice(messages,'Note saved.');
+    history.replaceState(history.state,'',noteHref(result.path));await load();
   });
-  const deleteButton=button('Delete note',()=>deleteNote(),'danger');
-  const syncDelete=()=>{deleteButton.hidden=!loadedPath;};
+  const title=el('h2',{class:'notes-crumb'});
+  const noteMenu=rowMenu([
+    // Without HTTPS the browser has no clipboard, so the link is shown to copy by hand.
+    {label:'Copy link',glyph:'copy',onSelect:()=>act(async()=>{const link=`[[${loadedPath.replace(/\.md$/i,'')}]]`;
+      messages.replaceChildren();if(!navigator.clipboard){notice(messages,`Copy this link into another note: ${link}`);return;}
+      await navigator.clipboard.writeText(link);notice(messages,'Link copied. Paste it into another note.');})},
+    can('operator')?{label:'Delete note',danger:true,onSelect:()=>deleteNote()}:null,
+  ],'Note actions');
+  // A saved note's path is its identity, so it reads as a title (folder, then name); a new note is named in the field.
+  const syncDelete=()=>{
+    const saved=Boolean(loadedPath);noteMenu.hidden=!saved;title.hidden=!saved;path.hidden=saved;
+    if(saved){const {name,folder}=split(loadedPath);title.replaceChildren(...folder.split('/').filter(Boolean).flatMap(part=>[el('span',{class:'notes-crumb-folder'},part),el('span',{class:'notes-crumb-sep','aria-hidden':'true'},'/')]),el('span',{},name));}
+  };
   const deleteNote=()=>act(async()=>{
     if(!loadedPath||!revision){notice(messages,'Open a note before deleting it.');return;}
     const notePath=loadedPath,noteRevision=revision;
     if(!await confirmAction({title:'Delete note',target:notePath,consequence:'The Markdown file is permanently deleted from the notes folder.',confirmLabel:'Delete note',danger:true}))return;
     if(loadedPath!==notePath||revision!==noteRevision)throw new Error('The open note changed. Review it before deleting.');
+    expectOwnEvent('notes.changed');
     await api('/api/notes/note?path='+encodeURIComponent(notePath)+'&expected_revision='+encodeURIComponent(noteRevision),{method:'DELETE'});
-    selection++;revision=null;loadedPath=null;savedText=null;editing=false;path.value='';path.readOnly=false;content.value='';showPreview();links.replaceChildren();showEditor(false);await load();
+    selection++;revision=null;loadedPath=null;savedText=null;editing=false;path.value='';content.value='';showPreview();links.replaceChildren();showEditor(false);syncDelete();
+    history.replaceState(history.state,'','#notes');await load();
   });
 
   const searchForm=el('form',{class:'notes-search',role:'search'},search,button('Search',()=>act(load),'ghost'));
@@ -76,8 +114,8 @@ export async function render(container){
     searchForm,list);
   // Enter in the title saves instead of reloading the page.
   const head=el('form',{class:'notes-head'},
-    el('label',{class:'sr-only',for:'note-path'},'Markdown path'),path,
-    can('operator')?el('div',{class:'notes-actions'},deleteButton,button('Save note',saveNote)):null);
+    el('label',{class:'sr-only',for:'note-path'},'Markdown path'),path,title,
+    el('div',{class:'notes-actions'},can('operator')?button('Save note',saveNote):null,noteMenu));
   head.addEventListener('submit',event=>{event.preventDefault();if(can('operator'))saveNote();});
   const panes=el('div',{class:'notes-split'},
       el('div',{class:'notes-pane'},el('label',{class:'notes-pane-label',for:'note-content'},'Markdown content'),content),
@@ -92,7 +130,9 @@ export async function render(container){
   showPreview();
   await act(load);
   // #notes?path=… opens that note, e.g. from an error's details panel.
+  // Otherwise the note edited most recently opens, so the workspace starts on real content.
   const linked=new URLSearchParams(location.hash.split('?')[1]||'').get('path');
-  if(linked)await act(()=>open(linked));
+  const recent=[...known].sort((a,b)=>String(b.modified||'').localeCompare(String(a.modified||'')))[0];
+  if(linked||recent)await act(()=>open(linked||recent.path));
   return()=>{selection++;clearTimeout(previewTimer);controller.abort();};
 }

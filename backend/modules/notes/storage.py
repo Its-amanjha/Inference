@@ -10,6 +10,7 @@ note edits are not a whole-filesystem transaction.
 from __future__ import annotations
 
 from contextlib import ExitStack, contextmanager
+from datetime import datetime, timezone
 import errno
 import hashlib
 import os
@@ -158,7 +159,8 @@ class NotesStore:
                                 total += len(content)
                                 if len(results) >= MAX_FILES or total > MAX_SCAN_BYTES:
                                     raise NoteError(413, 'notes_scan_limit', 'Notes scan limit exceeded.')
-                                results.append({'path': path, 'revision': hashlib.sha256(content).hexdigest()})
+                                results.append({'path': path, 'revision': hashlib.sha256(content).hexdigest(),
+                                                'modified': datetime.fromtimestamp(info.st_mtime, timezone.utc).isoformat()})
             try:
                 with self._directory([]):
                     pass

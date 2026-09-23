@@ -1,6 +1,6 @@
 import {api} from './api.js';
 import {el,button,notice} from './lib/html.js';
-import {state,can,applyPreferences} from './state.js';
+import {state,can,applyPreferences,isOwnEvent} from './state.js';
 import {renderAuth} from './wizard.js';
 import {setTheme} from './themes.js';
 import {icon} from './lib/icons.js';
@@ -86,7 +86,9 @@ function connectSocket() {
     const labels={'error:reported':'An execution error was reported.','silent_failure:detected':'A silent failure was detected.','workflow:promoted':'A workflow promotion changed.','langgraph:run':'An assistant run changed.','errors.changed':'Execution errors updated.','backups.changed':'Backup history updated.','notes.changed':'Notes updated.'};
     const errorEvent=['error:reported','silent_failure:detected','errors.changed'].includes(packet.event);
     const notify=!errorEvent || state.preferences.error_notifications;
-    if(labels[packet.event] && notify)toast(labels[packet.event]);
+    // A note this tab just saved or deleted is already confirmed on screen.
+    const own=packet.event==='notes.changed'&&isOwnEvent('notes.changed');
+    if(labels[packet.event] && notify && !own)toast(labels[packet.event]);
     window.dispatchEvent(new CustomEvent('inference-event',{detail:packet}));
     const route=location.hash.slice(1).split('?')[0] || 'dashboard';
     if(['dashboard','errors','observe'].includes(route) && notify)showPendingUpdates();

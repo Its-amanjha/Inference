@@ -1,3 +1,4 @@
+from datetime import datetime
 import hashlib
 import os
 
@@ -14,7 +15,11 @@ def test_roundtrip_and_stale(tmp_path):
     first = store.write('folder/hello.md', '# Héllo', None)
     assert first == {'path': 'folder/hello.md', 'content': '# Héllo', 'revision': hashlib.sha256('# Héllo'.encode()).hexdigest()}
     assert store.read(first['path']) == first
-    assert store.list() == [{'path': first['path'], 'revision': first['revision']}]
+    [listed] = store.list()
+    assert {key: listed[key] for key in ('path', 'revision')} == {'path': first['path'], 'revision': first['revision']}
+    # The library opens the note edited most recently, so each row says when its file last changed.
+    assert datetime.fromisoformat(listed['modified']).tzinfo is not None
+    assert abs(datetime.fromisoformat(listed['modified']).timestamp() - (root / 'folder' / 'hello.md').stat().st_mtime) < 1
     for revision in (None, 'stale'):
         with pytest.raises(NoteError) as error:
             store.write(first['path'], 'bad', revision)
