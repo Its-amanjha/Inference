@@ -102,7 +102,7 @@ export async function render(container) {
     lastSpan(item).then(when=>{
       if(signal.aborted)return;
       arrival.replaceChildren(!when?'No spans received yet.':['Last span received ',relativeLabel(when),'.']);
-    }).catch(()=>{if(!signal.aborted)arrival.replaceChildren('No spans received yet.');});
+    }).catch(()=>{if(!signal.aborted)arrival.replaceChildren('Could not check when spans last arrived. Open this panel again to retry.');});
     if(!can('admin')){
       body.append(el('p',{class:'muted'},'An administrator manages exporter tokens.'));
       return details;
@@ -143,7 +143,7 @@ export async function render(container) {
             paintRows();
           }),'danger',{'aria-label':`Revoke telemetry token ${row.name} on ${item.name}`}))));
         if(!rows.length)tokens.append(el('p',{class:'muted'},'No tokens yet.'));
-      }catch(error){if(!signal.aborted)tokens.replaceChildren(el('p',{role:'alert'},error?.message||'Could not load tokens.')); }
+      }catch(error){if(!signal.aborted)tokens.replaceChildren(el('p',{role:'status'},`Could not load tokens. ${error?.message||''}`.trim())); }
     }
     body.append(el('div',{class:'telemetry-tokens'},el('h3',{},'Exporter tokens'),created,
       el('div',{class:'telemetry-create-row'},field('Token name',name),create),tokens));
@@ -152,27 +152,32 @@ export async function render(container) {
   }
   // Shared telemetry facts for one instance: token list (administrators) and last span.
   // Cached per instance so the row and the details panel read the same result.
+  // Telemetry facts shared by the row and the details panel. A result is cached only when the request
+  // succeeded; a failure rejects, so the page says "Could not check" and the next look asks again.
+  const remember=(item,key,request)=>{
+    if(!item[key])item[key]=request().catch(error=>{delete item[key];throw error;});
+    return item[key];
+  };
   function tokenList(item){
     if(!can('admin'))return Promise.resolve([]);
-    item.tokenRows=item.tokenRows||api('/api/otel/tokens?'+new URLSearchParams({instance_id:item.id}),{signal})
-      .then(result=>result.data||[]).catch(()=>[]);
-    return item.tokenRows;
+    return remember(item,'tokenRows',()=>api('/api/otel/tokens?'+new URLSearchParams({instance_id:item.id}),{signal}).then(result=>result.data||[]));
   }
+  // When the newest span arrived: one indexed read on the server, not a grouping of the instance's spans.
   function lastSpan(item){
-    item.lastSpan=item.lastSpan||api('/api/otel/traces?'+new URLSearchParams({instance_id:item.id,limit:'1'}),{signal})
-      .then(result=>{
-        const first=result.data?.[0],start=first?new Date(Number(BigInt(first.start_ns)/1000000n)):null;
-        return start&&!Number.isNaN(start.getTime())?start:null;
-      }).catch(()=>null);
-    return item.lastSpan;
+    return remember(item,'lastSpan',()=>api('/api/otel/last-span?'+new URLSearchParams({instance_id:item.id}),{signal}).then(result=>{
+      if(!result?.start_ns)return null;
+      const start=new Date(Number(BigInt(result.start_ns)/1000000n));
+      return Number.isNaN(start.getTime())?null:start;
+    }));
   }
   function tokenState(item){
     return Promise.all([tokenList(item),lastSpan(item)]).then(([rows,when])=>({
-      live:rows.some(row=>!row.revoked_at),when}));
+      live:rows.some(row=>!row.revoked_at),when}),()=>({failed:true}));
   }
   function telemetryLabel(entry){
     const known=entry.tele;
     if(!known)return '—';
+    if(known.failed)return 'Could not check';
     if(!can('admin'))return known.when?`Last span ${relativeLabel(known.when)}`:'No spans yet';
     if(!known.live)return 'No token';
     return known.when?`Token active · last span ${relativeLabel(known.when)}`:'Token active · no spans yet';
@@ -344,6 +349,7 @@ export async function render(container) {
     // Deep link ("Set up telemetry" / palette): open that instance's telemetry at
     // once, without waiting for the automatic probes below.
     const telemetryTarget=new URLSearchParams(location.hash.split('?')[1]||'').get('telemetry');
+    if(telemetryTarget!==null)history.replaceState(history.state,'',`${location.pathname}${location.search}#instances`);
     if(telemetryTarget!==null&&!signal.aborted&&current===generation){
       const entry=entries.find(row=>row.item.id===telemetryTarget)||entries[0];
       if(entry)openDetails(entry,true);

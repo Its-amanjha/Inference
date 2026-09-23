@@ -1,9 +1,9 @@
 import {api} from '../api.js';
-import {state,pageSize} from '../state.js';
+import {state,pageSize,can} from '../state.js';
 import {el,button,heading,table,empty} from '../lib/html.js';
 import {icon,registerIcons} from '../lib/icons.js';
 import {loadingState,loadFailure,asOf} from '../lib/payload.js';
-import {instanceName,relativeLabel,n8nUrl} from '../lib/triage.js';
+import {instanceName,relativeLabel,n8nUrl,repairHref} from '../lib/triage.js';
 import {openPeek,peekFacts,peekSection,peekCopy,closePeek} from '../lib/peek.js';
 import {rowMenu} from '../lib/row-menu.js';
 
@@ -40,7 +40,6 @@ export async function render(container) {
   let cursor = null;
   let busy = false;
   let loaded = false;
-  let inspection = null;
   let currentFilter = 'all'; // 'all' | 'errors'
   let tracesTable = null;
   let allRowsData = [];
@@ -59,13 +58,13 @@ export async function render(container) {
   );
 
   const messages = el('div');
-  const stamp = el('div');
   const list = el('div');
   const announcer = el('div', {class: 'sr-only', role: 'status'});
 
   // Filter & pagination controls
   const refresh = button('Refresh', () => load(), 'ghost');
   const next = button('Older traces', () => load(cursor), 'button ghost');
+  next.hidden = true;
 
   const filterAllBtn = button('All traces', () => setFilter('all'), 'ghost observe-filter-btn', {'aria-pressed': 'true'});
   const filterErrorsBtn = button('Errors only', () => setFilter('errors'), 'ghost observe-filter-btn', {'aria-pressed': 'false'});
@@ -194,11 +193,8 @@ export async function render(container) {
 
   // The waterfall for one trace, rendered beside the list: cost facts first, then
   // every step as a compact row with its detail on demand.
-  function spanNodes(spans, start) {
-    const totalDuration = spans.reduce((max, span) => {
-      const end = BigInt(span.end_ns);
-      return end > max ? end : max;
-    }, start + 1n) - start || 1n;
+  function spanNodes(spans, start, end, withRuler) {
+    const totalDuration = end > start ? end - start : 1n;
     const rulerTicks = el('div', {class: 'waterfall-ruler-ticks'},
       el('span', {}, '0 ms'),
       el('span', {}, elapsed(totalDuration / 4n)),
@@ -206,7 +202,7 @@ export async function render(container) {
       el('span', {}, elapsed((totalDuration * 3n) / 4n)),
       el('span', {}, elapsed(totalDuration))
     );
-    const nodes = [el('div', {class: 'waterfall-ruler-wrap', 'aria-hidden': 'true'}, rulerTicks)];
+    const nodes = withRuler ? [el('div', {class: 'waterfall-ruler-wrap', 'aria-hidden': 'true'}, rulerTicks)] : [];
     for (const span of spans) {
       const spanStart = BigInt(span.start_ns);
       const spanEnd = BigInt(span.end_ns);
@@ -226,11 +222,11 @@ export async function render(container) {
       if (span.workflow_id) {
         spanActions.append(
           el('a', {class: 'button ghost', href: '#workflows?' + new URLSearchParams({instance_id: span.instance_id, workflow_id: span.workflow_id})}, 'Workflows'),
-          el('a', {class: 'button ghost', href: `#assistant?mode=repair&instance_id=${encodeURIComponent(span.instance_id)}&workflow_id=${encodeURIComponent(span.workflow_id)}`}, 'Repair with AI')
+          can('operator') ? el('a', {class: 'button ghost', href: repairHref({instance_id: span.instance_id, workflow_id: span.workflow_id})}, 'Repair with AI') : null
         );
       }
       if (failed) {
-        spanActions.append(el('a', {class: 'button ghost', href: `#errors?instance_id=${encodeURIComponent(span.instance_id)}`}, 'View errors'));
+        spanActions.append(el('a', {class: 'button ghost', href: '#errors'}, 'View errors'));
       }
       nodes.push(el('details', {class: 'waterfall-span'},
         el('summary', {class: 'waterfall-row'},
@@ -278,7 +274,7 @@ export async function render(container) {
       actions: [
         executionUrl ? el('a', {class: 'button', href: executionUrl, target: '_blank', rel: 'noopener noreferrer'}, 'Open execution in n8n')
           : workflowUrl ? el('a', {class: 'button', href: workflowUrl, target: '_blank', rel: 'noopener noreferrer'}, 'Open workflow in n8n') : null,
-        row.workflow_id ? el('a', {class: 'button ghost', href: `#assistant?mode=repair&instance_id=${encodeURIComponent(row.instance_id)}&workflow_id=${encodeURIComponent(row.workflow_id)}`}, 'Repair with AI') : null,
+        row.workflow_id && can('operator') ? el('a', {class: 'button ghost', href: repairHref({instance_id: row.instance_id, workflow_id: row.workflow_id})}, 'Repair with AI') : null,
       ],
     });
     const load = async (after = null) => {
@@ -288,18 +284,18 @@ export async function render(container) {
         const result = await api('/api/otel/traces/' + encodeURIComponent(row.trace_id) + '?' + params, {signal: controller.signal});
         if (controller.signal.aborted || !dialog.isConnected) return;
         if (!after) {
+          const unpriced = result.data.filter(span => (span.model != null || span.tokens_in != null || span.tokens_out != null) && span.cost_exact == null).length;
           running.replaceChildren(
             peekFacts([
               ['AI cost', cents(result.known_cost_usd)],
-              ['Steps without a price', `${result.unknown_cost_spans} step(s)`],
+              ['AI steps without a price', unpriced ? String(unpriced) : null],
             ]),
             el('p', {className: 'muted'}, 'Costs cover the steps on this page. Only AI steps carry a price.'));
         }
         if (!result.data.length) {
           if (!after) steps.append(el('p', {className: 'muted'}, 'No steps on this page.'));
         } else {
-          const start = result.data.reduce((min, span) => BigInt(span.start_ns) < min ? BigInt(span.start_ns) : min, BigInt(result.data[0].start_ns));
-          steps.append(...spanNodes(result.data, start));
+          steps.append(...spanNodes(result.data, BigInt(row.start_ns), BigInt(row.end_ns), !after));
         }
         if (result.next_cursor) {
           const more = button('Next steps', () => { more.disabled = true; load(result.next_cursor).finally(() => more.remove()); }, 'ghost');
@@ -338,7 +334,6 @@ export async function render(container) {
       cursor = result.next_cursor;
       loaded = true;
       messages.replaceChildren();
-      stamp.replaceChildren(asOf());
 
       if (before && tracesTable) {
         // Appending older traces to existing table
@@ -376,7 +371,8 @@ export async function render(container) {
       }
     } finally {
       busy = false;
-      next.disabled = !cursor;
+      next.disabled = false;
+      next.hidden = !cursor;
       refresh.disabled = false;
     }
   }

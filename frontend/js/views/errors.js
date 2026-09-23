@@ -49,7 +49,7 @@ export async function render(container){
   const feedback=el('div',{class:'triage-feedback'}),content=el('div',{class:'triage-results',tabindex:-1});
   const count=el('p',{class:'triage-count','aria-live':'polite'}),announcer=el('p',{class:'triage-announce',role:'status','aria-live':'polite'});
   const chips=TRIAGE_FILTERS.map(([key,label])=>el('button',{type:'button',class:'button ghost triage-chip','aria-pressed':String(key===filter),onclick:()=>setFilter(key)},label));
-  const next=button('Older errors',()=>load(cursor),'button ghost');next.disabled=true;
+  const next=button('Older errors',()=>load(cursor),'button ghost');next.hidden=true;
   const savedViewsContainer = el('details', { class: 'triage-saved-dropdown triage-saved-bar', role: 'group', 'aria-label': 'Saved filter views' });
   const bulkBar = el('div', { class: 'triage-bulk-strip triage-bulk-bar', role: 'region', 'aria-label': 'Bulk actions' });
   // After a resolve the row leaves the list; this bar offers it back until the next change.
@@ -539,7 +539,7 @@ export async function render(container){
     if(!rows.length){
       selectedIds.clear();
       updateSelectionUI();
-      content.replaceChildren(empty('Nothing to triage',loadedStatus==='open'?'No open errors right now.':'No resolved errors yet.',loadedStatus==='resolved'?[button('Check again',()=>load(),'ghost'),button('Back to Open',()=>{status.value='open';selectedIds.clear();load();},'ghost')]:[button('Check again',()=>load(),'ghost')],'check'));
+      content.replaceChildren(empty('Nothing to triage',loadedStatus==='open'?'No open errors right now.':'No resolved errors yet.',loadedStatus==='resolved'?[button('Check again',()=>load(),'ghost'),button('Back to Open',()=>{status.value='open';statusChanged();},'ghost')]:[button('Check again',()=>load(),'ghost')],'check'));
       return;
     }
     if(!shown.length){
@@ -681,7 +681,7 @@ export async function render(container){
       draw();
     }catch(error){if(!signal.aborted)notice(feedback,error);}
     finally{
-      busy=false;content.removeAttribute('aria-busy');next.disabled=!cursor;
+      busy=false;content.removeAttribute('aria-busy');next.disabled=false;next.hidden=!cursor;
       if(queued&&!signal.aborted){queued=false;load();}
     }
   }
@@ -694,7 +694,7 @@ export async function render(container){
   function getRowMeta(tr) {
     const meta = tr.querySelector('.triage-subject')?._rowMeta;
     if (meta) return meta;
-    const workflow = tr.querySelector('.triage-title strong')?.textContent?.trim() || 'Workflow';
+    const workflow = tr.querySelector('.triage-open strong')?.textContent?.trim() || 'Workflow';
     const node = tr.querySelector('.triage-node')?.textContent?.trim() || 'Workflow';
     const severity = tr.querySelector('.triage-severity')?.textContent?.trim() || 'Error';
     return { workflow, node, severity };

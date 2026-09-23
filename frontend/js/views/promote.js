@@ -142,7 +142,11 @@ export async function render(container){
   // exists and preflight can only fail.
   if(state.instances.length<2){
     container.append(empty('Connect a second instance to promote','Promotion copies a workflow from one instance to another. Connect both first.',
-      can('admin')?[el('a',{class:'button ghost',href:'#instances'},'Open instances')]:[],'promote'));
+      can('admin')?[el('a',{class:'button ghost',href:'#instances'},'Open instances')]:[],'promote'),messages,history);
+    // Past runs keep their recovery actions (check target state, restore, activate) after an instance is
+    // gone; with none, the history section is left out.
+    await runs();
+    if(!history.querySelector('.decision-card'))history.remove();
     return()=>controller.abort();
   }
 
@@ -495,7 +499,7 @@ export async function render(container){
     const note=el('p',{className:'json-status',role:'status'});
     const check=()=>{try{parseJsonWithComments(input.value||'{}');note.replaceChildren(icon('check'),'Valid JSON');note.classList.remove('is-error');}
       catch(error){note.replaceChildren(icon('errors'),`Not valid JSON: ${error.message}`);note.classList.add('is-error');}};
-    input.addEventListener('input',check);jsonChecks.push(check);return note;
+    let timer=0;input.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(check,400);});jsonChecks.push(check);return note;
   };
   const jsonDone=el('button',{type:'button',className:'button'},icon('check'),'Done');
   const jsonDialog=el('dialog',{className:'confirm-dialog json-dialog','aria-labelledby':'mappings-json-title'},
@@ -555,7 +559,6 @@ export async function render(container){
       control.disabled=true;try{const result=await api(`/api/n8n_promote/runs/${encodeURIComponent(run.id)}/${action}`,{method:'POST',...(body?{json:body}:{})});card.replaceWith(runCard(result));}catch(error){notice(card,error);}finally{control.disabled=false;}
     },'button ghost',{'aria-label':`${label}, run ${run.id}`});controls.append(control);}
     if(controls.childElementCount)card.append(controls);
-    card.append(rawDisclosure(run,'Raw run record'));
     return card;
   }
 

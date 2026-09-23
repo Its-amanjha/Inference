@@ -141,11 +141,13 @@ export async function render(container){
     const cursors=[null];let page=0,next=null;
     const when=value=>{const date=parseTimestamp(value);return date?el('time',{dateTime:date.toISOString(),title:date.toLocaleString()},
       date.toLocaleString([],{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})):String(value||'—');};
-    const previous=button('Previous',()=>act(()=>show(page-1)),'ghost',{'aria-label':'Newer audit events'});
-    const older=button('Next',()=>act(()=>show(page+1)),'ghost',{'aria-label':'Older audit events'});
+    const previous=button('Newer',()=>act(()=>show(page-1)),'ghost',{'aria-label':'Newer audit events'});
+    const older=button('Older',()=>act(()=>show(page+1)),'ghost',{'aria-label':'Older audit events'});
     async function show(target){
       previous.disabled=older.disabled=true;
-      const result=await api('/api/admin/audit?limit=10'+(cursors[target]?'&before='+encodeURIComponent(cursors[target]):''),{signal});
+      let result;
+      try{result=await api('/api/admin/audit?limit=10'+(cursors[target]?'&before='+encodeURIComponent(cursors[target]):''),{signal});}
+      catch(error){previous.disabled=page===0;older.disabled=!next;throw error;}
       page=target;next=result.next_cursor??null;cursors[page+1]=next;
       rows.replaceChildren(result.data.length?table(['Time','Actor','Action','Target','Outcome'],result.data.map(r=>[when(r.occurred_at||r.created_at),r.actor,
         el('span',{title:String(r.action??'')},actionLabel(r.action)),auditTarget(r.target,r.action),outcomeBadge(r.outcome)]),{className:'audit-table'})

@@ -11,7 +11,11 @@ export async function render(container){
   const controller=new AbortController(),signal=controller.signal;
   const messages=el('div'),list=el('ul',{class:'notes-list'});
   const search=el('input',{type:'search',placeholder:'Search notes','aria-label':'Search notes'});
-  let revision=null,loadedPath=null,selection=0,previewTimer=0;
+  let revision=null,loadedPath=null,selection=0,previewTimer=0,savedText=null,editing=false;
+  // Opening another note or starting a new one replaces the editor, so unsaved text is only dropped on request.
+  const unsaved=()=>editing&&(loadedPath?content.value!==savedText:Boolean(path.value.trim()||content.value.trim()));
+  const keepText=async()=>unsaved()&&!await confirmAction({title:'Discard your changes',target:loadedPath||path.value.trim()||'New note',
+    consequence:'The note on screen has changes that are not saved. They are lost if you continue.',confirmLabel:'Discard changes',danger:true});
   const path=el('input',{id:'note-path',class:'notes-title',placeholder:'Name it, e.g. Runbooks/Deploy.md',required:true,autocomplete:'off',spellcheck:'false'});
   const content=el('textarea',{id:'note-content',class:'notes-editor',placeholder:'Write Markdown…'});
   const preview=el('div',{class:'markdown-preview notes-preview',role:'region','aria-label':'Markdown preview'});
@@ -31,8 +35,8 @@ export async function render(container){
   const markActive=()=>{for(const item of list.querySelectorAll('.notes-item'))item.toggleAttribute('aria-current',item.dataset.path===loadedPath);};
   const split=notePath=>{const parts=String(notePath).split('/');const file=parts.pop();return {name:file.replace(/\.md$/i,''),folder:parts.join('/')};};
 
-  async function open(notePath){const token=++selection;const note=await api('/api/notes/note?path='+encodeURIComponent(notePath),{signal});if(token!==selection)return;
-    showEditor(true);loadedPath=note.path;path.value=note.path;path.readOnly=true;revision=note.revision;content.value=note.content;showPreview();markActive();syncDelete();
+  async function open(notePath){if(notePath!==loadedPath&&await keepText())return;const token=++selection;const note=await api('/api/notes/note?path='+encodeURIComponent(notePath),{signal});if(token!==selection)return;
+    showEditor(true);loadedPath=note.path;path.value=note.path;path.readOnly=true;revision=note.revision;content.value=note.content;savedText=note.content;editing=true;showPreview();markActive();syncDelete();
     const backlinks=await api('/api/notes/backlinks?path='+encodeURIComponent(notePath),{signal});if(token!==selection)return;
     links.replaceChildren(backlinks.data.length?el('div',{},el('h3',{},'Linked from'),el('ul',{class:'backlinks'},...backlinks.data.map(n=>el('li',{},button(n.path,()=>act(()=>open(n.path)),'ghost'))))):'');
   }
@@ -45,11 +49,11 @@ export async function render(container){
       search.value?[button('Clear search',()=>{search.value='';act(load);},'ghost')]:[],search.value?'search':'notes')));
     markActive();syncDelete();
   }
-  const startNote=()=>{selection++;showEditor(true);loadedPath=null;revision=null;path.value='';path.readOnly=false;content.value='';showPreview();links.replaceChildren();markActive();syncDelete();path.focus();};
+  const startNote=async()=>{if(await keepText())return;selection++;showEditor(true);editing=true;savedText=null;loadedPath=null;revision=null;path.value='';path.readOnly=false;content.value='';showPreview();links.replaceChildren();markActive();syncDelete();path.focus();};
   const saveNote=()=>act(async()=>{
     if(!path.reportValidity())return;
     const result=await api('/api/notes/note',{method:'PUT',json:{path:path.value,content:content.value,expected_revision:revision}});
-    revision=result.revision;loadedPath=result.path;path.readOnly=true;content.value=result.content;showPreview();syncDelete();notice(messages,'Note saved.');await load();
+    revision=result.revision;loadedPath=result.path;path.readOnly=true;content.value=result.content;savedText=result.content;showPreview();syncDelete();notice(messages,'Note saved.');await load();
   });
   const deleteButton=button('Delete note',()=>deleteNote(),'danger');
   const syncDelete=()=>{deleteButton.hidden=!loadedPath;};
@@ -59,7 +63,7 @@ export async function render(container){
     if(!await confirmAction({title:'Delete note',target:notePath,consequence:'The Markdown file is permanently deleted from the notes folder.',confirmLabel:'Delete note',danger:true}))return;
     if(loadedPath!==notePath||revision!==noteRevision)throw new Error('The open note changed. Review it before deleting.');
     await api('/api/notes/note?path='+encodeURIComponent(notePath)+'&expected_revision='+encodeURIComponent(noteRevision),{method:'DELETE'});
-    selection++;revision=null;loadedPath=null;path.value='';path.readOnly=false;content.value='';showPreview();links.replaceChildren();showEditor(false);await load();
+    selection++;revision=null;loadedPath=null;savedText=null;editing=false;path.value='';path.readOnly=false;content.value='';showPreview();links.replaceChildren();showEditor(false);await load();
   });
 
   const searchForm=el('form',{class:'notes-search',role:'search'},search,button('Search',()=>act(load),'ghost'));

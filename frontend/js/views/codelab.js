@@ -14,10 +14,12 @@ export async function render(container){
   const workflowPicker=createIdPicker({label:'Workflow',placeholder:'Search by name or paste an ID',overlay:true,
     load:signal=>loadInstanceWorkflows(instance,signal),
     emptyText:'No workflows found on this instance.',
-    onPick:(id,known)=>{clear();if(id&&known)loadWorkflow();},signal:controller.signal});
+    // loadWorkflow clears the loaded node only after unsaved edits are confirmed away.
+    onPick:(id,known)=>{if(id&&known)loadWorkflow();},signal:controller.signal});
   const workflow=workflowPicker.input;
   workflowPicker.set(new URLSearchParams(location.hash.split('?')[1]||'').get('workflow_id')||'');
-  const nodes=selectMenu({label:'Code node',options:[{value:'',label:'Load a workflow first'}],onChange:()=>readNode()});nodes.disabled=true;
+  // Switching node replaces the editor's text too, so it asks first like Load and Reload do.
+  const nodes=selectMenu({label:'Code node',options:[{value:'',label:'Load a workflow first'}],onChange:async()=>{if(await keepEdits()){nodes.value=loadedNode;return;}readNode();}});nodes.disabled=true;
   const languageName=el('span',{class:'codelab-language'},'—');
   let language='javascript';
   const textarea=el('textarea',{rows:20,spellcheck:false,'aria-label':'Code editor',hidden:true}),editorHost=el('div',{className:'code-editor',hidden:true,role:'region','aria-label':'Code editor (advanced)'}),messages=el('div',{class:'codelab-messages'});editorHost.style.height='480px';
@@ -39,7 +41,7 @@ export async function render(container){
   const foot=el('div',{class:'toolbar codelab-foot',hidden:true},save,button('Reload node',async()=>{if(await keepEdits())return;await readNode();},'button ghost'),advanced);
   const showEditor=shown=>{intro.hidden=shown;foot.hidden=!shown;if(!editor)textarea.hidden=!shown;else editorHost.hidden=!shown;};
   function clear(){sequence++;snapshot=null;save.disabled=true;}
-  workflow.addEventListener('input',clear,{signal:controller.signal});
+  // Typing a new search does not unload the code on screen: Deploy writes to the loaded workflow and node.
   async function readNode(){const current=++sequence;snapshot=null;save.disabled=true;const id=workflow.value.trim(),node=nodes.value;if(!node)return;try{const result=await api(`/api/n8n_proxy/workflows/${encodeURIComponent(id)}/nodes/${encodeURIComponent(node)}?instance_id=${encodeURIComponent(instance)}`,{signal:controller.signal});if(current!==sequence)return;snapshot=result;loadedWorkflow=id;loadedNode=node;textarea.value=result.code;loadedCode=result.code;language=result.language==='javaScript'?'javascript':'python';languageName.textContent=language==='javascript'?'JavaScript':'Python';if(editor){editor.setValue(result.code);window.monaco.editor.setModelLanguage(editor.getModel(),language);}showEditor(true);save.disabled=!can('operator')||active;messages.replaceChildren(el('p',{className:'muted'},active?'This workflow is active. Deactivate it in Workflows, then reload before editing.':'Language follows the existing n8n node. Deployment preserves its language.'));}catch(error){if(!controller.signal.aborted)notice(messages,error);}}
   async function loadWorkflow(){if(await keepEdits())return;clear();const started=sequence;load.disabled=true;
     try{const id=workflow.value.trim();if(!id){workflow.focus();return;}
@@ -53,7 +55,7 @@ export async function render(container){
     catch(error){if(!controller.signal.aborted)notice(messages,error);}finally{load.disabled=false;}}
   const load=button('Load workflow',()=>loadWorkflow(),'button ghost codelab-load');
   const language_=el('div',{class:'codelab-field'},el('span',{class:'codelab-field-label'},'Language'),languageName);
-  const nodeField=el('div',{class:'codelab-field'},el('span',{class:'codelab-field-label',id:'codelab-node-label'},'Code node'),nodes.node);
+  const nodeField=el('div',{class:'codelab-field'},el('span',{class:'codelab-field-label'},'Code node'),nodes.node);
   container.append(el('section',{className:'card stack codelab'},el('div',{className:'codelab-bar'},workflowPicker.node,load,nodeField,language_),intro,messages,textarea,editorHost,foot));
   if(workflow.value.trim())loadWorkflow();
   return()=>{controller.abort();sequence++;editor?.getModel()?.dispose();editor?.dispose();};

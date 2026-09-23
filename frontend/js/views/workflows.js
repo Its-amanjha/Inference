@@ -58,7 +58,6 @@ export async function render(container) {
   }
   function queueSuggestions(){closeSuggestions();suggestionTimer=setTimeout(suggest,300);}
   input.addEventListener('input',queueSuggestions,{signal});
-  input.addEventListener('focus',queueSuggestions,{signal});
   input.addEventListener('blur',closeSuggestions,{signal});
   input.addEventListener('keydown',event=>{
     if(event.key==='Escape'){if(!suggestions.hidden){event.preventDefault();event.stopPropagation();}closeSuggestions();}
@@ -163,14 +162,14 @@ export async function render(container) {
       const list=(result.data||[]).slice(0,5);
       return list.length?el('ul',{class:'peek-runs'},list.map(run=>{const href=n8nUrl(instance.id,row.id,run.id);
         return el('li',{},runBadge(run.status),relativeTime(run.startedAt),el('span',{class:'peek-run-meta'},runDuration(run.startedAt,run.stoppedAt,run.status)),
-          href?el('a',{href,target:'_blank',rel:'noopener noreferrer','aria-label':`Open execution ${run.id} in n8n`},`#${run.id}`,icon('external')):el('span',{class:'peek-run-meta'},`#${run.id}`));}))
+          href?el('a',{href,target:'_blank',rel:'noopener noreferrer','aria-label':`#${run.id}: open execution in n8n`},`#${run.id}`,icon('external')):el('span',{class:'peek-run-meta'},`#${run.id}`));}))
         :el('p',{class:'muted'},'No saved runs. n8n keeps only the executions its save settings allow.');
     });
-    fill(errors,api('/api/errors?'+new URLSearchParams({status:'open',instance_id:instance.id,limit:'100'}),{signal}),result=>{
-      const mine=(result.data||[]).filter(item=>String(item.workflow_id)===String(row.id));
+    fill(errors,api('/api/errors?'+new URLSearchParams({status:'open',instance_id:instance.id,workflow_id:row.id,limit:'4'}),{signal}),result=>{
+      const mine=result.data||[],more=Boolean(result.next_cursor);
       return mine.length?el('div',{class:'peek-stack'},el('ul',{class:'peek-links'},mine.slice(0,3).map(item=>el('li',{class:'peek-error'},severityPill(item.error_type),
           el('span',{},`${item.node_name||'Workflow'}: ${String(item.error_message||'Message unavailable')}`)))),
-          el('a',{href:'#errors'},mine.length>3?`All ${mine.length} in Errors`:'Triage in Errors'))
+          el('a',{href:'#errors'},more||mine.length>3?'See all in Errors':'Triage in Errors'))
         :el('p',{class:'muted'},'None open.');
     });
     fill(traces,api('/api/otel/traces?'+new URLSearchParams({instance_id:instance.id,workflow_id:row.id,limit:'5'}),{signal}),result=>{
@@ -180,8 +179,8 @@ export async function render(container) {
           trace.error_spans?el('span',{class:'badge error'},`${trace.error_spans} failed`):null))),el('a',{href:'#observe'},'Open Observability'))
         :el('p',{class:'muted'},'No telemetry from this workflow yet.');
     });
-    if(promotions)fill(promotions,api('/api/n8n_promote/runs?limit=100',{signal}),result=>{
-      const mine=(result.data||[]).filter(run=>run.source_instance_id===instance.id&&String(run.workflow_id)===String(row.id));
+    if(promotions)fill(promotions,api('/api/n8n_promote/runs?'+new URLSearchParams({source_instance_id:instance.id,workflow_id:row.id,limit:'3'}),{signal}),result=>{
+      const mine=result.data||[];
       return mine.length?el('ul',{class:'peek-runs'},mine.slice(0,3).map(run=>el('li',{},el('span',{},`To ${instanceName(run.target_instance_id)}`),
           stateBadge(run.status==='deployed'?'success':['failed','rejected'].includes(run.status)?'error':['uncertain','partial'].includes(run.status)?'warning':'',humanize(run.status),run.status),
           run.created_at?relativeTime(run.created_at):null)))

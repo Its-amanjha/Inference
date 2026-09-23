@@ -28,25 +28,30 @@ export function openPalette(invoker) {
     group: 'Views', glyph: (link.getAttribute('href') || '#dashboard').slice(1), label: link.querySelector('span')?.textContent?.trim() || link.textContent.trim(),
     detail: null, href: link.getAttribute('href') || '#dashboard',
   }));
-  let workflows = [], searchTimer = 0, searchVersion = 0;
+  let workflows = [], searchTimer = 0, searchVersion = 0, search = null;
   let items = [], active = -1;
 
   // Workflows are looked up by name on every instance as you type (a few per instance), so any
   // workflow can be reached, not only those on a first page. Choosing one opens its page.
   function searchWorkflows(needle) {
+    // Only the latest text is searched: the previous scan is cancelled and its results cleared.
     clearTimeout(searchTimer);
+    search?.abort();
     const version = ++searchVersion;
-    if (needle.length < 2) { workflows = []; return; }
+    workflows = [];
+    if (needle.length < 2) return;
+    search = new AbortController();
+    const signal = AbortSignal.any([controller.signal, search.signal]);
     searchTimer = setTimeout(async () => {
       const instances = state.instances, groups = Array(instances.length);
       let next = 0;
       await Promise.all(Array.from({length: Math.min(3, instances.length)}, async () => {
-        while (next < instances.length && !controller.signal.aborted) {
+        while (next < instances.length && !signal.aborted) {
           const index = next++, instance = instances[index];
           try {
-            const result = await api('/api/n8n_proxy/workflows?' + new URLSearchParams({instance_id: instance.id, name: needle, limit: '5'}), {signal: controller.signal});
+            const result = await api('/api/n8n_proxy/workflows?' + new URLSearchParams({instance_id: instance.id, name: needle, limit: '5'}), {signal});
             groups[index] = (result.data || []).map(row => ({
-              group: 'Workflows', glyph: 'workflows', label: row.name || row.id, detail: instance.name,
+              group: 'Workflows', glyph: 'workflows', label: row.name || row.id, detail: instance.name, instanceId: instance.id,
               href: '#workflows?' + new URLSearchParams({instance_id: instance.id, workflow_id: row.id}),
             }));
           } catch { groups[index] = []; }
@@ -116,7 +121,10 @@ export function openPalette(invoker) {
   function choose(index) {
     const item = items[index];
     close();
-    if (item) location.hash = item.href;
+    if (!item) return;
+    // A workflow on an instance outside the current scope opens under All instances, where it is listed.
+    if (item.instanceId && state.instanceId && state.instanceId !== item.instanceId) state.instanceId = '';
+    location.hash = item.href;
   }
 
   function close() {

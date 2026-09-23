@@ -814,7 +814,7 @@ def exercise_links(page, ids, error_id):
         page.evaluate("location.hash = 'dashboard'")
         finding = page.locator('.finding-row').filter(has_text='Order synchronization')
         expect(finding).to_have_count(1)
-        assert_repair_href(finding.get_by_role('link', name='Repair workflow Order synchronization with AI', exact=True), with_error)
+        assert_repair_href(finding.get_by_role('link', name='Repair with AI: Order synchronization', exact=True), with_error)
         # Leave before unrouting so the overview's 30-second refresh cannot spend a real metrics request.
         page.evaluate("location.hash = 'errors'")
         page.get_by_role('region', name='Errors table').wait_for()

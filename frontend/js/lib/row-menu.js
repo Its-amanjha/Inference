@@ -34,12 +34,18 @@ export function rowMenu(items,label='More actions'){
   };
   // popovertarget makes the button the list's invoker, so clicking it again closes the list rather than
   // reopening it. The list is placed once when it opens, so scrolling the page closes it instead of leaving it behind.
-  const close=()=>list.hidePopover?.();
+  let watch=null;
+  const close=event=>{
+    if(!list.isConnected){watch?.abort();return;}
+    if(event?.type==='scroll'&&list.contains(event.target))return;
+    list.hidePopover?.();
+  };
   list.addEventListener('toggle',event=>{
     const open=event.newState==='open';
     trigger.setAttribute('aria-expanded',String(open));
-    if(open){place();enabled()[0]?.focus();addEventListener('scroll',close,{capture:true,passive:true});addEventListener('resize',close);}
-    else{removeEventListener('scroll',close,{capture:true});removeEventListener('resize',close);}
+    if(open){place();enabled()[0]?.focus();watch?.abort();watch=new AbortController();
+      addEventListener('scroll',close,{capture:true,passive:true,signal:watch.signal});addEventListener('resize',close,{signal:watch.signal});}
+    else{watch?.abort();watch=null;}
     if(!open&&(list.contains(document.activeElement)||document.activeElement===document.body))trigger.focus();
   });
   list.addEventListener('keydown',event=>{

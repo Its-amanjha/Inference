@@ -156,8 +156,8 @@ export async function render(container) {
           findings.append(el('article',{class:'finding-row'},el('div',{class:'finding-title'},el('strong',{},row.workflow_name),severityPill(row.error_type)),
             el('p',{},row.error_message),el('div',{class:'finding-meta'},parts.flatMap((part,position)=>position?[el('span',{class:'finding-sep','aria-hidden':'true'},'·'),part]:[part]),el('span',{class:'finding-actions'},
             // The failing run in n8n comes first; AI help follows it, as on the Errors page.
-            row.execution_id&&n8nUrl(row.instance_id,row.workflow_id,row.execution_id)?el('a',{href:n8nUrl(row.instance_id,row.workflow_id,row.execution_id),target:'_blank',rel:'noopener noreferrer','aria-label':`Open execution ${row.execution_id} of ${row.workflow_name} in n8n`},'Open in n8n',icon('external')):null,
-            el('a',{href:explainHref(row),'aria-label':`Explain with AI: ${row.workflow_name}`},'Explain with AI'),can('operator')?el('a',{href:repairHref(row),'aria-label':`Repair workflow ${row.workflow_name} with AI`},'Repair with AI'):null))));
+            row.execution_id&&n8nUrl(row.instance_id,row.workflow_id,row.execution_id)?el('a',{href:n8nUrl(row.instance_id,row.workflow_id,row.execution_id),target:'_blank',rel:'noopener noreferrer','aria-label':`Open in n8n: execution ${row.execution_id} of ${row.workflow_name}`},'Open in n8n',icon('external')):null,
+            el('a',{href:explainHref(row),'aria-label':`Explain with AI: ${row.workflow_name}`},'Explain with AI'),can('operator')?el('a',{href:repairHref(row),'aria-label':`Repair with AI: ${row.workflow_name}`},'Repair with AI'):null))));
         }
       }
       if(index===0&&results[0].status==='fulfilled'&&!results[0].value)feed.append(emptyExecutions());
@@ -173,7 +173,7 @@ export async function render(container) {
             relativeTime(row.startedAt),
             el('span',{class:'run-duration'},duration(row.startedAt,row.stoppedAt,row.status)),
             // The run ID opens that execution in n8n when the instance URL allows it.
-            n8nUrl(instance,row.workflowId,row.id)?el('a',{class:'run-id',href:n8nUrl(instance,row.workflowId,row.id),target:'_blank',rel:'noopener noreferrer','aria-label':`Open execution ${row.id} in n8n`},String(row.id),icon('external')):el('span',{class:'run-id'},String(row.id)),
+            n8nUrl(instance,row.workflowId,row.id)?el('a',{class:'run-id',href:n8nUrl(instance,row.workflowId,row.id),target:'_blank',rel:'noopener noreferrer','aria-label':`${row.id}: open execution in n8n`},String(row.id),icon('external')):el('span',{class:'run-id'},String(row.id)),
           ];
         }),{numeric:[3,4],className:'runs-table'}):empty('No recent executions','This instance returned no execution records.',[button('Refresh executions',()=>refresh(),'ghost')],'play'));
       }

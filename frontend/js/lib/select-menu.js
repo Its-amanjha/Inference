@@ -52,7 +52,14 @@ export function selectMenu({label,options=[],value='',onChange,className=''}={})
     const below=box.bottom+4+height<=innerHeight-8;
     list.style.left=`${left}px`;list.style.top=`${below?box.bottom+4:Math.max(8,box.top-4-height)}px`;
   };
-  const close=()=>list.hidePopover?.();
+  // Scrolling the page or resizing moves the button away from its list, so the list closes; scrolling the
+  // list itself does not. The listeners live for one opening and go with it, even if the list is removed.
+  let watch=null;
+  const close=event=>{
+    if(!list.isConnected){watch?.abort();return;}
+    if(event?.type==='scroll'&&list.contains(event.target))return;
+    list.hidePopover?.();
+  };
   const options_=()=>[...list.querySelectorAll('[role=option]')];
   list.addEventListener('toggle',event=>{
     const open=event.newState==='open';
@@ -60,9 +67,10 @@ export function selectMenu({label,options=[],value='',onChange,className=''}={})
     if(open){
       place();
       (options_().find(node=>node.getAttribute('aria-selected')==='true')||options_()[0])?.focus();
-      addEventListener('scroll',close,{capture:true,passive:true});addEventListener('resize',close);
+      watch?.abort();watch=new AbortController();
+      addEventListener('scroll',close,{capture:true,passive:true,signal:watch.signal});addEventListener('resize',close,{signal:watch.signal});
     }else{
-      removeEventListener('scroll',close,{capture:true});removeEventListener('resize',close);
+      watch?.abort();watch=null;
       if(list.contains(document.activeElement)||document.activeElement===document.body)button.focus();
     }
   });

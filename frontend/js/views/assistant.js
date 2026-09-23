@@ -739,6 +739,7 @@ export async function render(container) {
   const startCreation = () => {
     if (!state.instances.length) { notice(messages, 'Connect an instance before creating a workflow.'); setMode('ask'); return; }
     if (state.instanceId) { beginCreation(state.instanceId); return; }
+    creationPick.value = '';
     creationRow.hidden = false; creationPick.button.focus();
   };
   const setMode = (next, chosen = false) => {

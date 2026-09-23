@@ -136,16 +136,4 @@ export function registerShortcuts(shortcuts, title = '') {
   return () => {};
 }
 
-export function isTyping(e) {
-  const target = e?.target;
-  if (!target) return false;
-  const tag = target.tagName?.toLowerCase();
-  if (tag === 'textarea' || target.isContentEditable) return true;
-  if (tag === 'input') {
-    const type = target.type?.toLowerCase();
-    return type !== 'checkbox' && type !== 'radio' && type !== 'button' && type !== 'submit' && type !== 'reset';
-  }
-  if (tag === 'select') return true;
-  return false;
-}
 

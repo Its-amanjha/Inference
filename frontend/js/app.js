@@ -7,6 +7,7 @@ import {icon} from './lib/icons.js';
 import {openPalette} from './lib/palette.js';
 import {selectMenu} from './lib/select-menu.js';
 import {cachedProbe} from './lib/payload.js';
+import {closePeek} from './lib/peek.js';
 
 const routes = {'dashboard':'Overview','workflows':'Workflows','promote':'Promote','errors':'Errors','observe':'Observability','codelab':'CodeLab','assistant':'AI workspace','containers':'Containers','notes':'Notes','backup':'Backups','secrets':'Secrets','instances':'Instances','settings':'Settings'};
 const adminOnly = new Set(['containers','backup','secrets']);
@@ -345,7 +346,7 @@ function onKeyDown(e) {
 
   if (e.key === '/') {
     e.preventDefault();
-    const searchOrFilter = document.querySelector('#main input[type="search"], #main input[type="text"], .scope-switcher select');
+    const searchOrFilter = document.querySelector('#main input[type="search"], #main input[type="text"], .scope-switcher button');
     searchOrFilter?.focus();
     return;
   }
@@ -353,7 +354,7 @@ function onKeyDown(e) {
 
 async function navigate() {
   if(!state.user||!shell)return;
-  const current=++generation; cleanup();cleanup=()=>{}; clearPendingUpdates();
+  const current=++generation; closePeek(); cleanup();cleanup=()=>{}; clearPendingUpdates();
   currentViewShortcuts = [];
   currentViewTitle = '';
   pendingSequence = null;
@@ -387,7 +388,7 @@ async function signedIn(user) {
   connectSocket(); await navigate();
 }
 async function authenticate() {
-  if(authPending)return; authPending=true; ++generation;cleanup();closeSocket();state.user=null;applyPreferences();shell=null;setTheme('light');
+  if(authPending)return; authPending=true; ++generation;closePeek();cleanup();closeSocket();state.user=null;applyPreferences();shell=null;setTheme('light');
   try { const status=await api('/api/auth/status'); if(status.user)await signedIn(status.user);else cleanup=renderAuth(root,status.setup_required,signedIn); }
   catch(error){root.replaceChildren(el('main',{id:'main',class:'page'},el('h1',{},'Could not reach your workspace'),el('p',{},error.message),button('Try again',authenticate)));}
   finally {authPending=false;}
