@@ -151,3 +151,10 @@
   .notes-head { flex-wrap:wrap; }
   .notes-actions { width:100%; justify-content:flex-end; }
 }
+/* Notes with nothing open: a short prompt in the pane instead of an empty editor. */
+.notes-blank { display:flex; flex:1; flex-direction:column; align-items:center; justify-content:center; gap:8px; min-height:320px; text-align:center; color:var(--color-smoke); }
+.notes-blank[hidden],.notes-main>[hidden] { display:none; }
+.notes-blank .icon { width:28px; height:28px; }
+.notes-blank h2 { margin:4px 0 0; font-size:16px; color:var(--color-ink-black); }
+.notes-blank p { margin:0; max-width:36ch; font-size:13px; }
+.notes-title::placeholder { font-size:15px; font-weight:400; }

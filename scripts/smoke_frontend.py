@@ -192,6 +192,8 @@ def main() -> None:
                             page.set_viewport_size({'width':1440,'height':1000})
                         print('View:', route, flush=True)
                     page.evaluate("location.hash = 'notes'")
+                    # The editor appears for an open or new note; an empty library shows a prompt instead.
+                    page.get_by_role('button', name='New note', exact=True).click()
                     page.get_by_label('Markdown path', exact=True).fill('Smoke.md')
                     page.get_by_label('Markdown content', exact=True).fill('# Local smoke\n<script>window.compromised=true</script>')
                     page.get_by_role('button', name='Save note', exact=True).click()

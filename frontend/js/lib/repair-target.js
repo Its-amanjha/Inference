@@ -77,7 +77,8 @@ export async function loadInstanceWorkflows(instanceId,signal){
   const result=await api('/api/n8n_proxy/workflows?'+new URLSearchParams({instance_id:instanceId,limit:'250'}),{signal});
   const rows=Array.isArray(result?.data)?result.data:[];
   return rows.filter(row=>row&&IDENTIFIER.test(String(row.id??'')))
-    .map(row=>({id:String(row.id),name:typeof row.name==='string'&&row.name.trim()?row.name:String(row.id),detail:typeof row.active==='boolean'?(row.active?'Active':'Inactive'):''}));
+    .map(row=>({id:String(row.id),name:typeof row.name==='string'&&row.name.trim()?row.name:String(row.id),detail:typeof row.active==='boolean'?(row.active?'Active':'Inactive'):'',
+      state:typeof row.active==='boolean'?(row.active?'active':'inactive'):null,glyph:'workflows'}));
 }
 
 // Credentials on a target instance through the credentials API.
@@ -93,7 +94,8 @@ export async function loadTargetCredentials(instanceId,signal){
 // keyboard support, pasted unknown ids kept as "not in this list", lazy per-scope loading
 // with an empty state and a Retry on failure. The search box always keeps the raw text,
 // so pasting an id never loses anything.
-export function createIdPicker({label,placeholder='',hint=null,load,emptyText='',emptyActions=[],clearLabel='Clear',clearAriaLabel=null,clearable=true,disabled=false,onPick,signal}){
+// overlay: the list opens over the content below instead of pushing it down (for toolbars).
+export function createIdPicker({label,placeholder='',hint=null,load,emptyText='',emptyActions=[],clearLabel='Clear',clearAriaLabel=null,clearable=true,disabled=false,overlay=false,onPick,signal}){
   const listId=`id-picker-list-${++sequence}`;
   const search=el('input',{type:'search',maxLength:256,placeholder,autocomplete:'off',spellcheck:'false',role:'combobox','aria-expanded':'false','aria-controls':listId,'aria-autocomplete':'list'});
   if(disabled)search.disabled=true;
@@ -105,7 +107,7 @@ export function createIdPicker({label,placeholder='',hint=null,load,emptyText=''
   const effectiveClearAria=clearAriaLabel||(clearLabel!=='Clear'?clearLabel:`Clear ${label} selection`);
   const clearPicked=el('button',{type:'button',className:'button ghost picker-clear','aria-label':effectiveClearAria},clearLabel);
   if(clearable)picked.append(clearPicked);
-  const node=el('div',{className:'picker'},field(label,search,hint?{hint}:{}),status,list,picked,announcer);
+  const node=el('div',{className:overlay?'picker is-overlay':'picker'},field(label,search,hint?{hint}:{}),status,list,picked,announcer);
   let items=null,loadError=null,loading=null,open=false,activeIndex=-1,selectedId='',selectedKnown=false,pendingResolve=false;
 
   function visibleRows(){
@@ -137,7 +139,11 @@ export function createIdPicker({label,placeholder='',hint=null,load,emptyText=''
   }
   function optionNode(row,index,unknown=false){
     const item=el('li',{className:'picker-option'+(unknown?' picker-unknown':''),id:`${listId}-${index}`,role:'option','aria-selected':String(index===activeIndex)});
-    item.append(el('span',{className:'picker-name'},unknown?`Use “${row.id}”`:row.name),el('span',{className:'picker-id'},unknown?'(id not in this list)':row.detail?`${row.detail} · ${row.id}`:row.id));
+    // Icon, then the full name (it wraps rather than being cut off) with the ID under it, then state.
+    const idText=unknown?'(id not in this list)':row.state||!row.detail?row.id:`${row.detail} · ${row.id}`;
+    item.append(row.glyph?el('span',{className:'picker-glyph','aria-hidden':'true'},icon(row.glyph)):null,
+      el('span',{className:'picker-text'},el('span',{className:'picker-name'},unknown?`Use “${row.id}”`:row.name),el('span',{className:'picker-id'},idText)),
+      row.state&&!unknown?el('span',{className:`picker-state is-${row.state}`},row.detail):null);
     item.addEventListener('mousedown',event=>{event.preventDefault();choose(index);});
     return item;
   }
@@ -165,6 +171,8 @@ export function createIdPicker({label,placeholder='',hint=null,load,emptyText=''
   function setOpen(value){
     open=value;
     if(open)ensureLoaded();
+    // An overlay list starts just under the search box, whatever sits below it in the picker.
+    if(open&&overlay)node.style.setProperty('--picker-list-top',`${search.offsetTop+search.offsetHeight+4}px`);
     paint();
   }
   function ensureLoaded(){

@@ -363,3 +363,38 @@ dialog.peek::backdrop { background:rgba(10,12,16,.35); }
 .peek-stack { display:flex; flex-direction:column; align-items:flex-start; gap:8px; font-size:13px; }
 .peek-error { display:flex; flex-direction:column; align-items:flex-start; gap:4px; }
 .peek-error>span:last-child { color:var(--color-graphite); overflow-wrap:anywhere; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; overflow:hidden; }
+
+/* Single-choice dropdown (select-menu.js): the button shows the choice; the list opens in the top
+   layer with icons, state dots and a check on the current option. */
+.select-menu { display:inline-flex; min-width:0; }
+.select-menu-button { display:inline-flex; align-items:center; gap:8px; min-width:0; min-height:36px; padding:0 10px; border:1px solid var(--control-border); border-radius:var(--control-radius,8px); background:var(--surface-input,var(--surface-card-surface)); color:var(--color-ink-black); font:inherit; font-size:14px; text-align:left; cursor:pointer; transition:background-color .15s ease-out,border-color .15s ease-out; }
+.select-menu-button.scope-button { min-height:32px; border-color:transparent; background:transparent; font-size:13px; font-weight:500; }
+.select-menu-button:hover:not(:disabled) { background:color-mix(in srgb,var(--color-ink-black) 6%,transparent); }
+.select-menu-button[aria-expanded=true] { border-color:var(--focus); }
+.select-menu-button:focus-visible { outline:2px solid var(--focus); outline-offset:1px; }
+.select-menu-button:disabled { color:var(--color-smoke); cursor:not-allowed; }
+.select-menu-button .icon { width:16px; height:16px; flex:none; color:var(--color-smoke); }
+.select-menu-lead { display:inline-grid; place-items:center; width:16px; flex:none; }
+.select-menu-lead:empty { display:none; }
+.select-menu-value { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.select-menu-chevron { display:inline-grid; margin-left:auto; transition:transform .15s ease-out; }
+.select-menu-chevron .icon { width:14px; height:14px; }
+.select-menu-button[aria-expanded=true] .select-menu-chevron { transform:rotate(180deg); }
+.select-menu-list { position:fixed; inset:auto; margin:0; max-width:min(380px,calc(100vw - 16px)); max-height:min(360px,60dvh); overflow:auto; padding:6px; border:1px solid var(--border); border-radius:12px; background:var(--surface-card-surface); color:var(--color-ink-black); box-shadow:0 12px 32px rgba(0,0,0,.18); list-style:none; }
+.select-menu-option { display:flex; align-items:center; gap:10px; min-height:40px; padding:6px 10px; border-radius:8px; font-size:13px; cursor:pointer; }
+.select-menu-option:hover,.select-menu-option:focus { background:var(--color-ash-mist); outline:none; }
+.select-menu-option:focus-visible { box-shadow:inset 0 0 0 2px var(--focus); }
+.select-menu-option .icon { width:16px; height:16px; color:var(--color-smoke); }
+.select-menu-text { display:flex; flex-direction:column; min-width:0; }
+.select-menu-label { overflow-wrap:anywhere; }
+.select-menu-option[aria-selected=true] .select-menu-label { font-weight:600; }
+.select-menu-detail { font-size:12px; color:var(--color-smoke); overflow-wrap:anywhere; }
+.select-menu-check { display:inline-grid; margin-left:auto; padding-left:8px; }
+.select-menu-check .icon { color:var(--selection-text); }
+.select-menu-dot { width:8px; height:8px; border-radius:50%; background:var(--color-pencil-gray); }
+.select-menu-dot.is-up { background:var(--color-success); }
+.select-menu-dot.is-down { background:var(--color-danger); }
+/* Popovers open with a short drop, unless the person asked for less motion. */
+@keyframes menu-enter { from { opacity:0; transform:translateY(-6px) scale(.98); } }
+@media (prefers-reduced-motion:no-preference) { .select-menu-list:popover-open,.row-menu:popover-open { animation:menu-enter .16s cubic-bezier(.2,.8,.2,1); transform-origin:top center; } }
+@media (pointer:coarse),(max-width:700px) { .select-menu-button,.select-menu-button.scope-button { min-height:44px; } .select-menu-option { min-height:44px; } }

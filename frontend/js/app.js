@@ -5,6 +5,8 @@ import {renderAuth} from './wizard.js';
 import {setTheme} from './themes.js';
 import {icon} from './lib/icons.js';
 import {openPalette} from './lib/palette.js';
+import {selectMenu} from './lib/select-menu.js';
+import {cachedProbe} from './lib/payload.js';
 
 const routes = {'dashboard':'Overview','workflows':'Workflows','promote':'Promote','errors':'Errors','observe':'Observability','codelab':'CodeLab','assistant':'AI workspace','containers':'Containers','notes':'Notes','backup':'Backups','secrets':'Secrets','instances':'Instances','settings':'Settings'};
 const adminOnly = new Set(['containers','backup','secrets']);
@@ -97,7 +99,15 @@ function connectSocket() {
 async function loadInstances() {
   const result=await api('/api/n8n_proxy/instances'); state.instances=result.data || [];
   if(state.instanceId&&!state.instances.some(item=>item.id===state.instanceId)) state.instanceId='';
-  if(selector){selector.replaceChildren(el('option',{value:''},'All instances'),...state.instances.map(item=>el('option',{value:item.id},item.name)));selector.value=state.instanceId;}
+  paintSelector();
+}
+// The switcher lists every instance with its last known reachability (green, red, or grey when not
+// checked yet) and its host, so the choice shows where it points.
+function paintSelector(){
+  if(!selector)return;
+  const host=url=>{try{return new URL(url).host;}catch{return url||'';}};
+  selector.setOptions([{value:'',label:'All instances',glyph:'fleet-health',detail:`${state.instances.length} connected`},
+    ...state.instances.map(item=>{const probe=cachedProbe(item);return {value:item.id,label:item.name,detail:host(item.url),dot:probe?(probe.reachable?'up':'down'):'unknown'};})],state.instanceId);
 }
 const THEMES=[['light','Light'],['dark','Dark'],['n8n','n8n inspired']];
 const ROLE_LABELS={admin:'Administrator',operator:'Operator',viewer:'Viewer'};
@@ -125,7 +135,8 @@ function accountMenu(){
   return menu;
 }
 function renderShell() {
-  selector=el('select',{'aria-label':'Selected instance',onchange:()=>{state.instanceId=selector.value;navigate();}});
+  selector=selectMenu({label:'Selected instance',className:'scope-button',onChange:value=>{state.instanceId=value;navigate();}});
+  paintSelector();
   const link=id=>el('a',{href:`#${id}`,'data-route':id},icon(id),el('span',{},routes[id]));
   const groups=[['Monitor',['dashboard','errors','observe']],['Orchestrate',['workflows','promote','assistant']],['Manage',['instances','containers','notes','backup','secrets','settings']]];
   const navigation=el('nav',{'aria-label':'All views'},groups.map(([title,ids])=>{
@@ -136,7 +147,7 @@ function renderShell() {
   const brand=el('a',{class:'brand',href:'#dashboard',title:'Inference · Execution Anomaly System'},el('span',{class:'brand-mark','aria-hidden':'true'}),el('span',{class:'brand-name'},'Inference'));
   const sidebar=el('aside',{class:'sidebar'},el('div',{class:'sidebar-head'},brand),more);
   // Scope first, then the current view: the same breadcrumb shape as project switchers in hosted consoles.
-  const scope=el('div',{class:'scope-switcher'},icon('instances'),selector,icon('chevron-updown'));
+  const scope=el('div',{class:'scope-switcher'},selector.node);
   // A clock replaces the connected label; the state text returns only when updates stop. The clock sits
   // outside the live region so screen readers hear connection changes, not every minute.
   const clock=el('time',{class:'live-clock'});
@@ -354,6 +365,7 @@ async function navigate() {
   const navId=id==='codelab'?'assistant':id;
   root.querySelectorAll('[data-route]').forEach(node=>{if(node.dataset.route===navId)node.setAttribute('aria-current','page');else node.removeAttribute('aria-current');});
   root.querySelectorAll('.nav-more').forEach(node=>node.open=!mobileNavigation.matches);
+  paintSelector();
   const currentView=document.querySelector('#current-view');if(currentView)currentView.textContent=routes[id]||'Page not found';
   const container=el('div',{class:'stack'});shell.replaceChildren(container); document.title=`${routes[id] || 'Page not found'} · Inference`;
   if(!routes[id]){container.append(el('h1',{},'Page not found'),el('a',{href:'#dashboard'},'Return to overview'));return;}

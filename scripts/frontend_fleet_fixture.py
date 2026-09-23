@@ -27,6 +27,12 @@ PUT_SETTINGS = frozenset({'saveExecutionProgress', 'saveManualExecutions', 'save
 
 
 
+
+def choose_instance(page, value):
+    """Pick an instance by ID ('' is All instances) in the top-bar switcher, a button with a listbox."""
+    page.get_by_role('button', name=re.compile(r'^Selected instance:')).click()
+    page.locator(f'.select-menu-list [role=option][data-value="{value}"]').click()
+
 def workflow_action(page, scope, name, instance, item):
     """Choose an item from a workflow row's More actions menu."""
     scope.get_by_role('button', name=f'More actions for {name} on {instance}', exact=True).click()
@@ -439,7 +445,7 @@ def exercise_fleet(page, fixture_url, state):
     }''', fixture_url)
     state['instance_ids'] = ids
     page.reload(wait_until='domcontentloaded')
-    page.get_by_label('Selected instance').select_option(ids['source'])
+    choose_instance(page, ids['source'])
     page.evaluate("location.hash = 'workflows'")
     page.get_by_role('button', name='Details for workflow Browser workflow on source', exact=True).wait_for()
     accept = lambda dialog: dialog.accept()
@@ -455,6 +461,8 @@ def exercise_fleet(page, fixture_url, state):
         expect_workflow_state(page, page, 'Browser workflow', 'source', 'Inactive')
         workflow_action(page, page, 'Browser workflow', 'source', 'Open in CodeLab')
         page.get_by_role('button', name='Load workflow', exact=True).click()
+        # A link already loaded the workflow; this click reloads it. Edit only once that load has finished.
+        expect(page.get_by_role('button', name='Load workflow', exact=True)).to_be_enabled()
         editor = page.get_by_role('textbox', name='Code editor', exact=True)
         expect(editor).to_have_value('return items;')
         editor.fill('return [];')
@@ -579,7 +587,7 @@ def exercise_fleet_search(page, ids, state):
     state['source']['name'] = 'Source searchable'
     state['target']['name'] = 'Target searchable'
     state['pagination'] = True
-    page.get_by_label('Selected instance').select_option('')
+    choose_instance(page, '')
     page.evaluate("location.hash = 'workflows'")
     source = page.get_by_role('region', name='Workflows on source', exact=True)
     target = page.get_by_role('region', name='Workflows on target', exact=True)
@@ -611,6 +619,8 @@ def exercise_fleet_search(page, ids, state):
     workflow_action(page, target, 'Target searchable', 'target', 'Open in CodeLab')
     assert 'instance_id=' + ids['target'] in page.url
     page.get_by_role('button', name='Load workflow', exact=True).click()
+    # A link already loaded the workflow; this click reloads it. Edit only once that load has finished.
+    expect(page.get_by_role('button', name='Load workflow', exact=True)).to_be_enabled()
     expect(page.get_by_role('textbox', name='Code editor', exact=True)).to_have_value('return [];')
     page.evaluate("location.hash = 'workflows'")
     expect(source.get_by_role('button', name='Details for workflow Source searchable on source', exact=True)).to_have_count(1)
