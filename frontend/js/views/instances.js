@@ -204,11 +204,11 @@ export async function render(container) {
   }
   function formatRow(entry){
     const {workflows,active,runs,failed}=numbers(entry);
-    const rank=CLASS_RANK[classifyProbe(entry.probe)]??3;
+    const rank=entry.probe?CLASS_RANK[classifyProbe(entry.probe)]??3:entry.failed?2:3;
     const open=button('Details',()=>openDetails(entry),'ghost',{'aria-label':`Manage connection ${entry.item.name}`});
     return [
       {sortValue:entry.item.name.toLowerCase(),content:el('div',{class:'fleet-instance-cell'},el('strong',{},entry.item.name),el('span',{class:'muted fleet-instance-url'},entry.item.url))},
-      {sortValue:rank,content:entry.probe?reachabilityBadge(entry.probe):el('span',{class:'muted'},'—')},
+      {sortValue:rank,content:entry.probe?reachabilityBadge(entry.probe):entry.failed?stateBadge('warning','Check failed',entry.failed):el('span',{class:'muted'},'—')},
       {sortValue:(entry.version||'').toLowerCase(),content:entry.version?el('span',{class:'mono'},entry.version):el('span',{class:'muted'},'—')},
       {sortValue:workflows??'',content:workflows===null?el('span',{class:'muted'},'—'):el('span',{},String(workflows),active!==null?el('span',{class:'muted'},` (${active} active)`):null)},
       {sortValue:runs??'',content:runs===null?el('span',{class:'muted'},'—'):String(runs)},
@@ -288,8 +288,11 @@ export async function render(container) {
       if(slots.feedback)slots.feedback.replaceChildren();
       paintRollup();paintRows();
     }catch(error){
-      if(!signal.aborted&&!entry.checkSignal?.aborted&&slots.feedback)
-        slots.feedback.replaceChildren(loadFailure(error,()=>checkEntry(entry,slots),`Could not check ${entry.item.name}`));
+      if(signal.aborted||entry.checkSignal?.aborted)return;
+      // A failed automatic check leaves an honest badge, not a silent dash.
+      entry.failed=error?.message||error?.code||'The check did not complete.';
+      if(slots.feedback)slots.feedback.replaceChildren(loadFailure(error,()=>checkEntry(entry,slots),`Could not check ${entry.item.name}`));
+      paintRows();
     }finally{entry.checking=false;}
   }
   async function checkAll(){
