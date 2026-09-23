@@ -47,6 +47,12 @@ dialog.confirm-dialog::backdrop { background:rgba(10,12,16,.5); }
 .confirm-actions .button { margin-top:0; }
 @media(max-width:480px) { .confirm-actions { flex-direction:column-reverse; } .confirm-actions .button { width:100%; } }
 
+/* Backups: Schedules and Run history share one section-heading style, matching card titles. */
+.backup-section-title { font-size:16px; line-height:24px; margin:24px 0 12px; letter-spacing:-.01em; }
+.backup-section-title:first-of-type { margin-top:16px; }
+/* The offline restore command sits beside its copy button. */
+.restore-command-row { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; }
+.restore-command-row>code { flex:1; min-width:min(320px,100%); overflow-x:auto; }
 /* Secrets: one row per reference with Replace and a menu; spacing, not rules, separates rows. */
 .secret-row { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px 16px; padding:6px 0; }
 .secret-row code { font-family:var(--font-mono); font-size:13px; color:var(--color-ink-black); overflow-wrap:anywhere; }

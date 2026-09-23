@@ -16,12 +16,12 @@ def exercise_admin(page):
     page.get_by_role('button', name='Add user', exact=True).click()
     page.get_by_label('Username', exact=True).fill('browser_viewer')
     page.get_by_label('Password', exact=True).fill(secrets.token_urlsafe(24))
-    page.get_by_label('Role', exact=True).select_option('viewer')
+    page.get_by_role('group', name='Role', exact=True).get_by_role('button', name='Viewer', exact=True).click()
     page.get_by_role('button', name='Save user', exact=True).click()
     expect(page.get_by_role('cell', name='browser_viewer', exact=True)).to_have_count(1)
     row = page.get_by_role('row').filter(has=page.get_by_role('cell', name='browser_viewer', exact=True))
     row.get_by_role('button', name='Edit user browser_viewer', exact=True).click()
-    page.get_by_label('Role', exact=True).select_option('operator')
+    page.get_by_role('group', name='Role', exact=True).get_by_role('button', name='Operator', exact=True).click()
     page.get_by_role('button', name='Save user', exact=True).click()
     expect(row.get_by_role('cell', name='Operator', exact=True)).to_have_count(1)
     preferences = page.locator('section').filter(has=page.get_by_role('heading', name='Your preferences', exact=True))
@@ -63,7 +63,8 @@ def exercise_admin(page):
     page.evaluate("location.hash = 'backup'")
     page.get_by_role('button', name='Add schedule', exact=True).click()
     page.get_by_label('Name', exact=True).fill('Browser recovery copy')
-    page.get_by_label('Interval in minutes', exact=True).fill('1440')
+    page.get_by_role('button', name=re.compile(r'^Frequency:')).click()
+    page.get_by_role('listbox', name='Frequency').get_by_role('option', name='Daily', exact=True).click()
     page.get_by_label('Export passphrase reference', exact=True).fill('$BROWSER_BACKUP')
     page.get_by_label('Enabled', exact=True).uncheck()
     page.get_by_role('button', name='Save schedule', exact=True).click()
@@ -84,10 +85,10 @@ def exercise_admin(page):
         run.get_by_role('button', name=re.compile(r'^Download backup from ')).click()
     assert downloaded.value.failure() is None
 
-    # Destructive schedule actions sit in the overflow menu and confirm in a dialog naming the target.
+    # Destructive schedule actions sit in the row's More actions menu and confirm in a dialog naming the target.
     schedule = page.locator('section.card').filter(has=page.get_by_role('heading', name='Browser recovery copy', exact=True))
-    schedule.locator('summary').filter(has_text='More actions').click()
-    schedule.get_by_role('button', name='Delete schedule Browser recovery copy', exact=True).click()
+    schedule.get_by_role('button', name='More actions for Browser recovery copy', exact=True).click()
+    page.get_by_role('menu', name='More actions for Browser recovery copy').get_by_role('menuitem', name='Delete schedule', exact=True).click()
     dialog = page.get_by_role('dialog', name='Delete schedule')
     expect(dialog.get_by_text('Browser recovery copy', exact=True)).to_have_count(1)
     expect(dialog.get_by_role('button', name='Cancel', exact=True)).to_be_focused()

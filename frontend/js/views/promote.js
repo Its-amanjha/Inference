@@ -3,6 +3,7 @@ import {state,can} from '../state.js';
 import {el,button,field,formCard,heading,notice,empty} from '../lib/html.js';
 import {confirmAction,askText} from '../lib/confirm.js';
 import {createIdPicker,loadInstanceWorkflows,loadTargetCredentials} from '../lib/repair-target.js';
+import {selectMenu} from '../lib/select-menu.js';
 import {icon} from '../lib/icons.js';
 import {rawDisclosure,instanceName,plural,toneBadge,describeCode,section} from '../lib/payload.js';
 
@@ -131,7 +132,31 @@ export async function render(container){
   const controller=new AbortController();container.append(heading('Promote workflows','Preview exact changes, deploy inactive, then activate separately.'));
   if(!can('operator')){container.append(empty('Operator access required','Ask an administrator for permission to promote workflows.',[],'promote'));return()=>controller.abort();}
   const route=new URLSearchParams(location.hash.split('?')[1]||'');
-  const source=el('select'),target=el('select');
+  // A selectMenu beside its label, following the CodeLab control pattern.
+  const labeledMenu=(label,menu)=>{menu.button.id=`promote-${label.toLowerCase().replace(/[^a-z]+/g,'-')}`;return el('div',{class:'codelab-field'},el('label',{class:'codelab-field-label',for:menu.button.id},label),menu.node);};
+  // Promotion copies from the less-production instance by default (Staging → Production)
+  // when the names make that direction clear; otherwise it keeps the first two.
+  const directionDefault=()=>{
+    const prod=state.instances.find(item=>/prod/i.test(item.name||item.id));
+    const nonProd=state.instances.find(item=>item!==prod&&/stag|test|dev|qa|local|playground|sandbox/i.test(item.name||item.id));
+    if(prod&&nonProd)return {source:nonProd.id,target:prod.id};
+    return {source:state.instances[0]?.id,target:state.instances[1]?.id};
+  };
+  const defaults=directionDefault();
+  const instanceOptions=()=>state.instances.map(item=>({value:item.id,label:item.name||item.id,glyph:'instances'}));
+  const source=selectMenu({label:'Source instance',options:instanceOptions(),
+    value:route.get('source_instance_id')||state.instanceId||defaults.source,
+    onChange:()=>{
+      workflowPicker.setScope(signal=>loadInstanceWorkflows(source.value,signal));
+      invalidate();
+      if(workflowPicker.getId())inspectWorkflow(workflowPicker.getId());
+    }});
+  const target=selectMenu({label:'Target instance',options:instanceOptions(),
+    value:route.get('target_instance_id')||state.instances.find(item=>item.id!==source.value)?.id||defaults.target,
+    onChange:()=>{
+      invalidate();
+      if(workflowPicker.getId())inspectWorkflow(workflowPicker.getId());
+    }});
   const previewBody=el('div',{className:'stack'});
   const previewBox=el('section',{className:'card stack'},el('h2',{className:'wizard-step'},'2. Review the changes'),previewBody);
   const history=el('section',{className:'card stack'}),messages=el('div');
@@ -149,13 +174,6 @@ export async function render(container){
     if(!history.querySelector('.decision-card'))history.remove();
     return()=>controller.abort();
   }
-
-  for(const item of state.instances){
-    source.append(el('option',{value:item.id},item.name||item.id));
-    target.append(el('option',{value:item.id},item.name||item.id));
-  }
-  source.value=route.get('source_instance_id')||state.instanceId||source.value;
-  target.value=route.get('target_instance_id')||state.instances.find(item=>item.id!==source.value)?.id||'';
 
   const jsonBox=()=>el('textarea',{rows:3,value:'{}',spellcheck:'false',class:'control-mono'});
   const credential=jsonBox(),secrets=jsonBox(),subflows=jsonBox();
@@ -187,17 +205,6 @@ export async function render(container){
   if(route.get('workflow_id')){
     workflowPicker.set(route.get('workflow_id'));
   }
-
-  source.addEventListener('change',()=>{
-    workflowPicker.setScope(signal=>loadInstanceWorkflows(source.value,signal));
-    invalidate();
-    if(workflowPicker.getId())inspectWorkflow(workflowPicker.getId());
-  },{signal:controller.signal});
-
-  target.addEventListener('change',()=>{
-    invalidate();
-    if(workflowPicker.getId())inspectWorkflow(workflowPicker.getId());
-  },{signal:controller.signal});
 
   const deploy=button('Deploy inactive workflow',async()=>{
     if(!preview)return;
@@ -423,12 +430,12 @@ export async function render(container){
     // Client-side validation: catch errors in form before sending request
     if(!source.value||!target.value){
       notice(messages,new Error('Choose both a source and a target instance before running preflight.'));
-      (source.value?target:source).focus();
+      (source.value?target.button:source.button).focus();
       return;
     }
     if(source.value===target.value){
       notice(messages,new Error('Choose distinct source and target instances. Workflows cannot be promoted to the same instance.'));
-      target.focus();
+      target.button.focus();
       return;
     }
     const wfId=workflowPicker.getId();
@@ -518,7 +525,7 @@ export async function render(container){
     title:'1. Choose source and target',
     description:'Preflight compares a fresh snapshot of both instances.',
     body:[
-      el('div',{className:'form-row'},field('Source instance',source),field('Target instance',target)),
+      el('div',{className:'form-row'},labeledMenu('Source instance',source),labeledMenu('Target instance',target)),
       workflowPicker.node,
       mappingBox,
       rawDisclosureNode
