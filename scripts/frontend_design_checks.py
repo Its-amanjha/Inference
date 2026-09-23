@@ -166,7 +166,8 @@ def exercise_design(page: Page, artifacts: Path) -> None:
         try:
             page.evaluate("location.hash = 'containers'")
             expect(page.get_by_text('Docker management is unavailable on this server.', exact=True)).to_be_visible()
-            expect(page.get_by_role('button', name='Provision bundle', exact=True)).to_be_disabled()
+            expect(page.get_by_role('button', name='Provision bundle', exact=True)).to_have_count(0)
+            expect(page.locator('#main .empty')).to_have_count(0)
             expect(page.locator('#main [role=alert]')).to_have_count(0)
             expect(page.get_by_role('link', name='Open instances', exact=True)).to_be_visible()
             docker_reply.update(status=200, body={'available': True, 'version': 'fixture'})

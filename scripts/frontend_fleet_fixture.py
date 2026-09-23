@@ -489,8 +489,10 @@ def exercise_fleet(page, fixture_url, state):
         expect(save).to_be_disabled()
         assert len(state['writes']) == count, 'Stale code must not reach n8n'
         page.evaluate("location.hash = 'promote'")
-        page.get_by_label('Source instance', exact=True).select_option(ids['source'])
-        page.get_by_label('Target instance', exact=True).select_option(ids['target'])
+        page.get_by_role('button', name=re.compile(r'^Source instance:')).click()
+        page.get_by_role('listbox', name='Source instance').get_by_role('option', name='source', exact=True).click()
+        page.get_by_role('button', name=re.compile(r'^Target instance:')).click()
+        page.get_by_role('listbox', name='Target instance').get_by_role('option', name='target', exact=True).click()
         source_wf = page.get_by_label('Source workflow', exact=True)
         source_wf.focus()
         source_wf.fill('source-wf')

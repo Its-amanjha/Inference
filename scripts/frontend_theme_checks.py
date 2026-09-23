@@ -35,7 +35,8 @@ def exercise_themes(page: Page, artifacts: Path) -> None:
         assert response.headers.get('cache-control') == 'no-store', path
     page.evaluate("location.hash = 'settings'")
     page.get_by_role('button', name='Save preferences', exact=True).wait_for()
-    page.get_by_label('Theme', exact=True).first.select_option('n8n')
+    preferences = page.locator('section').filter(has=page.get_by_role('heading', name='Your preferences', exact=True))
+    preferences.get_by_role('button', name='n8n inspired', exact=True).click()
     page.get_by_role('button', name='Save preferences', exact=True).click()
     expect(page.locator('html')).to_have_attribute('data-theme', 'n8n')
     page.get_by_role('button', name='Account menu', exact=True).click()
@@ -47,7 +48,7 @@ def exercise_themes(page: Page, artifacts: Path) -> None:
     page.screenshot(path=str(artifacts / 'settings-fixed.png'), full_page=True)
     page.reload(wait_until='domcontentloaded')
     expect(page.locator('html')).to_have_attribute('data-theme', 'n8n')
-    expect(page.get_by_label('Theme', exact=True).first).to_have_value('n8n')
+    expect(preferences.get_by_role('button', name='n8n inspired', exact=True)).to_have_attribute('aria-pressed', 'true')
     assert page.evaluate('getComputedStyle(document.documentElement).colorScheme') == 'dark'
     for theme in ['light', 'dark', 'n8n']:
         assert page.evaluate("async theme => (await import('/js/themes.js')).setTheme(theme)", theme)
