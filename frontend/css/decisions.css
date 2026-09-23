@@ -136,6 +136,19 @@
 .waterfall-span-header { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
 .waterfall-span-summary { display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; color:var(--color-ink-black); }
 .waterfall-span-details { margin-top:8px; padding:12px; border-radius:10px; background:var(--color-ash-mist); font-size:12px; }
+/* One span per compact row: name left, time bar right. Details open below on demand. */
+.waterfall-span { border-bottom:1px solid var(--border); }
+.waterfall-span:last-child { border-bottom:none; }
+.waterfall-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(120px,1.6fr); align-items:center; gap:12px; min-height:28px; padding:2px 0; list-style:none; cursor:pointer; }
+.waterfall-row::-webkit-details-marker { display:none; }
+.waterfall-name { display:flex; align-items:center; gap:8px; min-width:0; font-size:13px; font-weight:500; color:var(--color-ink-black); }
+.waterfall-name>span.waterfall-node { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.waterfall-cost { flex:none; font-weight:400; color:var(--color-smoke); font-variant-numeric:tabular-nums; }
+.waterfall-row .waterfall-track { display:block; }
+/* Trace IDs stay readable: copyable mono lines under the workflow name. */
+.trace-ids { display:flex; flex-direction:column; gap:4px; }
+.trace-id-line { display:flex; align-items:center; gap:8px; }
+.trace-id-line .button { min-height:32px; padding:0 10px; font-size:12px; }
 .span-failed { display:inline-flex; align-items:center; gap:4px; color:#a80b30; font-weight:600; }
 [data-theme=dark] .span-failed,
 [data-theme=n8n] .span-failed { color:#ffafc1; }
