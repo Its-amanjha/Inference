@@ -1,10 +1,11 @@
 import {api} from '../api.js';
 import {state,can,pageSize} from '../state.js';
-import {el,button,field,heading,table,notice,empty} from '../lib/html.js';
+import {el,button,heading,table,notice,empty} from '../lib/html.js';
 import {icon} from '../lib/icons.js';
 import {severityOf,severityPill,relativeTime,parseTimestamp,instanceName,explainHref,repairHref,n8nUrl,TRIAGE_FILTERS,getSavedViews,saveView,deleteSavedView,registerShortcuts} from '../lib/triage.js';
 import {askText,confirmAction} from '../lib/confirm.js';
 import {rowMenu} from '../lib/row-menu.js';
+import {segmented} from '../lib/select-menu.js';
 import {openPeek,peekFacts,peekSection,peekCopy,closePeek} from '../lib/peek.js';
 
 const SORT_COL_KEYS = ['severity', 'workflow', 'instance', 'count', 'when'];
@@ -40,7 +41,8 @@ export async function render(container){
     }
   }
 
-  const status=el('select',{},el('option',{value:'open'},'Open'),el('option',{value:'resolved'},'Resolved'));
+  // Open and Resolved switch often and are only two, so they sit side by side instead of in a dropdown.
+  const status=segmented({label:'Status',options:[{value:'open',label:'Open',glyph:'errors'},{value:'resolved',label:'Resolved',glyph:'check'}],value:initialStatus,onChange:()=>statusChanged()});
   status.value = initialStatus;
   let rows=[],cursor=null,busy=false,queued=false,filter=initialFilter,loadedStatus=status.value;
   const selectedIds = new Set();
@@ -195,7 +197,7 @@ export async function render(container){
     if (wasOpen) savedViewsContainer.open = true;
   }
 
-  status.addEventListener('change', () => {
+  function statusChanged() {
     selectedIds.clear();
     if (activeViewName) {
       activeViewName = '';
@@ -203,7 +205,7 @@ export async function render(container){
     }
     syncHash();
     load();
-  }, {signal});
+  }
 
   document.addEventListener('click', (e) => {
     if (savedViewsContainer.open && !savedViewsContainer.contains(e.target)) {
@@ -225,7 +227,7 @@ export async function render(container){
 
   const commandStrip = el('div', { class: 'triage-command-strip' },
     el('div', { class: 'triage-command-main' },
-      el('div', { class: 'triage-status-group' }, field('Status', status)),
+      el('div', { class: 'triage-status-group' }, status.node),
       el('div', { class: 'triage-filters', role: 'group', 'aria-label': 'Filter loaded errors by type' }, chips)
     ),
     el('div', { class: 'triage-command-actions' },

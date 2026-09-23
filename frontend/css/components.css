@@ -400,3 +400,12 @@ dialog.peek::backdrop { background:rgba(10,12,16,.35); }
 @keyframes menu-enter { from { opacity:0; transform:translateY(-6px) scale(.98); } }
 @media (prefers-reduced-motion:no-preference) { .select-menu-list:popover-open,.row-menu:popover-open { animation:menu-enter .16s cubic-bezier(.2,.8,.2,1); transform-origin:top center; } }
 @media (pointer:coarse),(max-width:700px) { .select-menu-button,.select-menu-button.scope-button { min-height:44px; } .select-menu-option { min-height:44px; } }
+
+/* Segmented toggle (select-menu.js segmented): the chosen segment lifts onto the card surface. */
+.segmented { display:inline-flex; gap:2px; padding:3px; border:1px solid var(--border); border-radius:10px; background:color-mix(in srgb,var(--color-ink-black) 5%,var(--surface-page-canvas)); }
+.segment { display:inline-flex; align-items:center; gap:6px; min-height:30px; padding:0 12px; border:0; border-radius:8px; background:transparent; color:var(--color-graphite); font:inherit; font-size:13px; font-weight:500; cursor:pointer; transition:background-color .15s ease-out,color .15s ease-out,box-shadow .15s ease-out; }
+.segment:hover:not([aria-pressed=true]) { color:var(--color-ink-black); }
+.segment[aria-pressed=true] { background:var(--surface-card-surface); color:var(--color-ink-black); box-shadow:0 1px 2px rgba(0,0,0,.12); }
+.segment:focus-visible { outline:2px solid var(--focus); outline-offset:1px; }
+.segment .icon { width:14px; height:14px; }
+@media (pointer:coarse),(max-width:700px) { .segment { min-height:44px; } }

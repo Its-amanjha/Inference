@@ -98,3 +98,19 @@ export function selectMenu({label,options=[],value='',onChange,className=''}={})
     set value(next){current=String(next);paintButton();paintList();},
     set disabled(flag){button.disabled=Boolean(flag);}};
 }
+
+// Two to four choices that change often, side by side: one click and every choice visible, such as
+// Open | Resolved. A dropdown suits longer or rarer choices. Each choice carries its own icon.
+export function segmented({label,options,value,onChange}={}){
+  let current=value;
+  const buttons=options.map(option=>{
+    const node=el('button',{type:'button',class:'segment','aria-pressed':String(option.value===current),'data-value':option.value},option.glyph?icon(option.glyph):null,option.label);
+    node.addEventListener('click',()=>{if(current===option.value)return;current=option.value;paint();onChange?.(current);});
+    return node;
+  });
+  const paint=()=>buttons.forEach(node=>node.setAttribute('aria-pressed',String(node.dataset.value===current)));
+  return {node:el('div',{class:'segmented',role:'group','aria-label':label},buttons),
+    get value(){return current;},
+    set value(next){current=next;paint();},
+    focus(){(buttons.find(node=>node.dataset.value===current)||buttons[0]).focus();}};
+}
