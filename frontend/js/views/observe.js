@@ -370,7 +370,7 @@ export async function render(container) {
           list.replaceChildren(tracesTable);
         } else {
           tracesTable = null;
-          list.replaceChildren(empty('Waiting for telemetry', 'Create an exporter token in Instances and connect your n8n telemetry exporter.', [el('a', {class: 'button ghost', href: '#instances'}, 'Open instances')]));
+          list.replaceChildren(empty('Waiting for telemetry', 'Create an exporter token in Instances and connect your n8n telemetry exporter.', [el('a', {class: 'button ghost', href: '#instances?telemetry=' + encodeURIComponent(instance || '')}, 'Set up telemetry')]));
         }
       }
     } catch (error) {

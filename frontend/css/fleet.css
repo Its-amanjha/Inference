@@ -1,0 +1,16 @@
+/* Fleet page: per-instance telemetry setup and merged health rows. */
+
+.telemetry-section { border-top:1px solid var(--border); padding-top:12px; }
+.telemetry-section>summary { font-weight:600; font-size:13px; color:var(--color-ink-black); }
+.telemetry-body { display:flex; flex-direction:column; gap:12px; padding-top:12px; min-width:0; }
+.telemetry-body p { margin:0; font-size:13px; }
+.telemetry-snippet { margin:0; padding:12px; max-height:220px; font-size:12px; }
+.telemetry-snippet-row { display:flex; flex-direction:column; gap:8px; min-width:0; }
+.telemetry-token-row { display:flex; flex-wrap:wrap; align-items:center; gap:8px; font-size:13px; }
+.telemetry-token { overflow-wrap:anywhere; }
+.telemetry-tokens { display:flex; flex-direction:column; gap:8px; }
+.telemetry-tokens h3 { margin:0; font-size:13px; }
+.telemetry-create-row { display:flex; flex-wrap:wrap; align-items:flex-end; gap:8px; }
+@media(max-width:700px) {
+  .telemetry-body .button { min-height:44px; }
+}
