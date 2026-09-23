@@ -219,6 +219,7 @@ export async function render(container) {
           ];
         }),{numeric:fleetWide?[4,5]:[3,4],className:'runs-table'}):empty('No recent executions',fleetWide?'No instance returned saved executions.':'This instance returned no execution records.',[button('Refresh executions',()=>refresh(),'ghost')],'play'));
         if(results[0].value.partial)feed.append(el('p',{class:'muted run-note'},'Some instances could not be read; their runs are missing here.'));
+        if(fleetWide&&state.instances.length>5)feed.append(el('p',{class:'muted run-note'},`From the first 5 of ${state.instances.length} instances. Pick one in the switcher to see its runs.`));
       }
       }));
     }finally{busy=false;refreshButton.disabled=false;}

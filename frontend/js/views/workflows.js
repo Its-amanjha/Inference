@@ -158,7 +158,7 @@ export async function render(container) {
       actions:[
         link?external(link,'Open in n8n','button'):null,
         can('operator')?el('a',{class:'button ghost',href:repairHref({instance_id:entry.instance.id,workflow_id:row.id})},'Repair with AI'):null,
-        rowMenu([{label:'Promote',href:promoteHref(entry,row)},{label:'Open in CodeLab',glyph:'codelab',href:codelabHref(entry,row)}],`More actions for ${name}`),
+        rowMenu([can('operator')?{label:'Promote',href:promoteHref(entry,row)}:null,{label:'Open in CodeLab',glyph:'codelab',href:codelabHref(entry,row)}],`More actions for ${name}`),
         can('operator')&&typeof row.active==='boolean'?button(row.active?'Deactivate':'Activate',()=>{closePeek();return setActive(entry,[row],!row.active);},row.active?'danger':'ghost',{'aria-label':`${row.active?'Deactivate':'Activate'} workflow ${name} on ${entry.instance.name}`}):null,
       ],
     });
@@ -214,7 +214,7 @@ export async function render(container) {
       const link=n8nUrl(instance.id,row.id);
       const menu=rowMenu([
         link?{label:'Open in n8n',href:link,external:true}:null,
-        {label:'Promote',href:promoteHref(entry,row)},
+        can('operator')?{label:'Promote',href:promoteHref(entry,row)}:null,
         {label:'Open in CodeLab',glyph:'codelab',href:codelabHref(entry,row)},
         can('operator')?{label:'Repair with AI',href:repairHref({instance_id:instance.id,workflow_id:row.id})}:null,
         can('operator')&&typeof row.active==='boolean'?{label:row.active?'Deactivate':'Activate',danger:row.active,onSelect:()=>setActive(entry,[row],!row.active)}:null,
@@ -260,22 +260,27 @@ export async function render(container) {
       renderBulk(entry);
     } catch(error){if(!signal.aborted)entry.messages.replaceChildren(loadFailure(error,()=>load(entry,after),`Could not load workflows on ${entry.instance.name}`));}
     // Next page shows only when the instance has another page.
-    finally{entry.loading=false;entry.next.hidden=!entry.cursor;entry.next.disabled=searching||!entry.cursor;entry.retry.disabled=searching;}
+    finally{entry.loading=false;entry.next.hidden=!entry.cursor;entry.next.disabled=searching||!entry.cursor;entry.retry.disabled=searching;
+      // A search typed while this section loaded waited for it; run it now that nothing is loading.
+      if(rerun&&!searching&&!signal.aborted&&!entries.some(item=>item.loading)){rerun=false;searchFleet({keepSuggestions:true,auto:true});}}
   }
   // Results follow the text as you type (after a short pause); the box never locks while a search runs,
   // and a search requested during another one runs right after it.
-  let rerun=false,typingTimer=0;
-  input.addEventListener('input',()=>{clearTimeout(typingTimer);typingTimer=setTimeout(()=>searchFleet({keepSuggestions:true}),450);},{signal});
-  async function searchFleet({keepSuggestions=false}={}){
+  let rerun=false,typingTimer=0,searchedTerm=null;
+  input.addEventListener('input',()=>{clearTimeout(typingTimer);typingTimer=setTimeout(()=>searchFleet({keepSuggestions:true,auto:true}),450);},{signal});
+  async function searchFleet({keepSuggestions=false,auto=false}={}){
     if(searching||entries.some(entry=>entry.loading)){rerun=true;return;}
+    // An automatic search (a pause in typing, a queued rerun) that would repeat the last one changes nothing,
+    // so the lists are not rebuilt under the reader; Enter, a picked suggestion and Clear search always run.
+    if(auto&&input.value.trim()===searchedTerm)return;
     if(!keepSuggestions)closeSuggestions();
     searching=true;term=input.value.trim();
     entries.forEach(entry=>{entry.next.disabled=entry.retry.disabled=true;});
     let index=0;
     try {await Promise.all(Array.from({length:Math.min(3,entries.length)},async()=>{
       while(index<entries.length&&!signal.aborted)await load(entries[index++]);
-    }));}finally{searching=false;entries.forEach(entry=>{entry.next.disabled=!entry.cursor;entry.retry.disabled=false;});
-      if(rerun&&!signal.aborted){rerun=false;searchFleet({keepSuggestions:true});}}
+    }));}finally{searching=false;searchedTerm=term;entries.forEach(entry=>{entry.next.disabled=!entry.cursor;entry.retry.disabled=false;});
+      if(rerun&&!signal.aborted){rerun=false;searchFleet({keepSuggestions:true,auto:true});}}
   }
   // j and k move between workflows across every instance section; o opens the focused one.
   const move=step=>{const list=[...container.querySelectorAll('.workflow-open')];if(!list.length)return;

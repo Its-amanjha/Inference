@@ -69,7 +69,10 @@ export async function render(container){
       service.replaceChildren(el('section',{class:'card docker-unavailable',role:'status'},icon('containers'),el('div',{},
         el('h2',{},'Docker management is unavailable on this server.'),
         el('p',{},'Your connected n8n instances can still be monitored and managed through their APIs. This page only manages containers on the server running Inference.'),
-        el('div',{class:'toolbar'},el('a',{class:'button ghost',href:'#instances'},'Open instances'),button('Check again',refresh,'ghost')),
+        el('div',{class:'toolbar'},el('a',{class:'button ghost',href:'#instances'},'Open instances'),button('Check again',async()=>{
+          await refresh();
+          (service.querySelector('.docker-unavailable .button:last-child')||toolbar.querySelector('.button'))?.focus();
+        },'ghost')),
         el('details',{},el('summary',{},'How to enable container management'),el('p',{},'Run Inference on a Linux host with an accessible Docker Unix socket. Adding a VPS URL in Instances does not grant access to that VPS\u2019s Docker engine.')))));
     }finally{toolbar.hidden=!engineAvailable;}
   }

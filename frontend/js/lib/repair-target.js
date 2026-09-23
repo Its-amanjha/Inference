@@ -119,7 +119,8 @@ export function createIdPicker({label,placeholder='',hint=null,load,emptyText=''
   }
   function unknownOption(){
     const text=search.value.trim();
-    if(!text||!items||items.some(row=>row.id===text))return null;
+    // The box shows the chosen row's name, and a typed name that matches a row is that row, not an unknown ID.
+    if(!text||!items||(selectedId&&text===shown)||items.some(row=>row.id===text||row.name===text))return null;
     return {id:text,name:text,detail:'',unknown:true};
   }
   function paint(){
@@ -143,9 +144,9 @@ export function createIdPicker({label,placeholder='',hint=null,load,emptyText=''
     const item=el('li',{className:'picker-option'+(unknown?' picker-unknown':''),id:`${listId}-${index}`,role:'option','aria-selected':String(index===activeIndex)});
     // Icon, then the full name (it wraps rather than being cut off) with the ID under it, then state.
     const idText=unknown?'(id not in this list)':row.state||!row.detail?row.id:`${row.detail} · ${row.id}`;
-    item.append(row.glyph?el('span',{className:'picker-glyph','aria-hidden':'true'},icon(row.glyph)):null,
+    item.append(...[row.glyph?el('span',{className:'picker-glyph','aria-hidden':'true'},icon(row.glyph)):null,
       el('span',{className:'picker-text'},el('span',{className:'picker-name'},unknown?`Use “${row.id}”`:row.name),el('span',{className:'picker-id'},idText)),
-      row.state&&!unknown?el('span',{className:`picker-state is-${row.state}`},row.detail):null);
+      row.state&&!unknown?el('span',{className:`picker-state is-${row.state}`},row.detail):null].filter(Boolean));
     item.addEventListener('mousedown',event=>{event.preventDefault();choose(index);});
     return item;
   }

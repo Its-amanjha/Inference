@@ -7,9 +7,10 @@ export async function render(container){
   const initial=location.hash.startsWith('#codelab')||new URLSearchParams(location.hash.split('?')[1]||'').get('tab')==='code'?'code':'chat';
   const controls={};
   async function show(tab){
-    for(const [name,panel] of Object.entries(panels)){panel.hidden=name!==tab;controls[name].setAttribute('aria-pressed',String(name===tab));}
+    const hadFocus=nav.contains(document.activeElement);
     if(!loaded[tab])loaded[tab]=(async()=>{const module=await import(tab==='chat'?'./assistant.js':'./codelab.js');if(closed)return;const dispose=await module.render(panels[tab]);if(closed)dispose?.();else cleanups.push(dispose);})();
-    await loaded[tab];
+    try{await loaded[tab];}catch(error){delete loaded[tab];throw error;}
+    if(closed)return;
     // The switch sits under the page's own title, on one bar with that view's actions (on the right),
     // so the tab bar never stands above or repeats the title.
     if(!bars[tab]){
@@ -20,6 +21,8 @@ export async function render(container){
       if(actions)bars[tab].append(actions);
     }
     bars[tab].prepend(nav);
+    for(const [name,panel] of Object.entries(panels)){panel.hidden=name!==tab;controls[name].setAttribute('aria-pressed',String(name===tab));}
+    if(hadFocus)controls[tab].focus();
   }
   for(const [tab,label] of [['chat','Conversation'],['code','CodeLab']]){controls[tab]=button(label,()=>show(tab),'ghost');controls[tab].setAttribute('aria-controls',panels[tab].id);}
   const nav=el('nav',{class:'studio-tabs','aria-label':'AI workspace'},controls.chat,controls.code);

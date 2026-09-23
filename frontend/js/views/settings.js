@@ -80,12 +80,12 @@ export async function render(container){
   // forEveryone: the administrators' defaults, which each person can override under Your preferences.
   function preferenceFields(value,subhead=true,onDirty=null,forEveryone=false){
     // Three themes that switch often sit side by side instead of in a dropdown.
-    const theme=segmented({label:'Theme',options:[
+    const theme=segmented({label:forEveryone?'Default theme':'Theme',options:[
       {value:'light',label:'Light'},{value:'dark',label:'Dark'},{value:'n8n',label:'n8n inspired'}],
       value:value.theme,onChange:()=>onDirty?.()});
     // A stored size outside the four offered stays selectable as itself.
     const sizes=[10,25,50,100].includes(Number(value.page_size))?[10,25,50,100]:[10,25,50,100,Number(value.page_size)].sort((a,b)=>a-b);
-    const size=segmented({label:'Rows per list',options:sizes.map(count=>({value:String(count),label:String(count)})),
+    const size=segmented({label:forEveryone?'Default rows per list':'Rows per list',options:sizes.map(count=>({value:String(count),label:String(count)})),
       value:String(value.page_size),onChange:()=>onDirty?.()});
     const notifications=el('input',{type:'checkbox',checked:value.error_notifications});
     // The visible labels are hidden from assistive technology: each toggle already names itself.

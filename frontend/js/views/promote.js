@@ -137,10 +137,11 @@ export async function render(container){
   // Promotion copies from the less-production instance by default (Staging → Production)
   // when the names make that direction clear; otherwise it keeps the first two.
   const directionDefault=()=>{
-    const prod=state.instances.find(item=>/prod/i.test(item.name||item.id));
-    const nonProd=state.instances.find(item=>item!==prod&&/stag|test|dev|qa|local|playground|sandbox/i.test(item.name||item.id));
-    if(prod&&nonProd)return {source:nonProd.id,target:prod.id};
-    return {source:state.instances[0]?.id,target:state.instances[1]?.id};
+    const prod=state.instances.find(item=>/\bprod(uction)?\b/i.test(item.name||item.id));
+    const staging=state.instances.find(item=>item!==prod&&/stag/i.test(item.name||item.id))
+      ||state.instances.find(item=>item!==prod&&/test|dev|qa|local|playground|sandbox/i.test(item.name||item.id));
+    if(prod&&staging)return {source:staging.id,target:prod.id,prod:prod.id};
+    return {source:state.instances[0]?.id,target:state.instances[1]?.id,prod:prod?.id};
   };
   const defaults=directionDefault();
   const instanceOptions=()=>state.instances.map(item=>({value:item.id,label:item.name||item.id,glyph:'instances'}));
@@ -152,7 +153,7 @@ export async function render(container){
       if(workflowPicker.getId())inspectWorkflow(workflowPicker.getId());
     }});
   const target=selectMenu({label:'Target instance',options:instanceOptions(),
-    value:route.get('target_instance_id')||(defaults.source===source.value&&defaults.target!==source.value?defaults.target:null)
+    value:route.get('target_instance_id')||(defaults.prod&&defaults.prod!==source.value?defaults.prod:null)
       ||state.instances.find(item=>item.id!==source.value)?.id,
     onChange:()=>{
       invalidate();

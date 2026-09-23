@@ -11,6 +11,10 @@ export function expectOwnEvent(name, ms = 10000) {
   const entry = ownEvents.get(name), live = entry && entry.until > Date.now();
   ownEvents.set(name, {count: (live ? entry.count : 0) + 1, until: Date.now() + ms});
 }
+export function cancelOwnEvent(name) {
+  const entry = ownEvents.get(name);
+  if (entry && --entry.count <= 0) ownEvents.delete(name);
+}
 export function isOwnEvent(name) {
   const entry = ownEvents.get(name);
   if (!entry || entry.until <= Date.now()) { ownEvents.delete(name); return false; }

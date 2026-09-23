@@ -3,7 +3,7 @@ import {state,pageSize,can} from '../state.js';
 import {el,button,heading,table,empty} from '../lib/html.js';
 import {icon,registerIcons} from '../lib/icons.js';
 import {loadingState,loadFailure,asOf} from '../lib/payload.js';
-import {instanceName,relativeLabel,n8nUrl,repairHref} from '../lib/triage.js';
+import {instanceName,relativeLabel,relativePhrase,n8nUrl,repairHref} from '../lib/triage.js';
 import {openPeek,peekFacts,peekSection,peekCopy,closePeek} from '../lib/peek.js';
 import {rowMenu} from '../lib/row-menu.js';
 import {segmented} from '../lib/select-menu.js';
@@ -146,7 +146,7 @@ export async function render(container) {
     // The name is the row's one inline action, styled as a title like Errors and Workflows (no pill, no glyph).
     // Several runs of one workflow share its name, so the name adds when the run started.
     const open = el('button', {type: 'button', class: 'workflow-open',
-      'aria-label': `${workflowName}, started ${Number.isNaN(startDate.getTime()) ? 'at an unknown time' : relativeLabel(startDate).toLowerCase()}`}, workflowName);
+      'aria-label': `${workflowName}, started ${Number.isNaN(startDate.getTime()) ? 'at an unknown time' : relativePhrase(startDate)}`}, workflowName);
     open.querySelector(':scope > svg')?.remove();
     open.addEventListener('click', () => openTrace(row, meta));
     const execution = meta?.execution || null;
@@ -265,9 +265,11 @@ export async function render(container) {
     const duration = elapsed(BigInt(root.end_ns) - BigInt(root.start_ns));
     const raw = root.health_status || root.status || '';
     const status = {error: 'Failed', ok: 'Succeeded', unset: 'No status reported'}[raw] || raw || 'Status unknown';
+    const reason = raw === 'error' ? root.error_summary || root.error_type || null : null;
     return el('div', {class: 'waterfall-root', title: `Whole run · ${duration} · ${status}`},
       el('span', {class: 'waterfall-node'}, 'Whole run'),
-      el('span', {class: 'waterfall-meta'}, `${duration} · ${status}`));
+      el('span', {class: 'waterfall-meta'}, `${duration} · ${status}`),
+      reason ? el('span', {class: 'waterfall-root-reason'}, reason) : null);
   }
 
   function openTrace(row, meta) {

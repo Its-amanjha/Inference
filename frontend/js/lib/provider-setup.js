@@ -79,6 +79,7 @@ export function providerSetup(host,onSaved,signal){
     field('This service does not require an API key',keyless),
     field('Enable tool calls',tools,{})));
   function preset(){
+    savedRef=null;
     base.value=presets[kind.value][1];model.placeholder=presets[kind.value][2];
     keyField.hidden=kind.value==='ollama';test.disabled=true;
     // Only a custom endpoint has to be typed; the rest arrive filled in, so the disclosure stays shut.
@@ -97,6 +98,7 @@ export function providerSetup(host,onSaved,signal){
     note:'Test connection sends a short message to the saved model and may use provider credits. It cannot run tools.',
     actions:[test,save]});
   form.addEventListener('input',()=>{test.disabled=true;},{signal});
+  form.addEventListener('reset',()=>{savedRef=null;test.disabled=true;messages.replaceChildren();},{signal});
   form.addEventListener('submit',async event=>{
     event.preventDefault();if(saving)return;saving=true;save.disabled=true;messages.replaceChildren();
     try{
@@ -110,7 +112,7 @@ export function providerSetup(host,onSaved,signal){
       const reference=ref.value.trim()||savedRef;
       if(kind.value!=='ollama'&&!(kind.value==='custom'&&keyless.checked)&&!reference)throw new Error('Paste your provider API key, or open Advanced to use a saved secret reference.');
       await api('/api/assistant/config/provider',{method:'PUT',json:{id:name,config:{kind:kind.value,base_url:url,model:model.value.trim(),api_key_ref:reference||null,tools_enabled:tools.checked}},signal});
-      await onSaved();test.disabled=false;notice(messages,'Model saved. Click Test connection to check the URL, key and model.');
+      await onSaved();savedRef=null;test.disabled=false;notice(messages,'Model saved. Click Test connection to check the URL, key and model.');
     }catch(e){notice(messages,e);if(savedRef)notice(messages,'Your key is already saved securely. Its reference is retained under Advanced; correct the other fields and save again.');}
     finally{saving=false;save.disabled=false;}
   },{signal});

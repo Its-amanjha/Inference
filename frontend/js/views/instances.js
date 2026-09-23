@@ -6,7 +6,7 @@ import {openPeek,closePeek} from '../lib/peek.js';
 import {rowMenu} from '../lib/row-menu.js';
 import {segmented} from '../lib/select-menu.js';
 import {can} from '../state.js';
-import {relativeLabel} from '../lib/triage.js';
+import {relativeLabel,relativePhrase} from '../lib/triage.js';
 import {probeSummary,reachabilityBadge,checkedLine,loadFailure,cachedProbe,rememberProbe,forgetProbe,checkConnection,fleetMetrics} from '../lib/payload.js';
 
 registerIcons({
@@ -131,7 +131,7 @@ export async function render(container) {
       arrival);
     lastSpan(item).then(when=>{
       if(signal.aborted)return;
-      arrival.replaceChildren(!when?'No spans received yet.':`Last span received ${relativeLabel(when).toLowerCase()}.`);
+      arrival.replaceChildren(!when?'No spans received yet.':`Last span received ${relativePhrase(when)}.`);
     }).catch(()=>{if(!signal.aborted)arrival.replaceChildren('Could not check when spans last arrived. Open this panel again to retry.');});
     if(!can('admin')){
       body.append(el('p',{class:'muted'},'An administrator manages exporter tokens.'));

@@ -57,6 +57,10 @@ export function relativeLabel(date,now=Date.now()) {
 }
 
 // Relative text for scanning; the absolute local time is in title and in visually hidden text.
+export function relativePhrase(date,now=Date.now()) {
+  const label=relativeLabel(date,now);
+  return /ago$|^Just now$/.test(label)?label.charAt(0).toLowerCase()+label.slice(1):`on ${label}`;
+}
 export function relativeTime(value,now=Date.now()) {
   if(value===null||value===undefined||value==='')return el('span',{class:'relative-time triage-missing'},'Unavailable');
   const date=parseTimestamp(value);
