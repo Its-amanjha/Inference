@@ -20,13 +20,17 @@ export async function render(container){
   };
   const act=async fn=>{try{await fn();}catch(e){if(!signal.aborted)notice(messages,e);}};
   const remove=name=>act(async()=>{if(!await confirmAction({title:'Delete secret',target:'$'+name,consequence:'The encrypted value is removed. References to this secret will stop resolving.',confirmLabel:'Delete secret',danger:true}))return;await api('/api/admin/secrets/'+encodeURIComponent(name),{method:'DELETE'});await load();});
-  // One row per secret: its reference, Copy, Replace, and Delete behind the row menu.
+  // Without HTTPS the browser has no clipboard, so the reference is shown to copy by hand.
+  const copyReference=name=>act(async()=>{messages.replaceChildren();
+    if(!navigator.clipboard){notice(messages,`Copy this reference: $${name}`);return;}
+    await navigator.clipboard.writeText('$'+name);notice(messages,`Copied $${name}.`);});
+  // One row per secret: its reference, Replace, and Copy and Delete behind the row menu.
   // The list API returns names only, so formats and change times are not shown.
   async function load(){const result=await api('/api/admin/secrets',{signal});names=result.data;
     list.replaceChildren(...names.map(name=>el('div',{class:'secret-row'},el('code',{},'$'+name),
       el('div',{class:'secret-row-actions'},
-        button('Copy reference',async()=>{try{await navigator.clipboard.writeText('$'+name);}catch{notice(messages,new Error('Copying is not available in this browser.'));}},'ghost',{'aria-label':`Copy reference $${name}`}),
-        button('Replace',()=>edit(name),'ghost',{'aria-label':`Replace secret $${name}`}),rowMenu([{label:'Delete secret',danger:true,onSelect:()=>remove(name)}],`More actions for $${name}`)))));
+        button('Replace',()=>edit(name),'ghost',{'aria-label':`Replace secret $${name}`}),
+        rowMenu([{label:'Copy reference',glyph:'copy',onSelect:()=>copyReference(name)},{label:'Delete secret',danger:true,onSelect:()=>remove(name)}],`More actions for $${name}`)))));
     if(!names.length)list.append(empty('No secrets yet','Add one, then reference it as $NAME in model, MCP and backup settings.',[],'lock'));
     syncEditor();}
   // While the form is open the page's Add button and an empty list would repeat it, so both step aside.

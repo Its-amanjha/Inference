@@ -68,11 +68,11 @@ export async function render(container){
     const id=encodeURIComponent(s.id);
     const main=s.enabled
       ?button('Run now',()=>act(async()=>{const result=await api('/api/backups/schedules/'+id+'/run',{method:'POST'});notice(messages,'Backup outcome: '+humanize(result.status)+'.');await runs();await load();}),'ghost',{'aria-label':`Run backup now: ${s.name}`})
-      :button('Enable',()=>act(async()=>{await api('/api/backups/schedules/'+id,{method:'PUT',json:{name:s.name,interval_minutes:s.interval_minutes,passphrase_ref:s.passphrase_ref,enabled:true,s3:s.s3?Object.fromEntries(S3_KEYS.map(key=>[key,s.s3[key]||''])):null}});await load();notice(messages,`Schedule ${s.name} enabled (${frequencyLabel(s.interval_minutes).toLowerCase()}).`);}),'ghost',{'aria-label':`Enable schedule ${s.name}`});
+      :button('Enable',()=>act(async()=>{await api('/api/backups/schedules/'+id,{method:'PUT',json:{name:s.name,interval_minutes:s.interval_minutes,passphrase_ref:s.passphrase_ref,enabled:true,s3:s.s3?Object.fromEntries(S3_KEYS.map(key=>[key,s.s3[key]||''])):null}});await load();await runs();notice(messages,`Schedule ${s.name} enabled (${frequencyLabel(s.interval_minutes).toLowerCase()}).`);}),'ghost',{'aria-label':`Enable schedule ${s.name}`});
     // Deletion is secondary, so it sits behind the row's More actions menu and confirms.
     const remove={label:'Delete schedule',danger:true,onSelect:()=>act(async()=>{
       if(!await confirmAction({title:'Delete schedule',target:s.name,consequence:'Automatic backups from this schedule stop. Existing archives remain.',confirmLabel:'Delete schedule',danger:true}))return;
-      await api('/api/backups/schedules/'+id,{method:'DELETE'});await load();
+      await api('/api/backups/schedules/'+id,{method:'DELETE'});await load();await runs();
     })};
     return el('section',{class:'card stack'},
       el('div',{class:'title-row'},el('h3',{},s.name),stateBadge(s.enabled?'success':'',s.enabled?'Enabled':'Paused')),
@@ -85,7 +85,7 @@ export async function render(container){
   // An open schedule form replaces the empty state it would otherwise sit above.
   const syncEditor=()=>{schedules.hidden=Boolean(editor.firstChild)&&!scheduleCount;addSchedule.hidden=Boolean(editor.firstChild);};
   async function load(){const result=await api('/api/backups/schedules',{signal});scheduleCount=result.data.length;schedules.replaceChildren(...result.data.map(scheduleCard));if(!result.data.length)schedules.append(empty('No automatic backups','Add a schedule. It encrypts a backup on a fixed interval with a passphrase kept in the vault or environment.',[],'backup'));syncEditor();}
-  async function edit(s={}){
+  function edit(s={}){
     const name=el('input',{value:s.name||'',required:true});
     const minutes=Number(s.interval_minutes)||1440;
     // A stored interval outside the named set stays selectable as its own minutes value.
@@ -99,16 +99,14 @@ export async function render(container){
     const refListId=`backup-passphrase-${s.id||'new'}`;
     const ref=el('input',{value:s.passphrase_ref||'',placeholder:'$BACKUP_PASSWORD',required:true,class:'control-mono',autocomplete:'off',spellcheck:'false',list:refListId});
     const refField=field('Export passphrase reference',ref,{hint:'Pick a saved secret, or type a $REFERENCE.'});
-    refField.append(el('datalist',{id:refListId}));
-    try{
-      const saved=await api('/api/admin/secrets',{signal});
-      if(signal.aborted)return;
-      refField.querySelector('datalist')?.replaceChildren(...(saved.data||[]).map(secret=>el('option',{value:'$'+secret})));
-    }catch{/* Suggestions are a convenience; typing a reference always works. */}
+    const suggestions=el('datalist',{id:refListId});
+    refField.append(suggestions);
+    // Suggestions are a convenience; typing a reference always works, so the form does not wait for them.
+    api('/api/admin/secrets',{signal}).then(saved=>{if(!signal.aborted)suggestions.replaceChildren(...(saved.data||[]).map(secret=>el('option',{value:'$'+secret})));},()=>{});
     const enabled=el('input',{type:'checkbox',checked:s.enabled??true}),remote=el('input',{type:'checkbox',checked:Boolean(s.s3)}),remoteFields=el('div',{class:'form-subgroup'}),inputs={};for(const [key,label] of [['endpoint','HTTPS endpoint'],['bucket','Bucket'],['region','Region'],['prefix','Object prefix (optional)'],['credentials_ref','Credentials reference']]){inputs[key]=el('input',{value:s.s3?.[key]||'',required:key!=='prefix'});remoteFields.append(field(label,inputs[key]));}function toggle(){remoteFields.hidden=!remote.checked;for(const input of Object.values(inputs))input.disabled=!remote.checked;}remote.addEventListener('change',toggle);toggle();const form=formCard({title:s.id?'Edit schedule':'New schedule',description:'Creates an encrypted backup on a fixed interval.',
       body:[el('div',{class:'form-row'},field('Name',name),frequencyField),refField,field('Enabled',enabled,{}),field('Also upload to S3',remote),remoteFields],
       actions:[button('Cancel',()=>{editor.replaceChildren();syncEditor();addSchedule.focus();},'ghost'),el('button',{type:'submit',class:'button'},'Save schedule')]});
-    form.addEventListener('submit',e=>{e.preventDefault();act(async()=>{await api('/api/backups/schedules'+(s.id?'/'+encodeURIComponent(s.id):''),{method:s.id?'PUT':'POST',json:{name:name.value,interval_minutes:Number(frequency.value),passphrase_ref:ref.value,enabled:enabled.checked,s3:remote.checked?Object.fromEntries(Object.entries(inputs).map(([key,input])=>[key,input.value])):null}});editor.replaceChildren();await load();notice(messages,s.id?'Schedule saved.':'Schedule created. It will run automatically.');});});editor.replaceChildren(form);syncEditor();name.focus();}
+    form.addEventListener('submit',e=>{e.preventDefault();act(async()=>{await api('/api/backups/schedules'+(s.id?'/'+encodeURIComponent(s.id):''),{method:s.id?'PUT':'POST',json:{name:name.value,interval_minutes:Number(frequency.value),passphrase_ref:ref.value,enabled:enabled.checked,s3:remote.checked?Object.fromEntries(Object.entries(inputs).map(([key,input])=>[key,input.value])):null}});editor.replaceChildren();await load();await runs();notice(messages,s.id?'Schedule saved.':'Schedule created. It will run automatically.');});});editor.replaceChildren(form);syncEditor();name.focus();}
   const passphrase=el('input',{type:'password',minLength:14,maxLength:256,required:true,autocomplete:'new-password'}),exportForm=formCard({title:'Download an encrypted snapshot',description:'A one-off archive of your Inference data, secrets and notes.',body:[field('Export passphrase',passphrase,{hint:'At least 14 characters. Restoring needs it.'})],actions:[el('button',{class:'button ghost',type:'submit'},'Download snapshot')]});
   exportForm.addEventListener('submit',e=>{e.preventDefault();act(async()=>{await download('/api/backups/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({passphrase:passphrase.value})});passphrase.value='';});});
   const addSchedule=button('Add schedule',()=>edit());
@@ -119,6 +117,6 @@ export async function render(container){
   }),'ghost',{'aria-label':'Copy restore command'});
   // Schedules and Run history share one section-heading style.
   const sectionTitle=(text,extra={})=>el('h2',{class:'backup-section-title',...extra},text);
-  container.append(el('div',{class:'page-heading-row'},heading('Backups','Encrypted recovery copies of your Inference data, secrets and notes.'),el('div',{class:'actions'},button('Refresh',()=>act(async()=>{await load();await runs();}),'ghost'),addSchedule)),messages,sectionTitle('Schedules',{id:'backup-schedules'}),editor,schedules,sectionTitle('Run history'),history,exportForm,el('section',{class:'card stack'},el('h2',{},'Restore offline'),el('p',{},'Stop Inference, choose an empty destination, and run this command from the project environment. It prompts for your passphrase.'),el('div',{class:'restore-command-row'},el('code',{},restoreCmd),copyRestore),el('p',{class:'muted'},'After verification, set INFERENCE_DATA_DIR to the restored destination. External n8n databases and Docker volumes are not included.')));
+  container.append(el('div',{class:'page-heading-row'},heading('Backups','Encrypted recovery copies of your Inference data, secrets and notes.'),el('div',{class:'actions'},button('Refresh',()=>act(async()=>{await load();await runs();}),'ghost'),addSchedule)),messages,sectionTitle('Schedules',{id:'backup-schedules'}),editor,schedules,sectionTitle('Run history'),history,exportForm,el('section',{class:'card stack'},el('h2',{class:'backup-card-title'},'Restore offline'),el('p',{},'Stop Inference, choose an empty destination, and run this command from the project environment. It prompts for your passphrase.'),el('div',{class:'restore-command-row'},el('code',{},restoreCmd),copyRestore),el('p',{class:'muted'},'After verification, set INFERENCE_DATA_DIR to the restored destination. External n8n databases and Docker volumes are not included.')));
   await Promise.allSettled([act(load),act(()=>runs())]);return()=>controller.abort();
 }

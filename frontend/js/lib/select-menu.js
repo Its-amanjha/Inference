@@ -112,7 +112,7 @@ export function selectMenu({label,options=[],value='',onChange,className=''}={})
 export function segmented({label,options,value,onChange}={}){
   let current=value;
   const buttons=options.map(option=>{
-    const node=el('button',{type:'button',class:'segment','aria-pressed':String(option.value===current),'data-value':option.value},option.glyph?icon(option.glyph):null,option.label);
+    const node=el('button',{type:'button',class:'segment','aria-pressed':String(option.value===current),'data-value':option.value},option.glyph?icon(option.glyph):null,el('span',{class:'segment-label'},option.label));
     node.addEventListener('click',()=>{if(current===option.value)return;current=option.value;paint();onChange?.(current);});
     return node;
   });
@@ -120,5 +120,7 @@ export function segmented({label,options,value,onChange}={}){
   return {node:el('div',{class:'segmented',role:'group','aria-label':label},buttons),
     get value(){return current;},
     set value(next){current=next;paint();},
+    // A choice's text can change, such as a count, while its icon stays.
+    setLabel(choice,text){const node=buttons.find(item=>item.dataset.value===choice);if(node)node.querySelector('.segment-label').textContent=text;},
     focus(){(buttons.find(node=>node.dataset.value===current)||buttons[0]).focus();}};
 }

@@ -83,12 +83,13 @@ export async function render(container){
   // One primary at a time: a card's save stays secondary and disabled until that
   // card is edited, and only the edited card's save turns primary.
   function armSave(form,save){
-    save.classList.remove('button');save.classList.add('ghost');save.disabled=true;
-    let dirty=false;
-    const mark=()=>{if(dirty)return;dirty=true;save.classList.add('button');save.classList.remove('ghost');save.disabled=false;};
+    let dirty=true;
+    const mark=()=>{if(dirty)return;dirty=true;save.classList.remove('ghost');save.disabled=false;};
+    const reset=()=>{dirty=false;save.classList.add('ghost');save.disabled=true;};
+    reset();
     form.addEventListener('input',mark);
     form.addEventListener('change',mark);
-    return mark;
+    return Object.assign(mark,{reset});
   }
   async function loadPreferences(){
     let mark=()=>{};
@@ -96,7 +97,7 @@ export async function render(container){
     const save=el('button',{type:'submit',class:'button'},icon('save'),'Save preferences');
     const form=formCard({title:'Your preferences',description:'Only for you, on every device you sign in from. They override the system defaults.',body:fields.nodes,actions:[save]});
     mark=armSave(form,save);
-    form.addEventListener('submit',e=>{e.preventDefault();act(async()=>{const result=await api('/api/admin/preferences',{method:'PUT',json:fields.value()});window.dispatchEvent(new CustomEvent('preferences-changed',{detail:result}));notice(messages,'Preferences saved.');});});groups.account.append(form);}
+    form.addEventListener('submit',e=>{e.preventDefault();act(async()=>{const result=await api('/api/admin/preferences',{method:'PUT',json:fields.value()});mark.reset();window.dispatchEvent(new CustomEvent('preferences-changed',{detail:result}));notice(messages,'Preferences saved.');});});groups.account.append(form);}
 
   // Same words as the account menu: Administrator, Operator, Viewer.
   const ROLE_LABELS={admin:'Administrator',operator:'Operator',viewer:'Viewer'};

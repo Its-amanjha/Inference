@@ -73,9 +73,9 @@ export async function render(container) {
     {value: 'errors', label: 'Errors only', glyph: 'errors'},
   ], value: 'all', onChange: (next) => setFilter(next)});
 
-  // Filters stay out of the way until the first successful read finds traces.
+  // The filter stays out of the way until the first successful read finds traces; Refresh is always there.
   const toolbar = el('div', {class: 'observe-toolbar'}, traceFilter.node, refresh);
-  toolbar.hidden = true;
+  traceFilter.node.hidden = true;
 
   container.append(
     heading('Observability', 'Runs of your workflows, and what the AI steps cost.'),
@@ -236,10 +236,10 @@ export async function render(container) {
         spanActions.append(el('a', {class: 'button ghost', href: '#errors'}, 'View errors'));
       }
       nodes.push(el('details', {class: 'waterfall-span'},
-          el('summary', {class: 'waterfall-row'},
-            el('span', {class: 'waterfall-name'},
-              failed ? el('span', {className: 'span-failed'}, icon('span-failed'), 'Failed') : null,
-              el('span', {class: 'waterfall-node'}, nodeLabel),
+        el('summary', {class: 'waterfall-row'},
+          el('span', {class: 'waterfall-name'},
+            failed ? el('span', {className: 'span-failed'}, icon('span-failed'), 'Failed') : null,
+            el('span', {class: 'waterfall-node'}, nodeLabel),
             ai ? el('span', {class: 'waterfall-cost'}, cents(span.cost_exact)) : null),
           el('span', {class: 'waterfall-track'}, bar)),
         failed && (span.error_summary || span.error_type)
@@ -262,7 +262,7 @@ export async function render(container) {
     const duration = elapsed(BigInt(root.end_ns) - BigInt(root.start_ns));
     const status = root.health_status || root.status || 'Unknown';
     const summary = `${label} · ${duration} · ${status}`;
-    return el('div', {class: 'waterfall-root', role: 'img', 'aria-label': summary, title: summary},
+    return el('div', {class: 'waterfall-root', title: summary},
       el('span', {class: 'waterfall-node'}, label),
       el('span', {class: 'waterfall-meta'}, `${duration} · Status: ${status}`));
   }
@@ -371,13 +371,13 @@ export async function render(container) {
           ? result.data.filter(r => Number(r.error_spans || 0) > 0)
           : result.data;
         tracesTable.appendRows(filteredNewRows.map(row => formatTableRow(row, metas.get(row.instance_id + ':' + row.trace_id))));
-        toolbar.hidden = !allRowsData.length;
+        traceFilter.node.hidden = !allRowsData.length;
       } else {
         // Initial or refreshed traces table
         allRowsData = result.data;
         await enrich(result.data);
         if (controller.signal.aborted) return;
-        toolbar.hidden = !allRowsData.length;
+        traceFilter.node.hidden = !allRowsData.length;
         if (result.data.length) {
           const displayRows = currentFilter === 'errors'
             ? allRowsData.filter(r => Number(r.error_spans || 0) > 0)

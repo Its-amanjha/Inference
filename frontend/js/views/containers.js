@@ -69,9 +69,9 @@ export async function render(container){
       service.replaceChildren(el('section',{class:'card docker-unavailable',role:'status'},icon('containers'),el('div',{},
         el('h2',{},'Docker management is unavailable on this server.'),
         el('p',{},'Your connected n8n instances can still be monitored and managed through their APIs. This page only manages containers on the server running Inference.'),
-        el('a',{class:'button ghost',href:'#instances'},'Open instances'),
+        el('div',{class:'toolbar'},el('a',{class:'button ghost',href:'#instances'},'Open instances'),button('Check again',refresh,'ghost')),
         el('details',{},el('summary',{},'How to enable container management'),el('p',{},'Run Inference on a Linux host with an accessible Docker Unix socket. Adding a VPS URL in Instances does not grant access to that VPS\u2019s Docker engine.')))));
-    }finally{provisionButton.hidden=!engineAvailable;}
+    }finally{toolbar.hidden=!engineAvailable;}
   }
   async function refresh(){
     await act(checkEngine);
@@ -110,7 +110,7 @@ export async function render(container){
     else if(item.status==='stopped'){primary.push(lifecycle('start','button'));more.push(reconcile('ghost'));}
     else{more.push(reconcile('ghost'),lifecycle('start','ghost'),lifecycle('stop','ghost'));}
     // Secondary operations live behind one More actions menu; the primary Start/Stop stays visible.
-    const overflow=[...more,remove,purge].map(node=>({label:node.textContent.trim(),danger:node.classList.contains('danger'),onSelect:()=>node.click()}));
+    const overflow=[...more,remove,purge].map(node=>({label:node.textContent.trim(),danger:node.classList.contains('danger'),disabled:node.disabled,onSelect:()=>node.click()}));
     const actions=el('div',{class:'toolbar'},primary,inspect,rowMenu(overflow,`More actions for ${name}`));
     list.append(el('section',{class:'card stack'},el('div',{class:'title-row'},el('h2',{},name),bundleBadge(item.status)),item.version?el('p',{class:'muted'},'n8n '+item.version):null,actions,detail));}
     if(!result.data.length)list.append(emptyInventory());}
@@ -132,6 +132,7 @@ export async function render(container){
       actions:[button('Cancel',closeForm,'ghost'),submit]});
     provisionButton.hidden=true;
     let request=null;form.addEventListener('input',()=>{request=null;});form.addEventListener('submit',e=>{e.preventDefault();act(async()=>{if(!request){if(!await confirmAction({title:'Create n8n bundle',target:inputs.name.value,consequence:`Downloads the n8n and task runner ${inputs.version.value} images, then creates the containers, a network and a persistent data volume published on ${inputs.bind_host.value}:${inputs.port.value}.`,confirmLabel:'Create bundle'}))return;request={spec:{name:inputs.name.value,version:inputs.version.value,port:Number(inputs.port.value),bind_host:inputs.bind_host.value,exporter_base_url:inputs.exporter_base_url.value},instance_url:inputs.instance_url.value,idempotency_key:crypto.randomUUID(),readiness_timeout:90};}submit.disabled=true;try{const created=await api('/api/docker_mgr/bundles',{method:'POST',json:request});result.replaceChildren(el('p',{role:'status'},bundleSentence(created,inputs.name.value)));await load();window.dispatchEvent(new Event('instances-changed'));}finally{submit.disabled=false;}});});editor.replaceChildren(form);}
-  container.append(heading('Containers','Provision and manage bundles owned by this Inference installation.'),messages,service,el('div',{class:'toolbar'},provisionButton,button('Refresh',refresh,'ghost')),editor,list);
+  const toolbar=el('div',{class:'toolbar'},provisionButton,button('Refresh',refresh,'ghost'));
+  container.append(heading('Containers','Provision and manage bundles owned by this Inference installation.'),messages,service,toolbar,editor,list);
   await refresh();return()=>controller.abort();
 }

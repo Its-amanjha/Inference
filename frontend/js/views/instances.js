@@ -218,7 +218,6 @@ export async function render(container) {
     const rank=entry.probe?CLASS_RANK[classifyProbe(entry.probe)]??3:entry.failed?2:3;
     // The name is the row's one inline action: it opens the details panel, like Errors and Workflows.
     const open=el('button',{type:'button',class:'workflow-open','aria-label':`Details for ${entry.item.name}`},entry.item.name);
-    open.querySelector(':scope > svg')?.remove();
     open.addEventListener('click',()=>openDetails(entry));
     return [
       {sortValue:entry.item.name.toLowerCase(),content:el('div',{class:'fleet-instance-cell'},open,el('span',{class:'muted fleet-instance-url'},entry.item.url))},
@@ -237,12 +236,8 @@ export async function render(container) {
   // Filter counts live in the toggle's own labels; the toggle keeps its icons.
   function paintFilterCounts(){
     const issues=entries.filter(entry=>['degraded','unreachable'].includes(classifyProbe(entry.probe))).length;
-    const segments=instanceFilter.node.querySelectorAll(':scope > .segment');
-    const paint=(node,text)=>{if(!node)return;
-      for(const child of node.childNodes)if(child.nodeType===Node.TEXT_NODE&&child.textContent.trim()){child.textContent=text;return;}
-      node.append(text);};
-    paint(segments[0],`All instances (${entries.length})`);
-    paint(segments[1],`Issues only (${issues})`);
+    instanceFilter.setLabel('all',`All instances (${entries.length})`);
+    instanceFilter.setLabel('issues',`Issues only (${issues})`);
   }
   function paintRows(){
     if(!fleetTable)return;

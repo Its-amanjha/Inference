@@ -170,8 +170,10 @@ def exercise_design(page: Page, artifacts: Path) -> None:
             expect(page.locator('#main .empty')).to_have_count(0)
             expect(page.locator('#main [role=alert]')).to_have_count(0)
             expect(page.get_by_role('link', name='Open instances', exact=True)).to_be_visible()
+            # Without Docker the explanation carries its own Check again; the page toolbar waits for the engine.
+            expect(page.get_by_role('button', name='Refresh', exact=True)).to_have_count(0)
             docker_reply.update(status=200, body={'available': True, 'version': 'fixture'})
-            page.get_by_role('button', name='Refresh', exact=True).click()
+            page.get_by_role('button', name='Check again', exact=True).click()
             expect(page.get_by_role('button', name='Provision bundle', exact=True)).to_be_enabled()
             expect(page.get_by_text('Docker management is unavailable on this server.', exact=True)).to_have_count(0)
             docker_reply.update(status=500, body={'detail': 'Confirmed status failure.', 'code': 'internal_error'})

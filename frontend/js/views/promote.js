@@ -152,7 +152,8 @@ export async function render(container){
       if(workflowPicker.getId())inspectWorkflow(workflowPicker.getId());
     }});
   const target=selectMenu({label:'Target instance',options:instanceOptions(),
-    value:route.get('target_instance_id')||state.instances.find(item=>item.id!==source.value)?.id||defaults.target,
+    value:route.get('target_instance_id')||(defaults.source===source.value&&defaults.target!==source.value?defaults.target:null)
+      ||state.instances.find(item=>item.id!==source.value)?.id,
     onChange:()=>{
       invalidate();
       if(workflowPicker.getId())inspectWorkflow(workflowPicker.getId());
