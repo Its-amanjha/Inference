@@ -276,8 +276,9 @@
 
 /* Settings drawer */
 dialog.peek.settings-drawer { width:min(640px,100vw); }
+dialog.peek.review-drawer { width:min(480px,100vw); }
 @keyframes drawer-in { from { opacity:0; transform:translateX(32px); } }
-@media (prefers-reduced-motion:no-preference) { dialog.peek.settings-drawer[open] { animation:drawer-in .26s cubic-bezier(.32,.72,0,1); } }
+@media (prefers-reduced-motion:no-preference) { dialog.peek.side-drawer[open] { animation:drawer-in .26s cubic-bezier(.32,.72,0,1); } }
 .settings-drawer .assistant-settings { display:flex; flex-direction:column; gap:24px; }
 .settings-drawer .assistant-settings h3 { margin:0 0 8px; font-size:15px; }
 .assistant-page .settings-drawer .assistant-settings .provider-setup>h3:first-child { margin-top:0; }
@@ -302,3 +303,13 @@ dialog.peek.settings-drawer { width:min(640px,100vw); }
 .approval-empty { padding:8px 0 0; }
 .approval-empty>.icon { color:var(--color-success); }
 @media(max-width:900px) { .assistant-head .actions { justify-content:flex-start; } }
+
+/* One surface: the conversation takes the width; review opens beside it on request. */
+.assistant-page .assistant-layout { grid-template-columns:minmax(0,1fr); }
+.review-button .review-count:not(:empty) { margin-left:2px; }
+.review-drawer .assistant-approval-panel { padding:0; border:0; background:none; }
+.review-drawer .assistant-rail-heading { display:flex; align-items:center; justify-content:flex-end; gap:8px; margin-bottom:12px; }
+.review-drawer .approval-card { border:0; border-radius:10px; padding:12px; margin:0 0 8px; background:var(--color-ash-mist); }
+.composer-privacy { display:flex; align-items:center; gap:6px; margin:-6px 16px 12px; font-size:12px; color:var(--color-smoke); }
+.composer-privacy .icon { width:13px; height:13px; flex:none; }
+@media(max-width:700px) { .composer-privacy { margin:-4px 10px 10px; } }

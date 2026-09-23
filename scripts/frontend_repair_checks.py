@@ -539,9 +539,15 @@ def show_card(page, action_id):
     try:
         node.wait_for(state='visible', timeout=3000)
     except PlaywrightTimeout:
-        refresh = page.locator('#main').get_by_role('button', name=UI['refresh_proposals'], exact=True)
-        if refresh.count():
-            refresh.first.click()
+        # Refresh lives in the Review drawer (a closed dialog hides it from role queries); the cards it
+        # mounts are in the conversation behind it, so close Review again afterwards.
+        drawer = page.locator('dialog.review-drawer[open]')
+        if not drawer.count():
+            page.get_by_role('button', name=re.compile(r'^Review')).click()
+            drawer.wait_for()
+        page.locator('#main').get_by_role('button', name=UI['refresh_proposals'], exact=True).click()
+        page.keyboard.press('Escape')
+        expect(drawer).to_have_count(0)
         node.wait_for(state='visible', timeout=15000)
     return node
 

@@ -98,10 +98,12 @@ export async function render(container) {
     const welcome=el('div',{className:'assistant-welcome'},el('h2',{},'Start from a recent failure'),starts,
       el('p',{className:'assistant-welcome-note'},'Or ask about any workflow or execution. Nothing changes unless you switch to Propose changes and approve what the AI proposes.'));
     transcript.replaceChildren(welcome);
+    const noStarts=()=>{welcome.querySelector('h2').textContent='Ask about a workflow or execution';starts.remove();
+      welcome.querySelector('.assistant-welcome-note').textContent='Nothing changes unless you switch to Propose changes and approve what the AI proposes.';};
     const query=new URLSearchParams({status:'open',limit:'4'});if(state.instanceId)query.set('instance_id',state.instanceId);
     api('/api/errors?'+query,{signal}).then(result=>{
       const rows=Array.isArray(result?.data)?result.data:[];
-      if(!rows.length){welcome.querySelector('h2').textContent='Ask about a workflow or execution';starts.remove();return;}
+      if(!rows.length){noStarts();return;}
       starts.replaceChildren(...rows.map(row=>{
         const where=`${row.node_name||'Workflow'} · ${instanceName(row.instance_id)}`;
         const pick=el('button',{type:'button',className:'assistant-start'},icon('errors'),
@@ -112,7 +114,7 @@ export async function render(container) {
         });
         return el('li',{},pick);
       }));
-    },()=>{welcome.querySelector('h2').textContent='Ask about a workflow or execution';starts.remove();});
+    },()=>noStarts());
   };
 
   // Repair target, "What the AI sees" and model support. Only people pin or change the target.
@@ -538,7 +540,7 @@ export async function render(container) {
   const railItem = (row, status) => {
     const link = el('a', {className: 'repair-rail-link', href: location.hash || '#assistant'}, 'Show in conversation');
     if (['propose_create_workflow','propose_retry_execution'].includes(row.name)) link.setAttribute('aria-label', `Show proposal ${row.id} in conversation`);
-    listen(link, 'click', event => { event.preventDefault(); showInConversation(row).catch(error => { if (!signal.aborted) notice(messages, error); }); });
+    listen(link, 'click', event => { event.preventDefault(); reviewDrawer.close(); showInConversation(row).catch(error => { if (!signal.aborted) notice(messages, error); }); });
     const title = typeof row.preview_summary === 'string' && row.preview_summary ? row.preview_summary : summarize(row);
     return el('article', {className: 'repair-rail-item', 'data-action-id': row.id}, el('div', {className: 'repair-rail-head'}, el('h3', {}, title), statusBadge(status)),
       status === 'pending' ? el('p', {className: 'muted'}, `Expires ${formatTime(Number(row.expires_at))}`) : null, link);
@@ -615,6 +617,7 @@ export async function render(container) {
     paintApprovals();
     const pendingCount = approvalRows.filter(row => row.status === 'pending' && Number(row.expires_at) * 1000 > Date.now()).length;
     reviewCount.textContent = pendingCount ? String(pendingCount) : '';
+    reviewButton.setAttribute('aria-label', pendingCount ? `Review, ${pendingCount} pending` : 'Review');
     reviewUpdated.textContent = `Updated ${clockTime()}`;
     mountConversationProposals();
   };
@@ -887,7 +890,21 @@ export async function render(container) {
     model.card.scrollIntoView({block: 'nearest'});
     model.card.focus({preventScroll: true});
   };
-  const chat=el('section',{className:'assistant-chat','aria-label':'Chat workspace'},repairBar,transcript,messages,form);
+  function makeDrawer(id, title, meta, body, className) {
+    const close = el('button', {type: 'button', className: 'peek-close', 'aria-label': `Close ${title.toLowerCase()}`}, icon('close'));
+    const dialog = el('dialog', {className: `peek side-drawer ${className}`, 'aria-labelledby': id},
+      el('header', {className: 'peek-head'}, el('div', {className: 'peek-heading'}, el('h2', {className: 'peek-title', id}, title),
+        meta ? el('p', {className: 'peek-meta'}, meta) : null), close),
+      el('div', {className: 'peek-body'}, body));
+    listen(close, 'click', () => dialog.close());
+    listen(dialog, 'click', event => { if (event.target !== dialog) return; const box = dialog.getBoundingClientRect();
+      if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) dialog.close(); });
+    listen(dialog, 'keydown', event => event.stopPropagation());
+    return dialog;
+  }
+  // What leaves this installation, said once under the message box.
+  const privacy=el('p',{className:'composer-privacy'},icon('shield'),el('span',{},'Messages go to the selected model provider. Execution inputs, outputs and stored secrets are not sent.'));
+  const chat=el('section',{className:'assistant-chat','aria-label':'Chat workspace'},repairBar,transcript,messages,form,privacy);
   // Saved conversations open from the header, like a conversation switcher.
   const savedChats=el('details',{className:'assistant-history'},el('summary',{className:'button button-ghost'},icon('history'),'Saved conversations'),
     el('div',{className:'assistant-history-panel'},recentPicker.node,field('Conversation ID',resumeId),resume));
@@ -898,13 +915,14 @@ export async function render(container) {
   const reviewUpdated=el('span',{className:'review-updated'});
   const refreshReview=el('button',{type:'button',className:'icon-button','aria-label':'Refresh proposals',title:'Refresh proposals'},icon('refresh'));
   listen(refreshReview,'click',async()=>{refreshReview.disabled=true;try{await refreshApprovals();}catch(error){if(!signal.aborted)notice(messages,error);}finally{if(!signal.aborted)refreshReview.disabled=false;}});
-  const rail=el('aside',{className:'assistant-rail','aria-label':'Review and privacy'},
-    el('section',{className:'assistant-approval-panel'},el('div',{className:'assistant-rail-heading'},el('h2',{},'Review',reviewCount),reviewUpdated,refreshReview),approvals),
-    el('section',{className:'assistant-privacy'},el('h2',{},'What gets sent'),
-      el('p',{},'Your messages go to the selected model provider. Built-in tools share workflow and execution metadata; execution inputs, outputs and stored secrets are not sent.'),
-      el('p',{},'With a workflow pinned, its masked definition and a scrubbed error summary are sent too. Open What the AI sees to review them.')));
+  // Proposals already appear in the conversation, so review is not a second permanent box: it is a button
+  // with the pending count, and the full list (including actions from other conversations) opens beside it.
+  const reviewDrawer=makeDrawer('assistant-review-title','Review','Changes the AI proposed. Nothing runs until you apply it.',
+    el('div',{className:'assistant-approval-panel'},el('div',{className:'assistant-rail-heading'},reviewUpdated,refreshReview),approvals),'review-drawer');
+  const reviewButton=el('button',{type:'button',className:'button button-ghost review-button'},icon('check'),'Review',reviewCount);
+  listen(reviewButton,'click',()=>{if(!reviewDrawer.open)reviewDrawer.showModal();refreshApprovals().catch(error=>{if(!signal.aborted)notice(messages,error);});});
   container.replaceChildren(polite,urgent,el('div',{className:'page-heading-row assistant-head'},heading('AI workspace','Ask about executions and workflows. Every change waits for your approval.'),
-    el('div',{className:'actions'},savedChats,newChat,can('admin')?action('Assistant settings',()=>openSettings()):null)),el('div',{className:'assistant-layout'},chat,rail));
+    el('div',{className:'actions'},reviewButton,savedChats,newChat,can('admin')?action('Assistant settings',()=>openSettings()):null)),el('div',{className:'assistant-layout'},chat),reviewDrawer);
   transcript.append(el('p',{className:'muted',role:'status'},'Loading assistant…'));
   paintTarget();
   if (parsed.rejected.length) notice(messages, `This repair link had invalid values, which were ignored: ${parsed.rejected.join(', ')}.`);
@@ -937,16 +955,7 @@ export async function render(container) {
   if (can('admin')) {
     // Models, remote tools and repair switches in one drawer: configured here, chosen in the composer.
     settings = el('div', {className: 'assistant-settings'});
-    const closeDrawer = el('button', {type: 'button', className: 'peek-close', 'aria-label': 'Close settings'}, icon('close'));
-    const drawer = el('dialog', {className: 'peek settings-drawer', 'aria-labelledby': 'assistant-settings-title'},
-      el('header', {className: 'peek-head'}, el('div', {className: 'peek-heading'}, el('h2', {className: 'peek-title', id: 'assistant-settings-title'}, 'Assistant settings'),
-        el('p', {className: 'peek-meta'}, 'Models, remote tools and what repair conversations may send.')), closeDrawer),
-      el('div', {className: 'peek-body'}, settings));
-    listen(closeDrawer, 'click', () => drawer.close());
-    listen(drawer, 'click', event => { if (event.target !== drawer) return; const box = drawer.getBoundingClientRect();
-      if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) drawer.close(); });
-    // Page shortcuts must not act on the page behind the drawer.
-    listen(drawer, 'keydown', event => event.stopPropagation());
+    const drawer = makeDrawer('assistant-settings-title', 'Assistant settings', 'Models, remote tools and what repair conversations may send.', settings, 'settings-drawer');
     openSettings = () => {
       if (!drawer.open) drawer.showModal();
       if (!allowErrorText) renderRepairSettings();

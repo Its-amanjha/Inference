@@ -28,6 +28,14 @@ PUT_SETTINGS = frozenset({'saveExecutionProgress', 'saveManualExecutions', 'save
 
 
 
+
+def open_review(page):
+    """Pending approvals are listed in the AI workspace's Review drawer; open it unless it already is."""
+    drawer = page.locator('dialog.review-drawer[open]')
+    if not drawer.count():
+        page.get_by_role('button', name=re.compile(r'^Review')).click()
+        drawer.wait_for()
+
 def choose_instance(page, value):
     """Pick an instance by ID ('' is All instances) in the top-bar switcher, a button with a listbox."""
     page.get_by_role('button', name=re.compile(r'^Selected instance:')).click()
@@ -542,6 +550,7 @@ def exercise_approvals(page, instance_id, state):
                 name:'activate_workflow', arguments:{instance_id:instance, workflow_id:'source-wf'}}});
         }''', instance_id)
         assert len(state['writes']) == count, 'Proposal must not mutate n8n'
+        open_review(page)
         page.get_by_role('button', name='Refresh proposals', exact=True).click()
         page.get_by_role('button', name='Confirm exact action', exact=True).wait_for()
         return result['pending_action']['id']
@@ -556,6 +565,8 @@ def exercise_approvals(page, instance_id, state):
 
     action_id = propose()
     page.reload(wait_until='domcontentloaded')
+    page.get_by_role('heading', name='AI workspace', exact=True).wait_for()
+    open_review(page)
     page.get_by_role('button', name='Confirm exact action', exact=True).wait_for()
     count = len(state['writes'])
     page.get_by_role('button', name='Cancel', exact=True).click()
@@ -579,6 +590,10 @@ def exercise_approvals(page, instance_id, state):
     assert len(state['writes']) == count + 1
     assert replay(action_id) == 409
     assert len(state['writes']) == count + 1
+    # Leave the workspace as a person would: close Review so the page behind it is usable again.
+    if page.locator('dialog.review-drawer[open]').count():
+        page.keyboard.press('Escape')
+        expect(page.locator('dialog.review-drawer[open]')).to_have_count(0)
     print('PASS: real durable assistant proposal cards, cancel, stale rejection, confirm and single-use replay protection; no model inference used.', flush=True)
 
 
