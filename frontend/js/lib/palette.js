@@ -27,32 +27,34 @@ export function openPalette(invoker) {
     group: 'Views', label: link.querySelector('span')?.textContent?.trim() || link.textContent.trim(),
     detail: null, href: link.getAttribute('href') || '#dashboard',
   }));
-  let fetched = false, fetching = null, workflows = [];
+  let workflows = [], searchTimer = 0, searchVersion = 0;
   let items = [], active = -1;
 
-  async function ensureWorkflows() {
-    if (fetched) return;
-    if (fetching) { await fetching; return; }
-    fetching = (async () => {
-      const instances = state.instances;
+  // Workflows are looked up by name on every instance as you type (a few per instance), so any
+  // workflow can be reached, not only those on a first page. Choosing one opens its page.
+  function searchWorkflows(needle) {
+    clearTimeout(searchTimer);
+    const version = ++searchVersion;
+    if (needle.length < 2) { workflows = []; return; }
+    searchTimer = setTimeout(async () => {
+      const instances = state.instances, groups = Array(instances.length);
       let next = 0;
-      const groups = Array(instances.length);
-      await Promise.all(Array.from({length: Math.min(3, Math.max(instances.length, 1))}, async () => {
+      await Promise.all(Array.from({length: Math.min(3, instances.length)}, async () => {
         while (next < instances.length && !controller.signal.aborted) {
           const index = next++, instance = instances[index];
           try {
-            const result = await api('/api/n8n_proxy/workflows?' + new URLSearchParams({instance_id: instance.id, limit: '25'}), {signal: controller.signal});
+            const result = await api('/api/n8n_proxy/workflows?' + new URLSearchParams({instance_id: instance.id, name: needle, limit: '5'}), {signal: controller.signal});
             groups[index] = (result.data || []).map(row => ({
-              group: 'Workflows', label: row.name || row.id, detail: `${instance.name} · ${row.id}`,
-              href: '#codelab?' + new URLSearchParams({instance_id: instance.id, workflow_id: row.id}),
+              group: 'Workflows', label: row.name || row.id, detail: instance.name,
+              href: '#workflows?' + new URLSearchParams({instance_id: instance.id, workflow_id: row.id}),
             }));
           } catch { groups[index] = []; }
         }
       }));
+      if (version !== searchVersion || session !== record) return;
       workflows = groups.flat().filter(Boolean);
-      fetched = true;
-    })();
-    await fetching;
+      paint();
+    }, 250);
   }
 
   function collect() {
@@ -62,12 +64,9 @@ export function openPalette(invoker) {
       matches.push({group: 'Instances', label: instance.name, detail: instance.url,
         href: '#instances?telemetry=' + encodeURIComponent(instance.id)});
     }
-    if (needle.length >= 2) {
-      const rows = workflows.filter(row => (row.label + ' ' + row.detail).toLowerCase().includes(needle)).slice(0, 8);
-      matches.push(...rows);
-    }
     if (!needle) return matches;
-    return matches.filter(item => (item.label + ' ' + (item.detail || '')).toLowerCase().includes(needle));
+    // The server already matched workflow names; views and instances are matched here.
+    return [...matches.filter(item => (item.label + ' ' + (item.detail || '')).toLowerCase().includes(needle)), ...workflows.slice(0, 10)];
   }
 
   function paint() {
@@ -133,8 +132,7 @@ export function openPalette(invoker) {
   session = record;
   document.addEventListener('pointerdown', outside, true);
   input.addEventListener('input', () => {
-    const needle = input.value.trim();
-    if (needle.length >= 2 && !fetched) ensureWorkflows().then(() => { if (session === record) paint(); });
+    searchWorkflows(input.value.trim());
     paint();
   });
   input.addEventListener('keydown', event => {
@@ -142,6 +140,8 @@ export function openPalette(invoker) {
     else if (event.key === 'ArrowUp') { event.preventDefault(); move(-1); }
     else if (event.key === 'Enter') { event.preventDefault(); choose(active); }
     else if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); }
+    // The field is the dialog's only control: Tab must not move focus to the page behind it.
+    else if (event.key === 'Tab') event.preventDefault();
   });
   document.body.append(overlay);
   input.focus();

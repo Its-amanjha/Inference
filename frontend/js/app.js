@@ -6,7 +6,7 @@ import {setTheme} from './themes.js';
 import {icon} from './lib/icons.js';
 import {openPalette} from './lib/palette.js';
 
-const routes = {'dashboard':'Overview','workflows':'Workflows','promote':'Promote','errors':'Errors','observe':'Observability','fleet-health':'Fleet health','codelab':'CodeLab','assistant':'AI workspace','containers':'Containers','notes':'Notes','backup':'Backups','secrets':'Secrets','instances':'Instances','settings':'Settings'};
+const routes = {'dashboard':'Overview','workflows':'Workflows','promote':'Promote','errors':'Errors','observe':'Observability','codelab':'CodeLab','assistant':'AI workspace','containers':'Containers','notes':'Notes','backup':'Backups','secrets':'Secrets','instances':'Instances','settings':'Settings'};
 const adminOnly = new Set(['containers','backup','secrets']);
 const root=document.querySelector('#app');
 const mobileNavigation=window.matchMedia('(max-width:700px)');
@@ -227,7 +227,7 @@ export function openShortcutsDialog(invoker) {
     { display: 'g w', description: 'Go to Workflows' },
     { display: 'g o', description: 'Go to Observability' },
     { display: 'g a', description: 'Go to AI workspace' },
-    { display: 'g f', description: 'Go to Fleet health' },
+    { display: 'g f', description: 'Go to Instances (fleet health)' },
     { display: 'g s', description: 'Go to Settings' },
     { display: 'g i', description: 'Go to Instances' },
     { display: 'g n', description: 'Go to Notes' },
@@ -347,9 +347,11 @@ async function navigate() {
   currentViewTitle = '';
   pendingSequence = null;
   clearTimeout(pendingTimer);
-  const id=location.hash.slice(1).split('?')[0] || 'dashboard';
-  // Fleet health merged into the Instances fleet page: the old hash and shortcut land there.
-  const navId=id==='codelab'?'assistant':id==='fleet-health'?'instances':id;
+  let id=location.hash.slice(1).split('?')[0] || 'dashboard';
+  // Fleet health merged into the Instances fleet page: old links and "g f" land there under its own
+  // name, so the title, breadcrumb and heading never disagree with the page.
+  if(id==='fleet-health'){const query=location.hash.split('?')[1];history.replaceState(null,'',`#instances${query?`?${query}`:''}`);id='instances';}
+  const navId=id==='codelab'?'assistant':id;
   root.querySelectorAll('[data-route]').forEach(node=>{if(node.dataset.route===navId)node.setAttribute('aria-current','page');else node.removeAttribute('aria-current');});
   root.querySelectorAll('.nav-more').forEach(node=>node.open=!mobileNavigation.matches);
   const currentView=document.querySelector('#current-view');if(currentView)currentView.textContent=routes[id]||'Page not found';
@@ -358,7 +360,7 @@ async function navigate() {
   if(adminOnly.has(id)&&!can('admin')){container.append(el('h1',{},'Administrator access required'),el('p',{},'Ask an administrator to manage this part of your workspace.'));return;}
   container.append(el('p',{class:'muted',role:'status'},`Loading ${routes[id].toLowerCase()}…`));
   try {
-    const moduleId=id==='fleet-health'?'instances':['assistant','codelab'].includes(id)?'studio':id;
+    const moduleId=['assistant','codelab'].includes(id)?'studio':id;
     const module=await import(`./views/${moduleId}.js`);
     if(current!==generation)return;
     container.replaceChildren();

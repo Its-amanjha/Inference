@@ -1,11 +1,12 @@
 /* Fleet page: per-instance telemetry setup and merged health rows. */
 
-.telemetry-section { border-top:1px solid var(--border); padding-top:12px; }
+.telemetry-section { padding-top:8px; }
 .telemetry-section>summary { font-weight:600; font-size:13px; color:var(--color-ink-black); }
 .telemetry-body { display:flex; flex-direction:column; gap:12px; padding-top:12px; min-width:0; }
 .telemetry-body p { margin:0; font-size:13px; }
 .telemetry-snippet { margin:0; padding:12px; max-height:220px; font-size:12px; }
-.telemetry-snippet-row { display:flex; flex-direction:column; gap:8px; min-width:0; }
+.telemetry-snippet-row { display:flex; flex-direction:column; align-items:flex-start; gap:8px; min-width:0; }
+.telemetry-snippet-row .telemetry-snippet { align-self:stretch; }
 .telemetry-token-row { display:flex; flex-wrap:wrap; align-items:center; gap:8px; font-size:13px; }
 .telemetry-token { overflow-wrap:anywhere; }
 .telemetry-tokens { display:flex; flex-direction:column; gap:8px; }
@@ -17,7 +18,9 @@
 .fleet-instance-url { overflow-wrap:anywhere; }
 .fleet-detail { margin-top:16px; }
 .fleet-detail[hidden] { display:none; }
+.fleet-detail>div:empty { display:none; }
 @media(max-width:700px) {
+  .fleet-summary-strip { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .telemetry-body .button { min-height:44px; }
   .fleet-toolbar .button,
   .fleet-filter-btn { min-height:44px; }

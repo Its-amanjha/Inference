@@ -4,7 +4,7 @@ import {icon,registerIcons} from '../lib/icons.js';
 import {confirmAction,actionMenu,stateBadge} from '../lib/confirm.js';
 import {can} from '../state.js';
 import {relativeLabel} from '../lib/triage.js';
-import {rawDisclosure,probeSummary,reachabilityBadge,checkedLine,loadingState,loadFailure,cachedProbe,rememberProbe,forgetProbe,checkConnection,asOf,fleetMetrics} from '../lib/payload.js';
+import {probeSummary,reachabilityBadge,checkedLine,loadFailure,cachedProbe,rememberProbe,forgetProbe,checkConnection,fleetMetrics} from '../lib/payload.js';
 
 registerIcons({
   server:'M4 6h16M4 10h16M4 14h16M4 18h16 M2 4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v16a2 2 0 0 1 2 2H4a2 2 0 0 1-2-2V4z M6 6h.01 M6 10h.01 M6 14h.01 M6 18h.01',
@@ -15,10 +15,9 @@ function probeResult(result){
   const {list,notes,diagnostics}=probeSummary(result);
   return el('div',{className:'stack decision-probe',role:'status'},
     el('div',{className:'decision-head'},el('h3',{},'Connection test'),reachabilityBadge(result)),
-    el('p',{className:'muted',title:result.checked_at},checkedLine(result)),asOf(new Date(result.checked_at)),
+    el('p',{className:'muted',title:result.checked_at},checkedLine(result)),
     list,
-    diagnostics.length?notes:el('p',{},'Public API checks passed.'),
-    rawDisclosure(result));
+    diagnostics.length?notes:null);
 }
 
 // Probe outcome in plain words: reachable with full API access, reachable with
@@ -35,13 +34,13 @@ const CLASS_RANK={operational:0,degraded:1,unreachable:2,untested:3};
 
 export async function render(container) {
   const controller=new AbortController(), signal=controller.signal;
-  const entryRoute=(location.hash.slice(1).split('?')[0]||'dashboard');
   const messages=el('div'), editor=el('div');
+  // The page's one primary action sits with its heading and steps aside while its form is open.
+  const add=can('admin')?button('Add instance',()=>edit()):null;
+  const closeEditor=()=>{editor.replaceChildren();if(add){add.hidden=false;add.focus();}};
   container.append(
-    heading(entryRoute==='fleet-health'?'Fleet health':'Instances',
-      'Connections, health and telemetry for every n8n instance.'),
+    el('div',{class:'page-heading-row'},heading('Instances','Connections, health and telemetry for every n8n instance.'),add?el('div',{class:'actions'},add):null),
     messages,editor);
-  if(can('admin'))container.append(button('Add instance',()=>edit()));
   const rollup=el('div',{class:'fleet-summary-strip',role:'region','aria-label':'Fleet health totals'});
   const totalNum=el('p',{class:'metric-number'},'0'),operationalNum=el('p',{class:'metric-number'},'0'),
     degradedNum=el('p',{class:'metric-number'},'0'),unreachableNum=el('p',{class:'metric-number'},'—');
@@ -182,16 +181,16 @@ export async function render(container) {
     const name=el('input',{required:true,value:item.name||'',maxLength:128,autocomplete:'off'});
     const url=el('input',{type:'url',required:true,value:item.url||'',placeholder:'https://n8n.example.com',autocomplete:'off',spellcheck:'false'});
     const key=el('input',{type:'password',autocomplete:'new-password',required:!item.id,placeholder:item.id?'Leave blank to keep the saved key':''});
-    const form=formCard({title:item.id?'Edit connection':'Add connection',
+    const form=formCard({title:item.id?'Edit instance':'Add instance',
       description:item.id?item.url:'Inference reads workflows and executions through the n8n public API.',
       body:[el('div',{class:'form-row'},field('Name',name),field('n8n base URL',url,{})),
         field('API key',key,{hint:item.id?'A key is already saved. Paste a new one only to replace it.':'Create one in n8n under Settings → n8n API.'})],
       note:[icon('lock'),'API keys are encrypted on this server.'],
-      actions:[button('Cancel',()=>editor.replaceChildren(),'ghost'),el('button',{class:'button',type:'submit'},'Save connection')]});
+      actions:[button('Cancel',closeEditor,'ghost'),el('button',{class:'button',type:'submit'},item.id?'Save instance':'Add instance')]});
     form.addEventListener('submit',event=>{event.preventDefault();act(async()=>{
       const body={name:name.value,url:url.value};if(key.value)body.api_key=key.value;
-      await api('/api/n8n_proxy/instances'+(item.id?'/'+encodeURIComponent(item.id):''),{method:item.id?'PATCH':'POST',json:body});if(item.id)forgetProbe(item.id);key.value='';editor.replaceChildren();await load();window.dispatchEvent(new Event('instances-changed'));
-    });});editor.replaceChildren(form);name.focus();
+      await api('/api/n8n_proxy/instances'+(item.id?'/'+encodeURIComponent(item.id):''),{method:item.id?'PATCH':'POST',json:body});if(item.id)forgetProbe(item.id);key.value='';editor.replaceChildren();if(add)add.hidden=false;await load();window.dispatchEvent(new Event('instances-changed'));
+    });});editor.replaceChildren(form);if(add)add.hidden=true;name.focus();
   }
   function numbers(entry){
     const evidence=entry.evidence,complete=evidence?.workflows_complete;
@@ -205,7 +204,7 @@ export async function render(container) {
   function formatRow(entry){
     const {workflows,active,runs,failed}=numbers(entry);
     const rank=entry.probe?CLASS_RANK[classifyProbe(entry.probe)]??3:entry.failed?2:3;
-    const open=button('Details',()=>openDetails(entry),'ghost',{'aria-label':`Manage connection ${entry.item.name}`});
+    const open=button('Details',()=>openDetails(entry),'ghost',{'aria-label':`Details for ${entry.item.name}`});
     return [
       {sortValue:entry.item.name.toLowerCase(),content:el('div',{class:'fleet-instance-cell'},el('strong',{},entry.item.name),el('span',{class:'muted fleet-instance-url'},entry.item.url))},
       {sortValue:rank,content:entry.probe?reachabilityBadge(entry.probe):entry.failed?stateBadge('warning','Check failed',entry.failed):el('span',{class:'muted'},'—')},
@@ -223,7 +222,11 @@ export async function render(container) {
   }
   function paintRows(){
     if(!fleetTable)return;
+    // Probes, scans and token checks repaint the rows as they finish; keep keyboard focus on the
+    // same row's button instead of dropping it to the page.
+    const focused=fleetTable.contains(document.activeElement)?document.activeElement.getAttribute('aria-label'):null;
     fleetTable.setRows(visibleEntries().map(formatRow));
+    if(focused)fleetTable.querySelector(`[aria-label="${CSS.escape(focused)}"]`)?.focus({preventScroll:true});
     const issues=entries.filter(entry=>['degraded','unreachable'].includes(classifyProbe(entry.probe))).length;
     filterAll.textContent=`All instances (${entries.length})`;
     filterIssues.textContent=`Issues only (${issues})`;
@@ -308,7 +311,7 @@ export async function render(container) {
     tableWrap.replaceChildren();detail.hidden=true;
     entries=result.data.map(item=>({item,probe:cachedProbe(item),evidence:null,version:null,tele:null,checking:false,checkSignal:checks.signal}));
     if(!entries.length){
-      tableWrap.append(empty('No connections yet','Add your first n8n instance to explore workflows and executions.',can('admin')?[button('Add connection',()=>edit())]:[]));
+      tableWrap.append(empty('No instances yet',can('admin')?'Add your first n8n instance with Add instance above.':'An administrator connects n8n instances.',[],'instances'));
       paintRollup();filterAll.textContent='All instances (0)';filterIssues.textContent='Issues only (0)';
       return;
     }

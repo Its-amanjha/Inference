@@ -34,7 +34,7 @@ export async function render(container) {
   const refreshButton=button([icon('refresh'),'Refresh'],()=>refresh(),'ghost');
   const actions=el('div',{class:'actions'},refreshButton,el('a',{class:'button',href:can('admin')?'#instances':'#errors'},can('admin')?'Manage instances':'Investigate errors',icon('arrow')));
   container.append(el('div',{class:'page-heading-row'},heading('Fleet overview',`${scope} · Execution health and findings that need attention.`),actions),
-    sections[1].feedback,sections[1].stamp,stats,coverage,el('div',{class:'dashboard-columns'},panel('Investigation queue',wrap(2),'View all errors','#errors','overview-queue'),panel('Connected instances',fleet,'Fleet health','#fleet-health','overview-server')),
+    sections[1].feedback,sections[1].stamp,stats,coverage,el('div',{class:'dashboard-columns'},panel('Investigation queue',wrap(2),'View all errors','#errors','overview-queue'),panel('Connected instances',fleet,'All instances','#instances','overview-server')),
     panel('Recent executions',wrap(0),'View traces','#observe'));
   const scoped=instance?state.instances.filter(row=>row.id===instance):state.instances;
   function renderFleet(metrics) {
@@ -53,7 +53,7 @@ export async function render(container) {
       const finished=runs!==null&&Number.isFinite(evidence?.terminal)?evidence.terminal:null;
       const missing=el('span',{class:'fleet-mini-missing',title:evidence?'Could not be counted from this instance':'Not loaded yet'},'—');
       return [
-        el('div',{class:'fleet-mini-name'},el('a',{href:'#fleet-health'},row.name),
+        el('div',{class:'fleet-mini-name'},el('a',{href:'#instances'},row.name),
           el('span',{class:`fleet-mini-status is-${health}`},el('span',{class:'fleet-mini-dot','aria-hidden':'true'}),status)),
         workflows===null?missing:el('span',{},String(workflows),Number.isFinite(evidence?.active_workflows)?el('span',{class:'fleet-mini-sub'},`${evidence.active_workflows} active`):null),
         runs===null?missing.cloneNode(true):String(runs),

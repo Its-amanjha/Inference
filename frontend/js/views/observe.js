@@ -1,6 +1,6 @@
 import {api} from '../api.js';
 import {state,pageSize} from '../state.js';
-import {el,button,heading,table,empty,jsonView} from '../lib/html.js';
+import {el,button,heading,table,empty} from '../lib/html.js';
 import {icon,registerIcons} from '../lib/icons.js';
 import {loadingState,loadFailure,asOf} from '../lib/payload.js';
 import {instanceName,relativeLabel} from '../lib/triage.js';
@@ -99,25 +99,22 @@ export async function render(container) {
     }
   }
 
-  // The trace list carries no names, so each visible row is labelled from its
-  // first span: workflow name first, execution and trace IDs secondary.
+  // The trace list names each trace's workflow and execution, taken from whichever span reported
+  // them, so labelling needs no extra requests. A trace no span named stays "Workflow unknown":
+  // reading its spans one by one would find no name either.
   const metas = new Map();
   async function enrich(rows) {
-    await Promise.all(rows.map(async row => {
-      const key = row.instance_id + ':' + row.trace_id;
-      if (!metas.has(key)) {
-        // Newer backends name the workflow on the list row itself; older ones
-        // need one bounded first-span read per row.
-        metas.set(key, row.workflow_name || row.workflow_id || row.execution_id
-          ? Promise.resolve({workflow: row.workflow_name || row.workflow_id || null, execution: row.execution_id || null})
-          : api('/api/otel/traces/' + encodeURIComponent(row.trace_id) + '?' + new URLSearchParams({instance_id: row.instance_id, limit: '1'}), {signal: controller.signal})
-            .then(result => {
-              const span = result.data?.[0];
-              return span ? {workflow: span.workflow_name || span.workflow_id || null, execution: span.execution_id || null} : null;
-            }).catch(() => null));
-      }
-      metas.set(key, await metas.get(key));
-    }));
+    for (const row of rows) metas.set(row.instance_id + ':' + row.trace_id,
+      {workflow: row.workflow_name || row.workflow_id || null, execution: row.execution_id || null});
+  }
+
+  // Span attributes and prices as label/value lines instead of a JSON dump; nested values stay compact.
+  function factList(title, values) {
+    const entries = Object.entries(values || {}).filter(([, value]) => value !== null && value !== undefined && value !== '');
+    if (!entries.length) return null;
+    return el('div', {class: 'span-facts'}, el('h4', {}, title),
+      el('dl', {}, entries.map(([key, value]) => el('div', {}, el('dt', {}, key),
+        el('dd', {}, typeof value === 'object' ? JSON.stringify(value) : String(value))))));
   }
 
   async function copyText(text, btn) {
@@ -345,8 +342,8 @@ export async function render(container) {
           errorGuidance,
           el('p', {className: 'muted'}, `Status: ${status} · Duration: ${elapsed(spanDuration)}` +
             (ai ? ` · Model: ${span.model || 'Unreported'} · Input tokens: ${span.tokens_in ?? 'Unknown'} · Output tokens: ${span.tokens_out ?? 'Unknown'}` : '')),
-          ai ? jsonView({pricing: span.pricing, attributes: span.attributes, parent_id: span.parent_id})
-            : jsonView({attributes: span.attributes, parent_id: span.parent_id}),
+          ai ? factList('Price', span.pricing) : null,
+          factList('Attributes', span.attributes),
           spanActions.childElementCount ? spanActions : null
         );
 
