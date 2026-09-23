@@ -11,6 +11,8 @@ import {closePeek} from './lib/peek.js';
 
 const routes = {'dashboard':'Overview','workflows':'Workflows','promote':'Promote','errors':'Errors','observe':'Observability','codelab':'CodeLab','assistant':'AI workspace','containers':'Containers','notes':'Notes','backup':'Backups','secrets':'Secrets','instances':'Instances','settings':'Settings'};
 const adminOnly = new Set(['containers','backup','secrets']);
+// Pages whose every action changes something: viewers do not see them.
+const operatorOnly = new Set(['promote']);
 const root=document.querySelector('#app');
 const mobileNavigation=window.matchMedia('(max-width:700px)');
 mobileNavigation.addEventListener('change',()=>{const menu=root.querySelector('.nav-more');if(menu)menu.open=!mobileNavigation.matches;});
@@ -144,7 +146,7 @@ function renderShell() {
   const groups=[['Monitor',['dashboard','errors','observe']],['Orchestrate',['workflows','promote','assistant']],['Manage',['instances','containers','notes','backup','secrets','settings']]];
   const navigation=el('nav',{'aria-label':'All views'},groups.map(([title,ids])=>{
     const labelId=`nav-group-${title.toLowerCase()}`;
-    return el('div',{class:'nav-group',role:'group','aria-labelledby':labelId},el('p',{class:'nav-group-title',id:labelId},title),ids.filter(id=>!adminOnly.has(id)||can('admin')).map(link));
+    return el('div',{class:'nav-group',role:'group','aria-labelledby':labelId},el('p',{class:'nav-group-title',id:labelId},title),ids.filter(id=>(!adminOnly.has(id)||can('admin'))&&(!operatorOnly.has(id)||can('operator'))).map(link));
   }));
   const more=el('details',{class:'nav-more',open:!mobileNavigation.matches},el('summary',{},icon('menu'),'Menu'),navigation);
   const brand=el('a',{class:'brand',href:'#dashboard',title:'Inference · Execution Anomaly System'},el('span',{class:'brand-mark','aria-hidden':'true'}),el('span',{class:'brand-name'},'Inference'));
@@ -373,6 +375,7 @@ async function navigate() {
   const container=el('div',{class:'stack'});shell.replaceChildren(container); document.title=`${routes[id] || 'Page not found'} · Inference`;
   if(!routes[id]){container.append(el('h1',{},'Page not found'),el('a',{href:'#dashboard'},'Return to overview'));return;}
   if(adminOnly.has(id)&&!can('admin')){container.append(el('h1',{},'Administrator access required'),el('p',{},'Ask an administrator to manage this part of your workspace.'));return;}
+  if(operatorOnly.has(id)&&!can('operator')){container.append(el('h1',{},'Operator access required'),el('p',{},'Your account can read the fleet. Ask an administrator for the operator role to promote workflows.'));return;}
   container.append(el('p',{class:'muted',role:'status'},`Loading ${routes[id].toLowerCase()}…`));
   try {
     const moduleId=['assistant','codelab'].includes(id)?'studio':id;

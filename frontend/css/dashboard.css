@@ -68,3 +68,16 @@ a.run-id .icon { width:12px; height:12px; }
 .dashboard .finding-title { justify-content:flex-start; }
 .dashboard .finding-title .severity-pill { margin-left:auto; }
 .run-note { margin:8px 0 0; font-size:12px; }
+
+/* First run: the three steps to a populated overview, numbered, in one card. */
+.onboarding-steps { list-style:none; counter-reset:step; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; margin:0; padding:20px 24px 24px; }
+.onboarding-steps>li { counter-increment:step; display:flex; gap:12px; min-width:0; }
+.onboarding-steps>li::before { content:counter(step); flex:none; display:grid; place-items:center; width:28px; height:28px; border-radius:50%; background:var(--selection-fill); color:var(--selection-text); font-size:13px; font-weight:600; font-variant-numeric:tabular-nums; }
+.onboarding-step { display:flex; flex-direction:column; align-items:flex-start; gap:6px; min-width:0; }
+.onboarding-step h3 { margin:3px 0 0; font-size:15px; }
+.onboarding-step p { margin:0; font-size:13px; color:var(--color-graphite); max-width:40ch; }
+.onboarding-step .button { margin-top:6px; }
+.onboarding-link { display:inline-flex; align-items:center; gap:4px; margin-top:4px; font-size:13px; font-weight:500; }
+.onboarding-link .icon { width:14px; height:14px; }
+@media (max-width:900px) { .onboarding-steps { grid-template-columns:minmax(0,1fr); padding:16px; } }
+@media (max-width:700px) { .onboarding-step .button,.onboarding-link { min-height:44px; } }

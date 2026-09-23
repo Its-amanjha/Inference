@@ -34,9 +34,21 @@ export async function render(container) {
   const wrap=index=>el('div',{class:`dashboard-section${index===2?' panel-body dashboard-investigation':''}`},sections[index].feedback,sections[index].stamp,sections[index].content);
   const refreshButton=button([icon('refresh'),'Refresh'],()=>refresh(),'ghost');
   const actions=el('div',{class:'actions'},refreshButton,el('a',{class:'button',href:can('admin')?'#instances':'#errors'},can('admin')?'Manage instances':'Investigate errors',icon('arrow')));
+  // With nothing connected, one card says how to start instead of three empty panels saying the same thing.
+  const step=(title,body,next)=>el('li',{},el('div',{class:'onboarding-step'},el('h3',{},title),el('p',{},body),next));
+  const onboarding=()=>el('section',{class:'panel onboarding'},
+    el('header',{class:'panel-head'},el('h2',{},icon('instances'),'Get your fleet on screen')),
+    el('ol',{class:'onboarding-steps'},
+      step('Connect an n8n instance','Its address and an API key from n8n (Settings, then n8n API). Workflows, runs and errors appear here.',
+        can('admin')?el('a',{class:'button',href:'#instances'},icon('add'),'Connect an instance'):el('p',{class:'muted'},'An administrator connects instances.')),
+      step('Send telemetry (optional)','Point the instance’s OpenTelemetry exporter at Inference to see each run’s steps and AI cost in Observability.',
+        can('admin')?el('a',{class:'onboarding-link',href:'#instances'},'Telemetry settings are on each instance',icon('arrow')):null),
+      step('Connect a model (optional)','An AI model you choose explains failed runs and proposes fixes you approve.',
+        el('a',{class:'onboarding-link',href:'#assistant'},'Open the AI workspace',icon('arrow')))));
   container.append(el('div',{class:'page-heading-row'},heading('Fleet overview',`${scope} · Execution health and findings that need attention.`),actions),
-    sections[1].feedback,sections[1].stamp,stats,coverage,el('div',{class:'dashboard-columns'},panel('Investigation queue',wrap(2),'View all errors','#errors','overview-queue'),panel('Connected instances',fleet,'All instances','#instances','overview-server')),
-    panel('Recent executions',wrap(0),'View traces','#observe'));
+    sections[1].feedback,sections[1].stamp,stats,coverage,
+    ...(state.instances.length?[el('div',{class:'dashboard-columns'},panel('Investigation queue',wrap(2),'View all errors','#errors','overview-queue'),panel('Connected instances',fleet,'All instances','#instances','overview-server')),
+      panel('Recent executions',wrap(0),'View traces','#observe')]:[onboarding()]));
   const scoped=instance?state.instances.filter(row=>row.id===instance):state.instances;
   function renderFleet(metrics) {
     fleet.replaceChildren();
