@@ -42,9 +42,9 @@ export async function render(container){
   const showEditor=shown=>{intro.hidden=shown;foot.hidden=!shown;if(!editor)textarea.hidden=!shown;else editorHost.hidden=!shown;};
   function clear(){sequence++;snapshot=null;save.disabled=true;}
   // Typing a new search does not unload the code on screen: Deploy writes to the loaded workflow and node.
-  async function readNode(){const current=++sequence;snapshot=null;save.disabled=true;const id=workflow.value.trim(),node=nodes.value;if(!node)return;try{const result=await api(`/api/n8n_proxy/workflows/${encodeURIComponent(id)}/nodes/${encodeURIComponent(node)}?instance_id=${encodeURIComponent(instance)}`,{signal:controller.signal});if(current!==sequence)return;snapshot=result;loadedWorkflow=id;loadedNode=node;textarea.value=result.code;loadedCode=result.code;language=result.language==='javaScript'?'javascript':'python';languageName.textContent=language==='javascript'?'JavaScript':'Python';if(editor){editor.setValue(result.code);window.monaco.editor.setModelLanguage(editor.getModel(),language);}showEditor(true);save.disabled=!can('operator')||active;messages.replaceChildren(el('p',{className:'muted'},active?'This workflow is active. Deactivate it in Workflows, then reload before editing.':'Language follows the existing n8n node. Deployment preserves its language.'));}catch(error){if(!controller.signal.aborted)notice(messages,error);}}
+  async function readNode(){const current=++sequence;snapshot=null;save.disabled=true;const id=workflowPicker.getId(),node=nodes.value;if(!node)return;try{const result=await api(`/api/n8n_proxy/workflows/${encodeURIComponent(id)}/nodes/${encodeURIComponent(node)}?instance_id=${encodeURIComponent(instance)}`,{signal:controller.signal});if(current!==sequence)return;snapshot=result;loadedWorkflow=id;loadedNode=node;textarea.value=result.code;loadedCode=result.code;language=result.language==='javaScript'?'javascript':'python';languageName.textContent=language==='javascript'?'JavaScript':'Python';if(editor){editor.setValue(result.code);window.monaco.editor.setModelLanguage(editor.getModel(),language);}showEditor(true);save.disabled=!can('operator')||active;messages.replaceChildren(el('p',{className:'muted'},active?'This workflow is active. Deactivate it in Workflows, then reload before editing.':'Language follows the existing n8n node. Deployment preserves its language.'));}catch(error){if(!controller.signal.aborted)notice(messages,error);}}
   async function loadWorkflow(){if(await keepEdits())return;clear();const started=sequence;load.disabled=true;
-    try{const id=workflow.value.trim();if(!id){workflow.focus();return;}
+    try{const id=workflowPicker.getId();if(!id){workflow.focus();return;}
       const result=await api(`/api/n8n_proxy/workflows/${encodeURIComponent(id)}?instance_id=${encodeURIComponent(instance)}`,{signal:controller.signal});if(started!==sequence)return;active=result.active!==false;
       const code=(result.nodes||[]).filter(node=>node.type==='n8n-nodes-base.code');
       nodeNames=new Map(code.map(node=>[node.id,node.name]));
@@ -57,6 +57,6 @@ export async function render(container){
   const language_=el('div',{class:'codelab-field'},el('span',{class:'codelab-field-label'},'Language'),languageName);
   const nodeField=el('div',{class:'codelab-field'},el('span',{class:'codelab-field-label'},'Code node'),nodes.node);
   container.append(el('section',{className:'card stack codelab'},el('div',{className:'codelab-bar'},workflowPicker.node,load,nodeField,language_),intro,messages,textarea,editorHost,foot));
-  if(workflow.value.trim())loadWorkflow();
+  if(workflowPicker.getId())loadWorkflow();
   return()=>{controller.abort();sequence++;editor?.getModel()?.dispose();editor?.dispose();};
 }

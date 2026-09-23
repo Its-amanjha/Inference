@@ -10,9 +10,13 @@ export async function render(container){
     for(const [name,panel] of Object.entries(panels)){panel.hidden=name!==tab;controls[name].setAttribute('aria-pressed',String(name===tab));}
     if(!loaded[tab])loaded[tab]=(async()=>{const module=await import(tab==='chat'?'./assistant.js':'./codelab.js');if(closed)return;const dispose=await module.render(panels[tab]);if(closed)dispose?.();else cleanups.push(dispose);})();
     await loaded[tab];
+    // The switch sits under the page's own title, so the tab bar never stands above or repeats it.
+    const head=panels[tab].querySelector(':scope > .page-heading-row, :scope > .page-heading');
+    if(head)head.after(nav);else panels[tab].prepend(nav);
   }
-  for(const [tab,label] of [['chat','AI workspace'],['code','Code editor (manual)']]){controls[tab]=button(label,()=>show(tab),'ghost');controls[tab].setAttribute('aria-controls',panels[tab].id);}
-  container.append(el('nav',{class:'studio-tabs','aria-label':'AI workspace'},controls.chat,controls.code),panels.chat,panels.code);
+  for(const [tab,label] of [['chat','Conversation'],['code','CodeLab']]){controls[tab]=button(label,()=>show(tab),'ghost');controls[tab].setAttribute('aria-controls',panels[tab].id);}
+  const nav=el('nav',{class:'studio-tabs','aria-label':'AI workspace'},controls.chat,controls.code);
+  container.append(panels.chat,panels.code);
   await show(initial);
   return()=>{closed=true;for(const dispose of cleanups)dispose?.();};
 }

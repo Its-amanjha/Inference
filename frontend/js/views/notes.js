@@ -68,6 +68,9 @@ export async function render(container){
 
   const searchForm=el('form',{class:'notes-search',role:'search'},search,button('Search',()=>act(load),'ghost'));
   searchForm.addEventListener('submit',event=>{event.preventDefault();act(load);});
+  // The library filters as you type, after a short pause.
+  let searchTimer=0;
+  search.addEventListener('input',()=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>act(load),300);},{signal});
   const library=el('aside',{class:'notes-library','aria-label':'Notes library'},
     el('div',{class:'notes-library-head'},el('h2',{},'Your notes'),can('operator')?button('New note',startNote,'ghost',{'aria-label':'New note'}):null),
     searchForm,list);

@@ -108,7 +108,9 @@ export function createIdPicker({label,placeholder='',hint=null,load,emptyText=''
   const clearPicked=el('button',{type:'button',className:'button ghost picker-clear','aria-label':effectiveClearAria},clearLabel);
   if(clearable)picked.append(clearPicked);
   const node=el('div',{className:overlay?'picker is-overlay':'picker'},field(label,search,hint?{hint}:{}),status,list,picked,announcer);
-  let items=null,loadError=null,loading=null,open=false,activeIndex=-1,selectedId='',selectedKnown=false,pendingResolve=false;
+  // A chosen row shows its name in the box; its ID stays the value (getId). Only an ID that is not in the
+  // list shows the separate 'Selected' line, since the box alone cannot say it is unknown.
+  let items=null,loadError=null,loading=null,open=false,activeIndex=-1,selectedId='',selectedKnown=false,pendingResolve=false,shown='';
 
   function visibleRows(){
     const needle=search.value.trim().toLowerCase();
@@ -159,14 +161,13 @@ export function createIdPicker({label,placeholder='',hint=null,load,emptyText=''
     const row=index<rows.length?rows[index]:extra;
     if(!row)return;
     selectedId=row.id;selectedKnown=!row.unknown;
-    search.value=row.id;setOpen(false);paintPicked();
+    shown=row.unknown?row.id:row.name;search.value=shown;setOpen(false);paintPicked();
     if(onPick)onPick(row.id,!row.unknown,row);
   }
   function paintPicked(){
-    if(!selectedId){picked.hidden=true;return;}
+    if(!selectedId||selectedKnown){picked.hidden=true;return;}
     picked.hidden=false;
-    if(selectedKnown){const row=(items||[]).find(row=>row.id===selectedId);pickedName.textContent=row?row.name:selectedId;pickedId.textContent=row?row.id:'';}
-    else{pickedName.textContent=selectedId;pickedId.textContent='(id not in this list)';}
+    pickedName.textContent=selectedId;pickedId.textContent='(id not in this list)';
   }
   function setOpen(value){
     open=value;
@@ -199,12 +200,14 @@ export function createIdPicker({label,placeholder='',hint=null,load,emptyText=''
     return loading;
   }
   function resolvePending(){
-    selectedKnown=(items||[]).some(row=>row.id===selectedId);
+    const row=(items||[]).find(item=>item.id===selectedId);
+    selectedKnown=Boolean(row);
+    if(row&&document.activeElement!==search){shown=row.name;search.value=shown;}
     pendingResolve=false;paintPicked();paint();
   }
   search.addEventListener('focus',()=>setOpen(true),{signal});
   search.addEventListener('click',()=>{if(!open)setOpen(true);},{signal});
-  search.addEventListener('input',()=>{activeIndex=-1;if(selectedId&&search.value.trim()!==selectedId){selectedId='';picked.hidden=true;}setOpen(true);},{signal});
+  search.addEventListener('input',()=>{activeIndex=-1;if(selectedId&&search.value.trim()!==shown){selectedId='';shown='';picked.hidden=true;}setOpen(true);},{signal});
   search.addEventListener('blur',()=>setOpen(false),{signal});
   search.addEventListener('keydown',event=>{
     if(event.key==='ArrowDown'||event.key==='ArrowUp'){
@@ -222,21 +225,21 @@ export function createIdPicker({label,placeholder='',hint=null,load,emptyText=''
       if(open){event.preventDefault();event.stopPropagation();setOpen(false);search.focus();}
     }
   },{signal});
-  clearPicked.addEventListener('click',()=>{selectedId='';search.value='';picked.hidden=true;search.focus();if(onPick)onPick('',false);},{signal});
+  clearPicked.addEventListener('click',()=>{selectedId='';shown='';search.value='';picked.hidden=true;search.focus();if(onPick)onPick('',false);},{signal});
   return {node,input:search,
     get(){return search.value.trim();},
     getId(){return selectedId||search.value.trim();},
     getName(){if(!selectedId)return'';const row=(items||[]).find(r=>r.id===selectedId);return row?row.name:pickedName.textContent||selectedId;},
     isKnown(){return selectedKnown;},
-    clear(){selectedId='';selectedKnown=false;search.value='';picked.hidden=true;activeIndex=-1;setOpen(false);if(onPick)onPick('',false);},
+    clear(){selectedId='';selectedKnown=false;shown='';search.value='';picked.hidden=true;activeIndex=-1;setOpen(false);if(onPick)onPick('',false);},
     set(id,name=null){
-      search.value=id||'';selectedId=id||'';
+      selectedId=id||'';shown=name||selectedId;search.value=shown;
       if(!selectedId){selectedKnown=false;picked.hidden=true;return;}
-      if(items!==null){selectedKnown=(items||[]).some(row=>row.id===selectedId);paintPicked();}
-      else{pendingResolve=true;selectedKnown=Boolean(name);picked.hidden=false;pickedName.textContent=name||selectedId;pickedId.textContent=name?selectedId:'(id not in this list)';ensureLoaded();}
+      if(items!==null){const row=(items||[]).find(item=>item.id===selectedId);selectedKnown=Boolean(row);if(row){shown=row.name;search.value=shown;}paintPicked();}
+      else{pendingResolve=true;selectedKnown=Boolean(name);picked.hidden=true;ensureLoaded();}
     },
     setScope(newLoad){
-      load=newLoad;items=null;loadError=null;loading=null;selectedId='';selectedKnown=false;search.value='';picked.hidden=true;activeIndex=-1;setOpen(false);
+      load=newLoad;items=null;loadError=null;loading=null;selectedId='';selectedKnown=false;shown='';search.value='';picked.hidden=true;activeIndex=-1;setOpen(false);
     },
     setDisabled(val){
       search.disabled=Boolean(val);clearPicked.disabled=Boolean(val);if(val)setOpen(false);

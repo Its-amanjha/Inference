@@ -67,7 +67,7 @@ export async function render(container) {
   },{signal});
   signal.addEventListener('abort',closeSuggestions,{once:true});
   let searching=false, term='';
-  const search=button('Search',searchFleet);
+  const search=button('Search',()=>searchFleet(),'ghost');
   container.append(el('form',{class:'toolbar workflow-search',onsubmit:event=>{event.preventDefault();searchFleet();}},el('div',{class:'workflow-search-field'},field('Find workflows',input),suggestions,suggestionStatus),search),sections);
   const entries=instances.map(instance=>{
     const list=el('div'),messages=el('div'),stamp=el('div');
@@ -77,7 +77,10 @@ export async function render(container) {
     entry.next=button('Next page',()=>load(entry,entry.cursor),'ghost');entry.next.hidden=true;
     entry.next.setAttribute('aria-label',`Next workflow page on ${instance.name}`);
     entry.retry=button('Refresh instance',()=>load(entry),'ghost',{'aria-label':`Refresh workflows on ${instance.name}`});
-    sections.append(el('section',{class:'card stack','aria-label':`Workflows on ${instance.name}`},el('h2',{},instance.name),messages,stamp,bulk,list,el('div',{class:'toolbar'},entry.retry,entry.next)));
+    // One head line per instance (name, when it was read, refresh), then the list; empty parts take no space.
+    entry.retry.classList.add('workflow-refresh');
+    sections.append(el('section',{class:'card stack workflow-card','aria-label':`Workflows on ${instance.name}`},
+      el('div',{class:'workflow-card-head'},el('h2',{},instance.name),stamp,entry.retry),messages,bulk,list,el('div',{class:'workflow-card-foot'},entry.next)));
     return entry;
   });
 
@@ -254,15 +257,20 @@ export async function render(container) {
     // Next page shows only when the instance has another page.
     finally{entry.loading=false;entry.next.hidden=!entry.cursor;entry.next.disabled=searching||!entry.cursor;entry.retry.disabled=searching;}
   }
-  async function searchFleet(){
-    if(searching||entries.some(entry=>entry.loading))return;
-    closeSuggestions();
-    searching=true;search.disabled=true;input.disabled=true;term=input.value.trim();
+  // Results follow the text as you type (after a short pause); the box never locks while a search runs,
+  // and a search requested during another one runs right after it.
+  let rerun=false,typingTimer=0;
+  input.addEventListener('input',()=>{clearTimeout(typingTimer);typingTimer=setTimeout(()=>searchFleet({keepSuggestions:true}),450);},{signal});
+  async function searchFleet({keepSuggestions=false}={}){
+    if(searching||entries.some(entry=>entry.loading)){rerun=true;return;}
+    if(!keepSuggestions)closeSuggestions();
+    searching=true;search.disabled=true;term=input.value.trim();
     entries.forEach(entry=>{entry.next.disabled=entry.retry.disabled=true;});
     let index=0;
     try {await Promise.all(Array.from({length:Math.min(3,entries.length)},async()=>{
       while(index<entries.length&&!signal.aborted)await load(entries[index++]);
-    }));}finally{searching=false;search.disabled=false;input.disabled=false;entries.forEach(entry=>{entry.next.disabled=!entry.cursor;entry.retry.disabled=false;});}
+    }));}finally{searching=false;search.disabled=false;entries.forEach(entry=>{entry.next.disabled=!entry.cursor;entry.retry.disabled=false;});
+      if(rerun&&!signal.aborted){rerun=false;searchFleet({keepSuggestions:true});}}
   }
   // j and k move between workflows across every instance section; o opens the focused one.
   const move=step=>{const list=[...container.querySelectorAll('.workflow-open')];if(!list.length)return;

@@ -18,8 +18,8 @@ from frontend_fleet_fixture import (REPAIR_ERROR_MESSAGE, REPAIR_EXECUTION_ID, R
 # Every UI name and selector this check depends on; reconcile frontend changes here only.
 UI = {
     'heading': 'AI workspace',
-    'workspace_tab': 'AI workspace',
-    'code_tab': 'Code editor (manual)',
+    'workspace_tab': 'Conversation',
+    'code_tab': 'CodeLab',
     'target': 'div.repair-target[role=group][aria-label="Repair target"]',
     'context': 'details.repair-context',
     'context_summary': 'What the AI sees',
@@ -814,7 +814,9 @@ def exercise_links(page, ids, error_id):
         page.evaluate("location.hash = 'dashboard'")
         finding = page.locator('.finding-row').filter(has_text='Order synchronization')
         expect(finding).to_have_count(1)
-        assert_repair_href(finding.get_by_role('link', name='Repair with AI: Order synchronization', exact=True), with_error)
+        finding.get_by_role('button', name=re.compile(r'^More actions for')).click()
+        assert_repair_href(page.get_by_role('menuitem', name=UI['repair_link'], exact=True), with_error)
+        page.keyboard.press('Escape')
         # Leave before unrouting so the overview's 30-second refresh cannot spend a real metrics request.
         page.evaluate("location.hash = 'errors'")
         page.get_by_role('region', name='Errors table').wait_for()

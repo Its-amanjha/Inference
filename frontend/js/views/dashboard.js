@@ -4,6 +4,7 @@ import {el,button,heading,table,empty} from '../lib/html.js';
 import {icon,registerIcons} from '../lib/icons.js';
 import {severityPill,relativeTime,instanceName,explainHref,repairHref,n8nUrl,runBadge,runDuration as duration} from '../lib/triage.js';
 import {loadingState,loadFailure,asOf,cachedProbe,fleetMetrics} from '../lib/payload.js';
+import {rowMenu} from '../lib/row-menu.js';
 
 
 // Adapted Lucide SVG paths, kept local and rendered at the shared UI stroke width.
@@ -62,14 +63,34 @@ export async function render(container) {
     });
     fleet.append(table(['Instance','Workflows','Runs · 24h','Success'],rows,{numeric:[1,2,3],className:'fleet-mini'}));
   }
-  const names=new Map();let namesLoaded=false;
+  const names=new Map(),namesLoaded=new Set();
+  const nameKey=(instanceId,workflowId)=>`${instanceId}:${workflowId}`;
   async function workflowNames(rows){
-    if(namesLoaded||!instance||!rows.some(row=>!names.has(String(row.workflowId))))return;
-    namesLoaded=true;
-    try{
-      const result=await api('/api/n8n_proxy/workflows?'+new URLSearchParams({instance_id:instance,limit:'250'}),{signal:controller.signal});
-      for(const row of result.data||[])names.set(String(row.id),row.name||String(row.id));
-    }catch{/* Names are a convenience: without them the row still shows its workflow ID. */}
+    const wanted=[...new Set(rows.filter(row=>!names.has(nameKey(row.instanceId,row.workflowId))).map(row=>row.instanceId))].filter(id=>!namesLoaded.has(id));
+    await Promise.all(wanted.map(async instanceId=>{
+      namesLoaded.add(instanceId);
+      try{
+        const result=await api('/api/n8n_proxy/workflows?'+new URLSearchParams({instance_id:instanceId,limit:'250'}),{signal:controller.signal});
+        for(const row of result.data||[])names.set(nameKey(instanceId,row.id),row.name||String(row.id));
+      }catch{/* Names are a convenience: without them the row still shows its workflow ID. */}
+    }));
+  }
+  // Recent runs: the selected instance's, or the newest across the fleet (up to five instances, three at a
+  // time), each tagged with its instance.
+  async function recentRuns(){
+    const targets=instance?[instance]:state.instances.slice(0,5).map(row=>row.id);
+    if(!targets.length)return null;
+    const lists=[];let next=0,failed=0;
+    await Promise.all(Array.from({length:Math.min(3,targets.length)},async()=>{
+      while(next<targets.length&&!controller.signal.aborted){
+        const id=targets[next++];
+        try{const result=await api('/api/n8n_proxy/executions?'+new URLSearchParams({instance_id:id,limit:'10'}),{signal:controller.signal});
+          lists.push(...(result.data||[]).map(row=>({...row,instanceId:id})));}
+        catch(error){if(instance)throw error;failed++;}
+      }
+    }));
+    if(failed===targets.length)throw new Error('No instance returned its recent executions.');
+    return {data:lists.sort((a,b)=>String(b.startedAt||'').localeCompare(String(a.startedAt||''))).slice(0,10),partial:failed>0};
   }
   function emptyExecutions(){return state.instances.length?empty('Choose an instance','Pick one in the switcher at the top of the page to see its runs.',[],'play'):empty('No instances connected',can('admin')?'Connect an n8n instance in Instances, then pick it in the switcher at the top of the page to see its recent executions.':'An administrator needs to connect an n8n instance before recent executions can appear.',can('admin')?[el('a',{class:'button ghost',href:'#instances'},'Open instances')]:[],'instances');}
   renderFleet();
@@ -77,7 +98,6 @@ export async function render(container) {
     if(busy||controller.signal.aborted)return;busy=true;refreshButton.disabled=true;
     for(const section of sections){
       section.feedback.replaceChildren();
-      if(section.content===feed&&!instance){if(!section.loaded)section.content.replaceChildren(emptyExecutions());continue;}
       if(!section.loaded)section.content.replaceChildren(loadingState(`Loading ${section.label}…`,{compactLabel:`Loading ${section.short}`,kind:section.kind}));
       else section.feedback.append(el('p',{class:'load-progress',role:'status'},el('span',{class:'loading-spinner','aria-hidden':'true'}),el('span',{'aria-hidden':'true'},'Updating…'),el('span',{class:'sr-only'},`Refreshing ${section.label}…`)));
     }
@@ -85,7 +105,7 @@ export async function render(container) {
       const query=instance?`?instance_id=${encodeURIComponent(instance)}`:'';
       const errorQuery=new URLSearchParams({status:'open',limit:'4'});if(instance)errorQuery.set('instance_id',instance);
       const requests=[
-        instance?api('/api/n8n_proxy/executions'+query+'&limit=10',{signal:controller.signal}):Promise.resolve(null),
+        recentRuns(),
         // The whole-fleet scan is shared with Fleet health and Instances; a rate-limited scan shows the last one.
         fleetMetrics({signal:controller.signal,fresh:true,instance}),
         api('/api/errors?'+errorQuery,{signal:controller.signal})
@@ -153,11 +173,16 @@ export async function render(container) {
           const occurrences=row.count===null||row.count===undefined?'Occurrences unavailable':`${row.count} ${row.count===1?'occurrence':'occurrences'}`;
           // Time and execution are shown only when the record carries them.
           const parts=[el('span',{},`${instanceName(row.instance_id)} · ${row.node_name||'Workflow'} · ${occurrences}`),row.occurred_at?relativeTime(row.occurred_at):null,row.execution_id?el('span',{},`Execution ${row.execution_id}`):null].filter(Boolean);
-          findings.append(el('article',{class:'finding-row'},el('div',{class:'finding-title'},el('strong',{},row.workflow_name),severityPill(row.error_type)),
-            el('p',{},row.error_message),el('div',{class:'finding-meta'},parts.flatMap((part,position)=>position?[el('span',{class:'finding-sep','aria-hidden':'true'},'·'),part]:[part]),el('span',{class:'finding-actions'},
-            // The failing run in n8n comes first; AI help follows it, as on the Errors page.
-            row.execution_id&&n8nUrl(row.instance_id,row.workflow_id,row.execution_id)?el('a',{href:n8nUrl(row.instance_id,row.workflow_id,row.execution_id),target:'_blank',rel:'noopener noreferrer','aria-label':`Open in n8n: execution ${row.execution_id} of ${row.workflow_name}`},'Open in n8n',icon('external')):null,
-            el('a',{href:explainHref(row),'aria-label':`Explain with AI: ${row.workflow_name}`},'Explain with AI'),can('operator')?el('a',{href:repairHref(row),'aria-label':`Repair with AI: ${row.workflow_name}`},'Repair with AI'):null))));
+          // The title opens this error's evidence on Errors; everything else is in one row menu, as there.
+          const execution=row.execution_id?n8nUrl(row.instance_id,row.workflow_id,row.execution_id):null;
+          const menu=rowMenu([
+            execution?{label:'Open execution in n8n',href:execution,external:true}:null,
+            {label:'Explain with AI',href:explainHref(row)},
+            can('operator')?{label:'Repair with AI',href:repairHref(row)}:null,
+          ],`More actions for ${row.workflow_name}`);
+          findings.append(el('article',{class:'finding-row'},
+            el('div',{class:'finding-title'},el('a',{class:'finding-link',href:'#errors?'+new URLSearchParams({focus:row.id})},row.workflow_name),severityPill(row.error_type),menu),
+            el('p',{},row.error_message),el('div',{class:'finding-meta'},parts.flatMap((part,position)=>position?[el('span',{class:'finding-sep','aria-hidden':'true'},'·'),part]:[part]))));
         }
       }
       if(index===0&&results[0].status==='fulfilled'&&!results[0].value)feed.append(emptyExecutions());
@@ -165,17 +190,20 @@ export async function render(container) {
         const rows=(results[0].value.data||[]).slice(0,10);
         await workflowNames(rows);
         if(controller.signal.aborted)return;
-        feed.append(rows.length?table(['Workflow','Status','Started','Duration','Execution'],rows.map(row=>{
-          const name=names.get(String(row.workflowId));
+        const fleetWide=!instance;
+        feed.append(rows.length?table(['Workflow',...(fleetWide?['Instance']:[]),'Status','Started','Duration','Execution'],rows.map(row=>{
+          const name=names.get(nameKey(row.instanceId,row.workflowId));
           return [
             el('div',{class:'run-workflow'},el('span',{class:'run-workflow-name'},name||'Unknown workflow'),name?null:el('span',{class:'run-workflow-id'},row.workflowId??'')),
+            ...(fleetWide?[instanceName(row.instanceId)]:[]),
             runBadge(row.status),
             relativeTime(row.startedAt),
             el('span',{class:'run-duration'},duration(row.startedAt,row.stoppedAt,row.status)),
             // The run ID opens that execution in n8n when the instance URL allows it.
-            n8nUrl(instance,row.workflowId,row.id)?el('a',{class:'run-id',href:n8nUrl(instance,row.workflowId,row.id),target:'_blank',rel:'noopener noreferrer','aria-label':`${row.id}: open execution in n8n`},String(row.id),icon('external')):el('span',{class:'run-id'},String(row.id)),
+            n8nUrl(row.instanceId,row.workflowId,row.id)?el('a',{class:'run-id',href:n8nUrl(row.instanceId,row.workflowId,row.id),target:'_blank',rel:'noopener noreferrer','aria-label':`${row.id}: open execution in n8n`},String(row.id),icon('external')):el('span',{class:'run-id'},String(row.id)),
           ];
-        }),{numeric:[3,4],className:'runs-table'}):empty('No recent executions','This instance returned no execution records.',[button('Refresh executions',()=>refresh(),'ghost')],'play'));
+        }),{numeric:fleetWide?[4,5]:[3,4],className:'runs-table'}):empty('No recent executions',fleetWide?'No instance returned saved executions.':'This instance returned no execution records.',[button('Refresh executions',()=>refresh(),'ghost')],'play'));
+        if(results[0].value.partial)feed.append(el('p',{class:'muted run-note'},'Some instances could not be read; their runs are missing here.'));
       }
       }));
     }finally{busy=false;refreshButton.disabled=false;}

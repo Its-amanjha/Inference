@@ -737,6 +737,10 @@ export async function render(container){
   }
 
   await load();
+  // #errors?focus=<id> (from the Overview) opens that error's details once it is loaded.
+  const focusId = initialParams.get('focus');
+  const focused = focusId ? rows.find(row => String(row.id) === focusId) : null;
+  if (focused) openDetails(focused);
   return () => {
     if (announceTimer) clearTimeout(announceTimer);
     unregisterShortcuts();

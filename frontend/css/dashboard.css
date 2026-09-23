@@ -1,5 +1,5 @@
 /* Dashboard refinement: keep section feedback inside the same content gutters. */
-.dashboard .dashboard-columns { align-items:stretch; }
+.dashboard .dashboard-columns { align-items:start; }
 .dashboard .dashboard-columns>.panel { display:flex; flex-direction:column; min-width:0; }
 .dashboard .dashboard-columns .panel-body { padding:20px 24px; flex:1; }
 .dashboard .dashboard-investigation { display:flex; flex-direction:column; gap:8px; }
@@ -61,3 +61,10 @@
 a.run-id { display:inline-flex; align-items:center; gap:3px; color:var(--selection-text); text-decoration:none; }
 a.run-id:hover { text-decoration:underline; text-underline-offset:3px; }
 a.run-id .icon { width:12px; height:12px; }
+
+/* A finding's title opens it on Errors; its menu sits at the end of the title line. */
+.finding-title .finding-link { font-weight:600; color:var(--color-ink-black); text-decoration:none; }
+.finding-title .finding-link:hover { text-decoration:underline; text-underline-offset:3px; }
+.dashboard .finding-title { justify-content:flex-start; }
+.dashboard .finding-title .severity-pill { margin-left:auto; }
+.run-note { margin:8px 0 0; font-size:12px; }

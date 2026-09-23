@@ -81,12 +81,17 @@ def exercise_design(page: Page, artifacts: Path) -> None:
             expect(page.locator('.metric-unknown')).to_have_count(2)
             expect(page.get_by_text('Coverage incomplete', exact=True)).to_have_count(2)
         expect(page.get_by_text('No completed runs', exact=True)).to_be_visible()
-        expect(page.get_by_role('link', name='Explain with AI')).to_have_attribute(
+        # Findings keep AI help in one row menu; the title opens the finding on Errors.
+        expect(page.locator('.finding-row .finding-link').first).to_have_attribute('href', '#errors?focus=fixture-error')
+        page.locator('.finding-row').first.get_by_role('button', name=re.compile(r'^More actions for')).click()
+        expect(page.get_by_role('menuitem', name='Explain with AI')).to_have_attribute(
             'href', '#assistant?error_id=fixture-error&instance_id=source')
+        page.keyboard.press('Escape')
         expect(page.get_by_role('navigation', name='All views')).to_be_visible()
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         page.screenshot(path=str(artifacts / 'inference-populated-desktop.png'), full_page=True)
-        page.get_by_role('link', name='Explain with AI').click()
+        page.locator('.finding-row').first.get_by_role('button', name=re.compile(r'^More actions for')).click()
+        page.get_by_role('menuitem', name='Explain with AI').click()
         page.get_by_role('heading', name='AI workspace', exact=False).wait_for()
         page.evaluate("location.hash = 'dashboard'")
         page.get_by_text('Order synchronization', exact=True).wait_for()

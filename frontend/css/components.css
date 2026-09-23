@@ -379,7 +379,8 @@ dialog.peek::backdrop { background:rgba(10,12,16,.35); }
 .segmented { display:inline-flex; gap:2px; padding:3px; border:1px solid var(--border); border-radius:10px; background:color-mix(in srgb,var(--color-ink-black) 5%,var(--surface-page-canvas)); }
 .segment { display:inline-flex; align-items:center; gap:6px; min-height:30px; padding:0 12px; border:0; border-radius:8px; background:transparent; color:var(--color-graphite); font:inherit; font-size:13px; font-weight:500; cursor:pointer; transition:background-color .15s ease-out,color .15s ease-out,box-shadow .15s ease-out; }
 .segment:hover:not([aria-pressed=true]) { color:var(--color-ink-black); }
-.segment[aria-pressed=true] { background:var(--surface-card-surface); color:var(--color-ink-black); box-shadow:0 1px 2px rgba(0,0,0,.12); }
+/* The chosen segment uses the selection colours, which every theme defines with enough contrast. */
+.segment[aria-pressed=true] { background:var(--selection-fill); color:var(--selection-text); font-weight:600; box-shadow:0 1px 2px rgba(0,0,0,.12); }
 .segment:focus-visible { outline:2px solid var(--focus); outline-offset:1px; }
 .segment .icon { width:14px; height:14px; }
 @media (pointer:coarse),(max-width:700px) { .segment { min-height:44px; } }

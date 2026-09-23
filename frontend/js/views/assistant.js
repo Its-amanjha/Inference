@@ -551,7 +551,7 @@ export async function render(container) {
     // reported inside that proposal, so a second rail card for it is a duplicate. A linked row that is
     // still pending stays: it can be confirmed on its own, and hiding it would strand it unseen.
     const rows = approvalRows.filter(row => !row.linked_to || row.status === 'pending');
-    if (!rows.length) { approvals.append(el('div',{className:'approval-empty'},icon('check'),el('h3',{},'Nothing to review'),el('p',{},'Changes the AI proposes appear here. Nothing runs until you apply it.'))); return; }
+    if (!rows.length) { approvals.append(el('div',{className:'approval-empty'},icon('check'),el('h3',{},'Nothing to review'),el('p',{},'When the AI proposes a change, it waits here for you.'))); return; }
     for (const row of rows) {
       const expired = Number(row.expires_at) * 1000 <= Date.now();
       const status = acting.has(row.id) ? 'executing' : row.status === 'pending' && expired ? 'expired' : row.status;
