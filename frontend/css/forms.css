@@ -225,9 +225,14 @@ form.stack { gap:16px; }
 .promote-grid .picker .field { margin:0; }
 .promote-mappings .mapping-json-row,.promote-mappings .mapping-json-button { width:100%; }
 .promote-mappings .mapping-json-button { min-height:var(--control-height); margin:0; }
-dialog.json-dialog { width:min(640px,calc(100vw - 32px)); }
-.json-dialog textarea { min-height:96px; font-family:var(--font-mono); font-size:13px; }
-.json-dialog .field { margin:12px 0 4px; }
+/* Mappings as JSON: a side panel wide enough for the maps. */
+dialog.peek.json-drawer { width:min(560px,100vw); }
+.json-drawer textarea { min-height:96px; font-family:var(--font-mono); font-size:13px; }
+/* Each map sits with its validity line just under it; maps are 20px apart. */
+.json-drawer .peek-body { gap:8px; }
+.json-drawer .field { margin:12px 0 0; }
+.json-drawer .field:first-child { margin-top:0; }
+.json-drawer .json-status { margin:0; }
 .json-status { display:flex; align-items:center; gap:6px; margin:0 0 8px; font-size:12px; color:var(--color-success); }
 .json-status.is-error { color:var(--color-danger); }
 .json-status .icon { width:14px; height:14px; flex:none; }

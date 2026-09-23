@@ -509,15 +509,24 @@ export async function render(container){
       catch(error){note.replaceChildren(icon('errors'),`Not valid JSON: ${error.message}`);note.classList.add('is-error');}};
     let timer=0;input.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(check,400);});jsonChecks.push(check);return note;
   };
+  // The JSON editor opens as a side panel from the right, like every other panel: close at the top,
+  // Done at the bottom, and a click outside the panel closes it too. The text stays when it closes.
   const jsonDone=el('button',{type:'button',className:'button'},icon('check'),'Done');
-  const jsonDialog=el('dialog',{className:'confirm-dialog json-dialog','aria-labelledby':'mappings-json-title'},
-    el('h2',{id:'mappings-json-title'},'Mappings as JSON'),
-    el('p',{className:'confirm-consequence'},'The same mappings as the pickers above, as text. Use vault references such as $SERVICE, never plaintext secrets. New credential mappings need an administrator.'),
-    field('Credential IDs: source → target',credential),jsonStatus(credential),
-    field('Secrets: source credential → vault reference',secrets),jsonStatus(secrets),
-    field('Subworkflow IDs: source → target',subflows),jsonStatus(subflows),
-    el('div',{className:'confirm-actions'},jsonDone));
+  const jsonClose=el('button',{type:'button',className:'peek-close','aria-label':'Close mappings',title:'Close mappings'},icon('close'));
+  const jsonDialog=el('dialog',{className:'peek json-drawer','aria-labelledby':'mappings-json-title'},
+    el('header',{className:'peek-head'},
+      el('div',{className:'peek-heading'},el('h2',{className:'peek-title',id:'mappings-json-title'},'Mappings as JSON'),
+        el('p',{className:'peek-meta'},'The same mappings as the pickers, as text. Use vault references such as $SERVICE, never plaintext secrets. New credential mappings need an administrator.')),
+      jsonClose),
+    el('div',{className:'peek-body'},
+      field('Credential IDs: source → target',credential),jsonStatus(credential),
+      field('Secrets: source credential → vault reference',secrets),jsonStatus(secrets),
+      field('Subworkflow IDs: source → target',subflows),jsonStatus(subflows)),
+    el('footer',{className:'peek-foot'},jsonDone));
   jsonDone.addEventListener('click',()=>jsonDialog.close());
+  jsonClose.addEventListener('click',()=>jsonDialog.close());
+  jsonDialog.addEventListener('click',event=>{if(event.target!==jsonDialog)return;const box=jsonDialog.getBoundingClientRect();
+    if(event.clientX<box.left||event.clientX>box.right||event.clientY<box.top||event.clientY>box.bottom)jsonDialog.close();});
   const editJson=el('button',{type:'button',className:'button ghost mapping-json-button'},icon('codelab'),'Edit as JSON');
   editJson.addEventListener('click',()=>{jsonChecks.forEach(check=>check());jsonDialog.showModal();credential.focus();});
   const rawDisclosureNode=el('div',{className:'mapping-json-row'},editJson,jsonDialog);
