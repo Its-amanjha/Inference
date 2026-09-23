@@ -221,3 +221,27 @@ async def test_ingested_cost_uses_exact_model_override_and_preserves_provenance(
     await send(fleet,token['token'],batch(trace='f'*32,attributes=attrs))
     unknown=(await fleet.client.get('/api/otel/traces/'+'f'*32,params={'instance_id':instance})).json()
     assert unknown['cost_usd'] is None
+
+
+async def test_one_error_per_failure_with_the_nodes_masked_message(fleet):
+    instance,token=await issue(fleet)
+    now=time.time_ns()
+    root={'traceId':'f'*32,'spanId':'1'*16,'name':'workflow.execute','startTimeUnixNano':str(now-2000),'endTimeUnixNano':str(now),
+          'status':{'code':2,'message':'Workflow failed'},'attributes':[{'key':'n8n.workflow.id','value':{'stringValue':'wf-9'}}]}
+    node={'traceId':'f'*32,'spanId':'2'*16,'parentSpanId':'1'*16,'name':'node HTTP Request','startTimeUnixNano':str(now-1500),'endTimeUnixNano':str(now-500),
+          'status':{'code':2,'message':'Request failed with status code 404 at https://api.example.com/v1/orders?token=abcdef1234567890abcdef1234'},
+          'attributes':[{'key':'n8n.node.name','value':{'stringValue':'HTTP Request'}},{'key':'n8n.workflow.id','value':{'stringValue':'wf-9'}}]}
+    payload=lambda *spans:{'resourceSpans':[{'resource':{'attributes':[]},'scopeSpans':[{'spans':list(spans)}]}]}
+    # The root span arrives first, in its own batch: one workflow-level record with its own message.
+    assert (await send(fleet,token['token'],payload(root))).status_code==200
+    rows=(await fleet.client.get('/api/errors',params={'instance_id':instance})).json()['data']
+    assert [(row['node_name'],row['error_message']) for row in rows]==[('workflow.execute','Workflow failed')]
+    # The failing node's span replaces it: still one record, named for the node, secrets masked.
+    assert (await send(fleet,token['token'],payload(node))).status_code==200
+    rows=(await fleet.client.get('/api/errors',params={'instance_id':instance})).json()['data']
+    assert len(rows)==1 and rows[0]['node_name']=='HTTP Request'
+    assert rows[0]['error_message'].startswith('Request failed with status code 404')
+    assert 'abcdef1234567890abcdef1234' not in rows[0]['error_message']
+    # A node span that fails without a message still gets the generic line, and no second record appears.
+    assert (await send(fleet,token['token'],payload({**root,'spanId':'3'*16,'status':{'code':2}}))).status_code==200
+    assert len((await fleet.client.get('/api/errors',params={'instance_id':instance})).json()['data'])==1

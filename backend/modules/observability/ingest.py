@@ -12,6 +12,8 @@ from google.protobuf.json_format import MessageToDict
 from google.protobuf.message import DecodeError
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
 
+from backend.modules.assistant.repair_context import cap_text, mask_text
+
 MAX_BODY = 2 * 1024 * 1024
 MAX_DECOMPRESSED = 8 * 1024 * 1024
 MAX_SPANS = 2000
@@ -165,6 +167,14 @@ def _normalize(span: Any, resource: dict[str, Any]) -> dict[str, Any]:
         "status": ("unset", "ok", "error")[code],
         "attributes_json": json.dumps(safe, ensure_ascii=False, separators=(",", ":"), allow_nan=False),
     }
+    # The span's own error text (OTLP status.message) names what failed. It is used only for the error
+    # record, after the same secret masking as repair context, capped, and never stored with the span.
+    message = status.get("message")
+    try:
+        text = _text(message, 2048).strip() if code == 2 and isinstance(message, str) else ""
+    except ValueError:
+        text = ""  # Unusable error text never rejects the span; the record falls back to a generic line.
+    result["status_message"] = cap_text(mask_text(text)[0], 300)[0] if text else ""
     for name, keys in {
         "workflow_id": ("n8n.workflow.id", "workflow.id", "workflow_id"),
         "workflow_name": ("n8n.workflow.name", "workflow.name", "workflow_name"),

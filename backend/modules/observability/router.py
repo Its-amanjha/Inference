@@ -106,6 +106,22 @@ async def read_body(request):
         fail(408,'telemetry_timeout','Telemetry request body timed out.')
 
 
+async def span_error(tx,span):
+    """One error per failure. n8n marks both the failing node's span and the workflow's root span as
+    errors; the node's record wins, and a workflow-level record stands only while no node span failed."""
+    summary=span.get('status_message') or GENERIC_ERROR
+    workflow_key=hashlib.sha256(f"{span['instance_id']}:{span['trace_id']}:workflow".encode()).hexdigest()
+    if span.get('node_name') or span.get('node_id'):
+        await error_record(tx,span,summary=summary)
+        # The root span may have arrived first, in an earlier batch.
+        await tx.execute('DELETE FROM errors WHERE error_key=?',(workflow_key,))
+        return
+    failed_node=await tx.fetchone("SELECT 1 FROM otel_spans WHERE instance_id=? AND trace_id=? AND status='error' AND (node_name<>'' OR node_id<>'') LIMIT 1",
+                                  (span['instance_id'],span['trace_id']))
+    if not failed_node:
+        await error_record(tx,span,summary=summary,key=workflow_key)
+
+
 async def price_snapshot(tx):
     rows=await tx.fetchall('SELECT model,value_json FROM price_book')
     result={}
@@ -118,8 +134,11 @@ async def price_snapshot(tx):
     return result
 
 
-async def error_record(tx,span,error_type='ExecutionError',summary='A node reported an execution error.'):
-    key=hashlib.sha256(f"{span['instance_id']}:{span['trace_id']}:{span['span_id']}".encode()).hexdigest()
+GENERIC_ERROR='A node reported an execution error.'
+
+
+async def error_record(tx,span,error_type='ExecutionError',summary=GENERIC_ERROR,key=None):
+    key=key or hashlib.sha256(f"{span['instance_id']}:{span['trace_id']}:{span['span_id']}".encode()).hexdigest()
     await tx.execute('INSERT INTO errors(instance_id,workflow_id,workflow_name,execution_id,node_name,error_type,error_message,error_key) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(error_key) DO NOTHING',
                      (span['instance_id'],span.get('workflow_id',''),span.get('workflow_name',''),span.get('execution_id',''),span.get('node_name') or span['name'],error_type,summary,key))
 
@@ -153,7 +172,7 @@ async def ingest(request: Request):
                 columns=('instance_id','trace_id','span_id','parent_id','name','kind','start_ns','end_ns','status','attributes_json','workflow_id','workflow_name','execution_id','node_id','node_name','model','tokens_in','tokens_out','output_items','input_items','cost_exact','cost_usd','pricing_json','health_status')
                 inserted=await tx.fetchone(f"INSERT INTO otel_spans({','.join(columns)}) VALUES({','.join('?' for _ in columns)}) ON CONFLICT(instance_id,trace_id,span_id) DO NOTHING RETURNING id",tuple(span.get(key) for key in columns))
                 if inserted and span['status']=='error':
-                    await error_record(tx,span)
+                    await span_error(tx,span)
     rejected=parsed['rejected_spans']
     if content_type=='application/x-protobuf':
         response=ExportTraceServiceResponse()
