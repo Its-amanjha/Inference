@@ -10,7 +10,7 @@ requires-python = ">=3.10"
 dependencies = [
   "fastapi>=0.115,<1", "uvicorn>=0.30,<1", "httpx>=0.28,<0.29", "httpcore>=1,<2", "anyio>=4,<5",
   "aiosqlite>=0.20,<1", "cryptography>=44", "pydantic>=2.10,<3",
-  "opentelemetry-proto>=1.30,<2", "aiodocker>=0.24,<1", "boto3>=1.35,<2",
+  "opentelemetry-proto>=1.30,<2", "aiodocker>=0.24,<1",
   "pyotp>=2.9,<3", "jsonschema>=4.23,<5"
 ]
 

@@ -10,7 +10,7 @@ Models recall n8n syntax unreliably: Code node return shapes, `$input` versus `$
 
 Each skill is a folder under `backend/skills/`. The folder name is the skill ID. The loader reads one file per folder, `SKILL.md`: YAML-style frontmatter with `name` and `description`, followed by the markdown body.
 
-The 15 folders are vendored, not written in this repository. They are the extracted contents of a supplied `built-in-n8n-skills` archive, 1.2 MB across 87 files including reference files. The upstream library is [czlonkowski/n8n-skills](https://github.com/czlonkowski/n8n-skills) (MIT). Its `LICENSE` and `NOTICES` files, which were not in the archive, are copied verbatim from the upstream repository as `backend/skills/LICENSE-n8n-skills.txt` and `backend/skills/NOTICES-n8n-skills.txt`. `backend/skills/README.md` lists the skills and the attribution. The loader ignores these root files because only folders are read.
+The 15 folders are vendored, not written in this repository. They come from a supplied `built-in-n8n-skills` archive. Only each folder's `SKILL.md` ships: the archive's reference files (`EXAMPLES.md` and the like) were removed on 2026-09-24 because the loader never read them; they remain in git history and upstream. The upstream library is [czlonkowski/n8n-skills](https://github.com/czlonkowski/n8n-skills) (MIT). Its `LICENSE` and `NOTICES` files, which were not in the archive, are copied verbatim from the upstream repository as `backend/skills/LICENSE-n8n-skills.txt` and `backend/skills/NOTICES-n8n-skills.txt`. `backend/skills/README.md` lists the skills and the attribution. The loader ignores these root files because only folders are read.
 
 Skills live beside the backend package, not in the data directory. They are application content, versioned with the code and copied into the container image with `backend/`.
 
@@ -51,7 +51,7 @@ The loader skips an entry, without failing startup, when:
 - `SKILL.md` is missing, is a symlink, is larger than 256 KiB, cannot be read or is not valid UTF-8;
 - the body after the frontmatter is empty.
 
-Only `SKILL.md` is read. Reference files next to it (`EXAMPLES.md`, `QUEUE_MODE.md` and so on) are not loaded, and the shell script, Compose files and Caddyfile under `n8n-self-hosting/assets/` are never read or executed.
+Only `SKILL.md` is read, and it is the only file a skill folder ships. Links inside a guide to its upstream reference files are not served.
 
 Frontmatter is parsed by reading the two top-level keys `name` and `description`; there is no YAML dependency. A file without frontmatter still loads, with the folder name as its name and an empty description. The body is stored with the frontmatter removed.
 
