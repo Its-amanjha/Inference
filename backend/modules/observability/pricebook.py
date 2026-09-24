@@ -21,6 +21,8 @@ from pydantic import BaseModel, ConfigDict, field_validator
 from backend import audit
 from backend.auth_gate import fail, require_current_role, require_role
 from backend.database import Database
+from .pricing import select_prices
+from .usage import reprice
 
 
 router = APIRouter()
@@ -101,6 +103,18 @@ async def seed_prices(db: Database) -> None:
                 await _save_layer(tx, model, 'bundled', entry)
 
 
+async def price_snapshot(tx: Any) -> dict:
+    """Every model's effective price: override, then live catalog, then bundled."""
+    rows = await tx.fetchall('SELECT model,value_json FROM price_book')
+    result = {}
+    for row in rows:
+        layers = json.loads(row['value_json'])
+        result.update(select_prices({row['model']: layers['override']} if layers.get('override') else {},
+                                    {row['model']: layers['live']} if layers.get('live') else {},
+                                    {row['model']: layers['bundled']} if layers.get('bundled') else {}))
+    return result
+
+
 async def _state(tx: Any) -> dict:
     row = await tx.fetchone('SELECT value_json FROM documents WHERE key=?', (STATE_KEY,))
     return json.loads(row['value_json']) if row else {'enabled': False, 'failures': 0}
@@ -137,8 +151,42 @@ async def override_price(model: str, body: PriceInput, request: Request) -> dict
     async with request.app.state.db.transaction() as tx:
         await require_current_role(request, 'admin', tx)
         await _save_layer(tx, model, 'override', entry)
+        repriced = await reprice(tx, await price_snapshot(tx))
     await audit.record(request, 'observability.price_override', model)
-    return {'model': model, **entry}
+    return {'model': model, **entry, 'repriced': repriced}
+
+
+@router.delete('/prices/sync')
+async def stop_price_sync(request: Request) -> dict:
+    """Stop the daily catalog refresh; the prices already fetched stay in use."""
+    require_role(request, 'admin')
+    async with request.app.state.db.transaction() as tx:
+        await require_current_role(request, 'admin', tx)
+        state = await _state(tx)
+        state['enabled'] = False
+        await _save_state(tx, state)
+    await audit.record(request, 'observability.price_sync_stopped', 'openrouter')
+    return state
+
+
+@router.delete('/prices/{model:path}')
+async def remove_override(model: str, request: Request) -> dict:
+    """Remove an administrator's price for a model; its catalog or bundled price applies again."""
+    require_role(request, 'admin')
+    if not MODEL_PATTERN.fullmatch(model):
+        fail(422, 'invalid_model', 'Supply an exact model identifier of at most 256 characters.')
+    async with request.app.state.db.transaction() as tx:
+        await require_current_role(request, 'admin', tx)
+        layers = await _layers(tx, model)
+        if 'override' not in layers:
+            fail(404, 'price_not_found', 'This model has no price of yours.')
+        del layers['override']
+        if layers:
+            await tx.execute('UPDATE price_book SET value_json=? WHERE model=?', (json.dumps(layers), model))
+        else:
+            await tx.execute('DELETE FROM price_book WHERE model=?', (model,))
+    await audit.record(request, 'observability.price_override_removed', model)
+    return {'model': model, 'removed': True}
 
 
 async def _download(client: httpx.AsyncClient) -> bytes:
@@ -243,6 +291,7 @@ async def _sync(app: FastAPI, request: Request | None = None) -> dict:
                 await require_current_role(request, 'admin', tx)
             for model, entry in entries.items():
                 await _save_layer(tx, model, 'live', entry)
+            await reprice(tx, await price_snapshot(tx))
             state = await _state(tx)
             state.update(last_attempt=timestamp, last_success=timestamp, failures=0,
                          last_error=None, next_attempt=time.time()+REFRESH_SECONDS,
@@ -263,7 +312,12 @@ async def sync_prices(request: Request) -> dict:
 async def maintenance(app: FastAPI) -> None:
     """Lifespan-owned task: poll opt-in state, retain cache, cancel on shutdown."""
     while True:
-        state = await _state(app.state.db)
-        if state.get('enabled') and time.time() >= state.get('next_attempt', 0):
-            await _sync(app)
+        try:
+            state = await _state(app.state.db)
+            if state.get('enabled') and time.time() >= state.get('next_attempt', 0):
+                await _sync(app)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - one failed round must not end the refresh for good.
+            pass
         await asyncio.sleep(60)

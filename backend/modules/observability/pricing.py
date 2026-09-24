@@ -17,6 +17,34 @@ def _count(value: Any) -> bool:
     return type(value) is int and 0 <= value <= MAX_TOKENS
 
 
+# OpenRouter lists models as vendor/model at the vendor's own list price. A step called through that vendor
+# (or through OpenRouter) may use it; a step on another host (Groq, Azure, Bedrock, ...) pays that host's
+# price, so a catalog entry never prices it: only an override or a bundled price for that exact model does.
+CATALOG_VENDOR = {'openai': 'openai', 'anthropic': 'anthropic', 'google': 'google', 'mistral': 'mistralai',
+                  'deepseek': 'deepseek', 'xai': 'x-ai', 'cohere': 'cohere', 'moonshotai': 'moonshotai',
+                  'minimax': 'minimax', 'alibaba': 'qwen'}
+
+
+def find_price(prices: dict, model: str | None, provider: str | None = None) -> dict | None:
+    """The price entry for a model called through ``provider``, or None. Identifiers stay exact: the only
+    translation is the catalog's vendor prefix for a model named by its own vendor (gpt-4o-mini through
+    OpenAI is openai/gpt-4o-mini)."""
+    if not isinstance(model, str) or not model:
+        return None
+    host = str(provider or '').lower()
+    vendor = CATALOG_VENDOR.get(host)
+    entry = prices.get(model)
+    if isinstance(entry, dict):
+        from_catalog = entry.get('source') == 'openrouter'
+        if not from_catalog or host in ('', 'openrouter') or (vendor and model.split('/', 1)[0] == vendor):
+            return entry
+    if vendor and '/' not in model:
+        entry = prices.get(f'{vendor}/{model}')
+        if isinstance(entry, dict):
+            return entry
+    return None
+
+
 def _local_ollama(provider: str | None, model: str | None) -> bool:
     """Ollama with a model that is not an Ollama Cloud one (their tags end in "cloud")."""
     return str(provider or '').lower() == 'ollama' and not str(model or '').lower().endswith('cloud')
@@ -50,7 +78,7 @@ def calculate_cost(
         return unknown
     if reasoning_tokens is not None and (tokens_out is None or reasoning_tokens > tokens_out):
         return unknown
-    entry = prices.get(model) if model is not None else None
+    entry = find_price(prices, model, provider)
     if not isinstance(entry, dict):
         # Last layer: a local Ollama model has no provider charge when no price applies to it.
         if _local_ollama(provider, model):
