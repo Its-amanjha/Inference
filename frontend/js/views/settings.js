@@ -5,6 +5,7 @@ import {el,button,field,formCard,notice,heading,table,empty} from '../lib/html.j
 import {state,can} from '../state.js';
 import {confirmAction,stateBadge,humanize} from '../lib/confirm.js';
 import {segmented} from '../lib/select-menu.js';
+import {priceBook} from '../lib/price-book.js';
 
 const OUTCOMES={success:['success','Succeeded'],succeeded:['success','Succeeded'],deployed:['success','Deployed'],activated:['success','Activated'],restored:['success','Restored'],supported:['success','Supported'],failure:['error','Failed'],failed:['error','Failed'],rejected:['error','Rejected'],denied:['error','Denied'],error:['error','Error'],partial:['warning','Partial'],unknown:['warning','Unknown'],uncertain:['warning','Uncertain'],stale:['warning','Stale'],intent:['info','In progress'],pending:['info','In progress'],executing:['info','In progress'],validating:['info','In progress'],provisioning:['info','In progress'],writing:['info','In progress'],activating:['info','In progress'],restoring:['info','In progress'],expired:['','Expired'],cancelled:['','Cancelled'],untested:['','Untested'],unsupported:['','Unsupported'],removed:['','Removed']};
 function outcomeBadge(value){
@@ -47,10 +48,10 @@ export async function render(container){
   // disclosures were rejected because they would hide fields that later fail
   // validation; nothing here is ever hidden.
   const groups={};
-  for(const [key,label] of [['account','Account'],['security','Security'],['deployment','Deployment'],['users','Users'],['audit','Audit']])groups[key]=el('section',{class:'settings-section',id:`settings-${key}`},el('h2',{class:'settings-group-title',tabindex:-1},label));
-  const sectionIcons={account:'user',security:'shield',display:'theme',deployment:'containers',users:'user',audit:'history'};
+  for(const [key,label] of [['account','Account'],['security','Security'],['deployment','Deployment'],['prices','AI prices'],['users','Users'],['audit','Audit']])groups[key]=el('section',{class:'settings-section',id:`settings-${key}`},el('h2',{class:'settings-group-title',tabindex:-1},label));
+  const sectionIcons={account:'user',security:'shield',display:'theme',deployment:'containers',prices:'observe',users:'user',audit:'history'};
   const navLinks=[['account','Account'],['security','Security'],['display','Display']];
-  if(can('admin'))navLinks.push(['deployment','Deployment'],['users','Users'],['audit','Audit']);
+  if(can('admin'))navLinks.push(['deployment','Deployment'],['prices','AI prices'],['users','Users'],['audit','Audit']);
   const nav=el('nav',{class:'settings-nav','aria-label':'Settings sections'},
     ...navLinks.map(([key,label])=>el('a',{class:'button ghost',href:`#settings-${key}`},icon(sectionIcons[key]),label)));
   nav.addEventListener('click',event=>{
@@ -227,7 +228,9 @@ export async function render(container){
   container.append(heading('Settings','Your preferences, account protection and application administration.'),messages,nav,groups.account,groups.security);
   // Two-factor belongs to everyone with an account, not only administrators.
   groups.security.append(factor);
-  if(can('admin'))container.append(groups.deployment,groups.users,groups.audit);
-  const adminLoaded=can('admin')?act(loadAdmin).then(()=>{if(factorEnabled===undefined){factorEnabled=null;renderFactor();}}):null;
+  // AI prices keep their own card and state; the other administrator cards reload after a save.
+  const prices=can('admin')?priceBook({api,signal}):null;
+  if(can('admin')){groups.prices.append(prices.node);container.append(groups.deployment,groups.prices,groups.users,groups.audit);}
+  const adminLoaded=can('admin')?Promise.all([act(loadAdmin),prices.load()]).then(()=>{if(factorEnabled===undefined){factorEnabled=null;renderFactor();}}):null;
   await Promise.allSettled([act(loadPreferences),adminLoaded]);return()=>{controller.abort();password.value='';code.value='';factorResult.replaceChildren();};
 }

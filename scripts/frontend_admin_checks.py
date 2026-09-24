@@ -49,6 +49,25 @@ def exercise_admin(page):
     page.evaluate("window.smokeSocket.onmessage({data:JSON.stringify({event:'errors.changed'})})")
     expect(page.get_by_text('Execution errors updated.', exact=True)).to_have_count(1)
 
+    # AI prices: a price of your own is listed as Yours, a malformed number never reaches the server,
+    # and removing the price takes the model off the list.
+    prices = page.locator('section.price-book')
+    prices.get_by_role('button', name='Add your price', exact=True).click()
+    prices.get_by_label('Model ID', exact=True).fill('browser-house-model')
+    prices.get_by_label('Input per 1M tokens (USD)', exact=True).fill('0,5')
+    prices.get_by_label('Output per 1M tokens (USD)', exact=True).fill('1.5')
+    prices.get_by_role('button', name='Save price', exact=True).click()
+    assert prices.get_by_label('Input per 1M tokens (USD)', exact=True).evaluate('node => node.validity.valid') is False
+    prices.get_by_label('Input per 1M tokens (USD)', exact=True).fill('0.5')
+    prices.get_by_role('button', name='Save price', exact=True).click()
+    prices.get_by_text('Price saved. New AI steps with this model are priced with it.', exact=True).wait_for()
+    priced = prices.get_by_role('row').filter(has=page.get_by_role('cell', name='browser-house-model', exact=True))
+    expect(priced.get_by_role('cell', name='Yours', exact=True)).to_have_count(1)
+    priced.get_by_role('button', name='Price actions for browser-house-model', exact=True).click()
+    page.get_by_role('menu', name='Price actions for browser-house-model').get_by_role('menuitem', name='Remove your price', exact=True).click()
+    prices.get_by_text('Your price for browser-house-model is removed.', exact=True).wait_for()
+    expect(prices.get_by_role('cell', name='browser-house-model', exact=True)).to_have_count(0)
+
     passphrase = secrets.token_urlsafe(24)
     page.evaluate("location.hash = 'secrets'")
     # One verb throughout: the page's Add secret opens the form, whose submit is also Add secret.
@@ -111,4 +130,4 @@ def exercise_admin(page):
         with closing(sqlite3.connect(destination / 'dashboard.db')) as connection:
             assert connection.execute("SELECT role FROM users WHERE username='browser_viewer'").fetchone() == ('operator',)
         assert (destination / 'notes' / 'Smoke.md').is_file()
-    print('PASS: browser user creation/role edit, encrypted secret, pause/enable schedule, manual run/download, named delete-schedule confirmation cancel, and offline restore of downloaded archive.', flush=True)
+    print('PASS: browser user creation/role edit, AI price add/validate/remove, encrypted secret, pause/enable schedule, manual run/download, named delete-schedule confirmation cancel, and offline restore of downloaded archive.', flush=True)

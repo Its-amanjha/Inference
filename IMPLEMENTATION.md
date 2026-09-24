@@ -475,3 +475,35 @@ Focused browser checks and changed-module syntax checks pass. Full-suite outcome
 is recorded below after the final run. No backend code changed in this unit.
 
 Final browser verification: 18 PASS, exit 0; notes persistence, disclosure toggles, mobile layouts, partial counts and existing repair flows pass. All changed frontend files deployed to the running repository after checking for concurrent edits. No restart required.
+
+
+## 2026-09-24 — Real AI step costs from n8n executions
+
+n8n's own spans carry no token usage, so real n8n AI steps showed "Unknown" cost. The server now reads
+usage from the execution the way n8n's telemetry does (`backend/modules/observability/usage.py`):
+`tokenUsage`/`tokenUsageEstimate` on language-model sub-nodes and `metadata.tokenUsage` on vendor nodes,
+model from node parameters (expressions skipped), provider from the node type (an OpenAI node with a custom
+base URL is `openai-compatible`). A sub-node's usage goes to the step it feeds; counts that arrived with
+telemetry are never overwritten; only counts, model, provider and node names are kept.
+
+- `POST /api/otel/traces/{trace_id}/usage` (viewer + CSRF, 30/min per user) reads once per finished run;
+  a run n8n did not keep (pruned, or successful runs not saved) returns `missing: true` and is not asked
+  for again; other failures are reported and retried on the next open. The classifier applies usage from
+  its existing execution fetch. Markers expire with telemetry retention.
+- Prices are provider-aware (`find_price`): OpenRouter catalog rates apply only through OpenRouter or the
+  model's own vendor (`gpt-4o-mini` through OpenAI matches `openai/gpt-4o-mini`); other hosts (Groq, Azure,
+  Bedrock, custom base URLs) need an override or bundled price for the exact ID.
+- A new override or catalog refresh prices stored AI steps that were waiting for a price (`repriced`);
+  priced steps keep their stored cost and provenance. New admin routes: `DELETE /prices/{model}` removes an
+  override, `DELETE /prices/sync` stops the six-hourly refresh. The refresh loop survives a failed round.
+- UI: the trace panel reads usage when opened and says when n8n did not keep the execution; admins get
+  Settings › AI prices (refresh on/off, update now, search, add/remove your own price).
+- Also this day: removed boto3 (never imported; S3 is SigV4 over httpx) and 71 unused skill reference files.
+  The Docker image was not rebuilt with the smaller lock (Docker Desktop not started).
+
+Verification: full Windows backend suite **923 passed, 11 skipped** (7 new usage/pricing tests: n8n usage
+parsing, malformed and absurd counts, host-specific catalog pricing, end-to-end read and price, a run n8n
+did not keep, re-pricing on a new override and removal, stopping the refresh); complete
+`scripts/smoke_frontend.py` **18/18 PASS** with a new check that adds a price, rejects a malformed number
+and removes it; desktop and 390px screenshots of Settings › AI prices and the trace panel inspected. Not
+verified: usage read against a live n8n AI execution, and the Docker image with the smaller lock.

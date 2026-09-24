@@ -212,3 +212,16 @@
   * { transition:scrollbar-color .2s ease; }
 }
 
+
+/* AI prices: the sync state, a search over the price list, and your own prices. */
+.price-book .form-card-body { display:flex; flex-direction:column; gap:12px; }
+.price-sync-status { margin:0; font-size:13px; color:var(--color-graphite); }
+.price-search { max-width:420px; }
+.price-search .field { margin:0; }
+.price-book .price-table code { font-size:12px; overflow-wrap:anywhere; }
+.price-form { display:flex; flex-direction:column; gap:12px; }
+.price-form .field { margin:0; }
+
+/* The trace panel's AI cost: the total, then its notes close beneath it. */
+.trace-cost { display:flex; flex-direction:column; gap:8px; }
+.trace-cost p { margin:0; }

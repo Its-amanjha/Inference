@@ -37,6 +37,8 @@ function elapsed(ns) {
 
 export async function render(container) {
   const controller = new AbortController();
+  // Runs whose AI usage was already asked of n8n in this view; the server remembers finished runs too.
+  const usageAsked = new Set();
   const instance = state.instanceId;
   const scope = state.instances.find(item => item.id === instance)?.name || 'all instances';
 
@@ -311,12 +313,16 @@ export async function render(container) {
           const aiSteps = Number(result.ai_spans || 0), unpriced = Number(result.unknown_cost_spans || 0);
           const known = Number(result.known_cost_usd || 0) > 0;
           const unpricedText = `${unpriced} AI ${unpriced === 1 ? 'step' : 'steps'} without a price`;
-          if (!aiSteps) running.replaceChildren();
-          else running.replaceChildren(
+          if (!aiSteps) running.replaceChildren(...(usageNote ? [el('p', {className: 'muted'}, usageNote)] : []));
+          else running.replaceChildren(el('div', {class: 'trace-cost'},
             peekFacts([
               ['AI cost', !unpriced ? cents(result.known_cost_usd) : known ? `At least ${cents(result.known_cost_usd)} · ${unpricedText}` : `Unknown · ${unpricedText}`],
             ]),
-            el('p', {className: 'muted'}, 'All AI steps of this run, priced when each step arrived. Other steps carry no price.'));
+            el('p', {className: 'muted'}, 'All AI steps of this run. Other steps carry no price.'),
+            unpriced ? el('p', {className: 'muted'}, can('admin')
+              ? ['A model without a price needs one: ', el('a', {href: '#settings'}, 'set prices in Settings › AI prices'), '.']
+              : 'A model without a price needs one from an administrator.') : null,
+            usageNote ? el('p', {className: 'muted'}, usageNote) : null));
         }
         const roots = !after ? result.data.filter(span => !span.parent_id) : [];
         const root = roots.length === 1 ? roots[0] : null;
@@ -336,7 +342,28 @@ export async function render(container) {
           running.replaceChildren(loadFailure(error, () => load(after), `Could not load steps for ${workflow}`));
       }
     };
-    load();
+    // n8n's spans usually carry no token counts; its execution records them per model node. Ask the server
+    // to read them once for this run (it keeps what it read), then show the steps.
+    let usageNote = null;
+    (async () => {
+      const key = `${row.instance_id}:${row.trace_id}`;
+      if (execution && !usageAsked.has(key)) {
+        usageAsked.add(key);
+        running.replaceChildren(el('p', {class: 'load-progress', role: 'status'}, 'Reading AI usage from n8n…'));
+        try {
+          const read = await api('/api/otel/traces/' + encodeURIComponent(row.trace_id) + '/usage?' + new URLSearchParams({instance_id: row.instance_id}),
+            {method: 'POST', signal: controller.signal});
+          // n8n prunes old executions, and many setups never save successful ones.
+          if (read.missing) usageNote = 'n8n did not keep this execution, so AI token counts come from telemetry only.';
+        } catch (error) {
+          if (error.name === 'AbortError' || controller.signal.aborted) return;
+          usageAsked.delete(key);  // Opening the run again tries again.
+          const reason = String(error.message || 'The request failed').replace(/[.\s]+$/, '');
+          usageNote = `Could not read AI usage from n8n: ${reason}.`;
+        }
+      }
+      if (!controller.signal.aborted && dialog.isConnected) await load();
+    })();
   }
 
   async function load(before = null) {
