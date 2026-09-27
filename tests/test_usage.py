@@ -5,7 +5,7 @@ import time
 import httpx
 
 from backend.modules.observability.pricing import calculate_cost, find_price
-from backend.modules.observability.usage import execution_usage
+from backend.modules.observability.usage import execution_calls
 from test_fleet import fleet  # noqa: F401  (fixture)
 from test_observability import issue, send
 
@@ -46,25 +46,29 @@ EXECUTION = {
 
 
 def test_usage_is_read_the_way_n8n_reads_it():
-    usage = execution_usage(EXECUTION)
-    assert set(usage) == {'OpenAI Chat Model', 'Groq Chat Model', 'Compatible', 'Expression model', 'Message a model'}
-    chat = usage['OpenAI Chat Model']
-    assert chat['model'] == 'gpt-4o-mini' and chat['provider'] == 'openai' and chat['consumers'] == ['AI Agent']
-    assert [(run['tokens_in'], run['tokens_out']) for run in chat['runs']] == [(800, 100), (200, 50)]
-    assert usage['Groq Chat Model']['runs'][0]['estimated'] is True and usage['Groq Chat Model']['provider'] == 'groq'
+    calls = execution_calls(EXECUTION)
+    by_node = {}
+    for call in calls:
+        by_node.setdefault(call['node'], []).append(call)
+    assert set(by_node) == {'OpenAI Chat Model', 'Groq Chat Model', 'Compatible', 'Expression model', 'Message a model'}
+    chat = by_node['OpenAI Chat Model']
+    assert {(call['model'], call['provider'], tuple(call['consumers'])) for call in chat} == {('gpt-4o-mini', 'openai', ('AI Agent',))}
+    assert [(call['run'], call['runs'], call['tokens_in'], call['tokens_out']) for call in chat] == [(0, 2, 800, 100), (1, 2, 200, 50)]
+    groq = by_node['Groq Chat Model'][0]
+    assert groq['estimated'] is True and groq['provider'] == 'groq' and groq['source'] == 'n8n'
     # An OpenAI node pointed at another service, an expression model and a vendor node.
-    assert usage['Compatible']['provider'] == 'openai-compatible'
-    assert usage['Expression model']['model'] is None
-    assert usage['Message a model'] == {'provider': 'openai', 'model': 'gpt-4.1-mini',
-                                        'runs': [{'tokens_in': 30, 'tokens_out': 12, 'estimated': False}], 'consumers': []}
-    assert 'private answer' not in str(usage)
+    assert by_node['Compatible'][0]['provider'] == 'openai-compatible'
+    assert by_node['Expression model'][0]['model'] is None
+    vendor = by_node['Message a model'][0]
+    assert (vendor['provider'], vendor['model'], vendor['tokens_in'], vendor['tokens_out'], vendor['estimated'], vendor['consumers']) ==         ('openai', 'gpt-4.1-mini', 30, 12, False, [])
+    assert 'private answer' not in str(calls)
 
 
 def test_usage_ignores_malformed_and_absurd_counts():
     broken = {'workflowData': {'nodes': [{'name': 'M', 'type': '@n8n/n8n-nodes-langchain.lmChatOpenAi', 'parameters': {}}]},
               'data': {'resultData': {'runData': {'M': [_lm_run(-1, 5), _lm_run(1.5, 2), _lm_run(10**12, 1), {'data': 'x'}]}}}}
-    assert execution_usage(broken) == {}
-    assert execution_usage(None) == {} and execution_usage({'data': []}) == {}
+    assert execution_calls(broken) == []
+    assert execution_calls(None) == [] and execution_calls({'data': []}) == []
 
 
 CATALOG = {'openai/gpt-4o-mini': {'input_per_million': '0.15', 'output_per_million': '0.6', 'source': 'openrouter'},

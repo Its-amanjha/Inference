@@ -19,13 +19,15 @@ from backend.modules.n8n_proxy.client import N8nClient, instance_guard
 from .ingest import IngestError, parse_traces
 from .classifier import classify, _terminal_ns
 from .pricing import calculate_cost
-from .usage import TERMINAL, apply_usage, execution_usage, reprice
+from .usage import TERMINAL, apply_usage, execution_calls, reprice
 from .pricebook import price_snapshot, router as price_router
 from .polling import router as polling_router
+from .run_costs import router as run_costs_router
 
 router=APIRouter()
 router.include_router(price_router)
 router.include_router(polling_router)
+router.include_router(run_costs_router)
 RAW_LIMIT=2*1024*1024
 
 
@@ -286,6 +288,8 @@ async def cleanup(db):
         await tx.execute("DELETE FROM errors WHERE occurred_at<datetime('now',?)",(f'-{days} days',))
         await tx.execute("DELETE FROM execution_cursors WHERE datetime(json_extract(value_json,'$.received_at'))<datetime('now',?)",(f'-{days} days',))
         await tx.execute("DELETE FROM documents WHERE key LIKE 'trace_usage:%' AND datetime(json_extract(value_json,'$.checked_at'))<datetime('now',?)",(f'-{days} days',))
+        # Run costs keep n8n's start time in one sortable UTC format (2026-09-24T03:15:41.764Z).
+        await tx.execute("DELETE FROM run_costs WHERE started_at<strftime('%Y-%m-%dT%H:%M:%fZ','now',?)",(f'-{days} days',))
 
 
 async def maintenance(app):
@@ -327,7 +331,7 @@ async def trace_usage(trace_id: str,request: Request,instance_id: str=Query(min_
     execution_id=next((span['execution_id'] for span in spans if span['execution_id']),None)
     marker=f'trace_usage:{instance_id}:{trace_id}'
     done=await request.app.state.db.fetchone('SELECT value_json FROM documents WHERE key=?',(marker,))
-    usage,status,gone={},None,False
+    calls,status,gone=[],None,False
     missing=bool(done) and json.loads(done['value_json']).get('missing') is True
     if execution_id and (force or not done):
         try:
@@ -339,19 +343,19 @@ async def trace_usage(trace_id: str,request: Request,instance_id: str=Query(min_
                 raise
             gone=True
         else:
-            usage=execution_usage(remote)
+            calls=execution_calls(remote)
             status=remote.get('status') if isinstance(remote,dict) else None
         missing=gone
     async with request.app.state.db.transaction() as tx:
         await require_current_role(request,'viewer',tx)
         prices=await price_snapshot(tx)
-        updated=await apply_usage(tx,[dict(span) for span in spans],usage,prices) if usage else 0
+        updated=await apply_usage(tx,[dict(span) for span in spans],calls,prices) if calls else 0
         repriced=await reprice(tx,prices,'AND instance_id=? AND trace_id=?',(instance_id,trace_id))
         # A run still going may report more usage later, so only a finished or missing one is marked as read.
         if execution_id and (status in TERMINAL or gone):
             await tx.execute("INSERT INTO documents(key,value_json) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json",
                              (marker,json.dumps({'execution_id':execution_id,'missing':gone,'checked_at':datetime.now(timezone.utc).isoformat()})))
-    return {'execution_id':execution_id,'read':status is not None,'missing':missing,'ai_nodes':len(usage),'updated':updated,'repriced':repriced}
+    return {'execution_id':execution_id,'read':status is not None,'missing':missing,'ai_nodes':len({call['node'] for call in calls}),'updated':updated,'repriced':repriced}
 
 
 @router.get('/retention')
@@ -380,7 +384,7 @@ async def classify_execution(body: Classification,request: Request):
 
 
 async def classify_instance(body,request,client,authorize,generation=None):
-    usage={}
+    calls=[]
     async with instance_guard(request,body.instance_id):
         spans=await request.app.state.db.fetchall('SELECT * FROM otel_spans WHERE instance_id=? AND execution_id=? ORDER BY id LIMIT 2001',(body.instance_id,body.execution_id))
         if len(spans)>2000:
@@ -400,8 +404,8 @@ async def classify_instance(body,request,client,authorize,generation=None):
         else:
             remote=await client.request(body.instance_id,'GET',f'/executions/{body.execution_id}',params={'includeData':'true'})
             execution=execution_summary(remote)
-            # The same read gives the AI steps' token usage (counts and model names only).
-            usage=execution_usage(remote)
+            # The same read gives the AI calls' token usage (counts and model names only).
+            calls=execution_calls(remote)
         node_keys=list({json.dumps([span.get('workflow_id'),span.get('node_id')]) for span in spans})
         histories=await request.app.state.db.fetchall(f"WITH recent AS (SELECT value_json FROM execution_cursors WHERE key LIKE ? AND key<>? ORDER BY json_extract(value_json,'$.checked_at_epoch') DESC LIMIT 1000) SELECT j.key node_key,COUNT(*) successful_runs,SUM(json_extract(j.value,'$.output_items')=0) zero_output_runs FROM recent,json_each(recent.value_json,'$.nodes') j WHERE json_extract(recent.value_json,'$.execution.status')='success' AND json_extract(recent.value_json,'$.connection_hash')=? AND j.key IN ({','.join('?' for _ in node_keys)}) AND json_type(j.value,'$.output_items')='integer' GROUP BY j.key",(body.instance_id+':%',cache_key,connection_hash,*node_keys))
         histories={row['node_key']:row for row in histories}
@@ -418,8 +422,8 @@ async def classify_instance(body,request,client,authorize,generation=None):
         results=[{**result,'trace_id':span['trace_id']} for span,result in zip(spans,results,strict=True)]
         async with request.app.state.db.transaction() as tx:
             await authorize(tx)
-            if usage:
-                await apply_usage(tx,[dict(span) for span in spans],usage,await price_snapshot(tx))
+            if calls:
+                await apply_usage(tx,[dict(span) for span in spans],calls,await price_snapshot(tx))
             nodes={}
             invalid=set()
             for span,result in zip(spans,results,strict=True):

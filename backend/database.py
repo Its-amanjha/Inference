@@ -21,7 +21,7 @@ import aiosqlite
 Params = Sequence[Any] | Mapping[str, Any]
 Row = dict[str, Any]
 T = TypeVar("T")
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 # Bundled skill library, synced from backend/skills/ at boot. Disk is the source of truth; this table
 # is the queryable cache the API and the assistant's get_skill tool both read.
@@ -29,6 +29,19 @@ _SKILLS = {
     'skills': {
         'id': 'TEXT PRIMARY KEY', 'name': 'TEXT NOT NULL', 'description': "TEXT NOT NULL DEFAULT ''",
         'content': 'TEXT NOT NULL', 'updated_at': 'TEXT DEFAULT CURRENT_TIMESTAMP',
+    },
+}
+
+# AI cost of n8n runs, read from their executions (counts, model and node names only; no payload).
+_RUN_COSTS = {
+    'run_costs': {
+        'key': 'TEXT PRIMARY KEY', 'instance_id': 'TEXT NOT NULL REFERENCES instances(id) ON DELETE CASCADE',
+        'execution_id': 'TEXT NOT NULL', 'workflow_id': "TEXT NOT NULL DEFAULT ''",
+        'workflow_name': "TEXT NOT NULL DEFAULT ''", 'status': "TEXT NOT NULL DEFAULT ''",
+        'started_at': "TEXT NOT NULL DEFAULT ''", 'read_state': "TEXT NOT NULL DEFAULT 'read'",
+        'calls_json': "TEXT NOT NULL DEFAULT '[]'", 'ai_calls': 'INTEGER NOT NULL DEFAULT 0',
+        'unpriced_calls': 'INTEGER NOT NULL DEFAULT 0', 'known_cost': "TEXT NOT NULL DEFAULT '0'",
+        'cost_exact': 'TEXT', 'checked_at': 'TEXT NOT NULL',
     },
 }
 
@@ -335,6 +348,13 @@ async def _initialize(connection: aiosqlite.Connection) -> None:
         if current == 6:
             await _create_tables(connection, _SKILLS)
             await _execute(connection, 'PRAGMA user_version=7')
+            current = 7
+        if current == 7:
+            await _create_tables(connection, _RUN_COSTS)
+            await _execute(connection, 'CREATE INDEX IF NOT EXISTS idx_run_costs_instance ON run_costs(instance_id,started_at)')
+            await _execute(connection, 'CREATE INDEX IF NOT EXISTS idx_run_costs_started ON run_costs(started_at)')
+            await _execute(connection, 'PRAGMA user_version=8')
+        await _validate_tables(connection, _RUN_COSTS)
         await _validate_tables(connection, _SKILLS)
         await _validate_tables(connection, _BACKUPS)
         await _validate_tables(connection, _ASSISTANT)

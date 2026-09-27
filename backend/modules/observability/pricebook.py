@@ -2,8 +2,8 @@
 
 OpenRouter schema and per-token units:
 https://openrouter.ai/docs/guides/overview/models
-Bundled standard text-token rates verified 2026-09-08 on the two source_url
-pages below. Catalog/default costs are estimates, not provider billing records.
+Bundled standard text-token rates were verified on each entry's source_url page on
+its updated_at date. Catalog/default costs are estimates, not provider billing records.
 """
 
 import asyncio
@@ -22,7 +22,7 @@ from backend import audit
 from backend.auth_gate import fail, require_current_role, require_role
 from backend.database import Database
 from .pricing import select_prices
-from .usage import reprice
+from .usage import reprice, reprice_runs
 
 
 router = APIRouter()
@@ -43,6 +43,51 @@ BUNDLED = {
         'cached_input_per_million': '0.025', 'source': 'bundled',
         'updated_at': '2026-09-08T00:00:00+00:00', 'estimated': True,
         'source_url': 'https://developers.openai.com/api/docs/models/gpt-4.1-nano'},
+    'gpt-4.1-2025-04-14': {
+        'input_per_million': '2', 'output_per_million': '8',
+        'cached_input_per_million': '0.50', 'source': 'bundled',
+        'updated_at': '2026-09-27T00:00:00+00:00', 'estimated': True,
+        'source_url': 'https://developers.openai.com/api/docs/models/gpt-4.1'},
+    'gpt-4o-2024-08-06': {
+        'input_per_million': '2.50', 'output_per_million': '10',
+        'cached_input_per_million': '1.25', 'source': 'bundled',
+        'updated_at': '2026-09-27T00:00:00+00:00', 'estimated': True,
+        'source_url': 'https://developers.openai.com/api/docs/models/gpt-4o'},
+    'gpt-4o-2024-11-20': {
+        'input_per_million': '2.50', 'output_per_million': '10',
+        'cached_input_per_million': '1.25', 'source': 'bundled',
+        'updated_at': '2026-09-27T00:00:00+00:00', 'estimated': True,
+        'source_url': 'https://developers.openai.com/api/docs/models/gpt-4o'},
+    'gpt-4o-mini-2024-07-18': {
+        'input_per_million': '0.15', 'output_per_million': '0.60',
+        'cached_input_per_million': '0.075', 'source': 'bundled',
+        'updated_at': '2026-09-27T00:00:00+00:00', 'estimated': True,
+        'source_url': 'https://developers.openai.com/api/docs/models/gpt-4o-mini'},
+    'gpt-5-2025-08-07': {
+        'input_per_million': '1.25', 'output_per_million': '10',
+        'cached_input_per_million': '0.125', 'source': 'bundled',
+        'updated_at': '2026-09-27T00:00:00+00:00', 'estimated': True,
+        'source_url': 'https://developers.openai.com/api/docs/models/gpt-5'},
+    'gpt-5-mini-2025-08-07': {
+        'input_per_million': '0.25', 'output_per_million': '2',
+        'cached_input_per_million': '0.025', 'source': 'bundled',
+        'updated_at': '2026-09-27T00:00:00+00:00', 'estimated': True,
+        'source_url': 'https://developers.openai.com/api/docs/models/gpt-5-mini'},
+    'gpt-5-nano-2025-08-07': {
+        'input_per_million': '0.05', 'output_per_million': '0.40',
+        'cached_input_per_million': '0.005', 'source': 'bundled',
+        'updated_at': '2026-09-27T00:00:00+00:00', 'estimated': True,
+        'source_url': 'https://developers.openai.com/api/docs/models/gpt-5-nano'},
+    'o3-2025-04-16': {
+        'input_per_million': '2', 'output_per_million': '8',
+        'cached_input_per_million': '0.50', 'source': 'bundled',
+        'updated_at': '2026-09-27T00:00:00+00:00', 'estimated': True,
+        'source_url': 'https://developers.openai.com/api/docs/models/o3'},
+    'o4-mini-2025-04-16': {
+        'input_per_million': '1.10', 'output_per_million': '4.40',
+        'cached_input_per_million': '0.275', 'source': 'bundled',
+        'updated_at': '2026-09-27T00:00:00+00:00', 'estimated': True,
+        'source_url': 'https://developers.openai.com/api/docs/models/o4-mini'},
 }
 
 
@@ -151,7 +196,8 @@ async def override_price(model: str, body: PriceInput, request: Request) -> dict
     async with request.app.state.db.transaction() as tx:
         await require_current_role(request, 'admin', tx)
         await _save_layer(tx, model, 'override', entry)
-        repriced = await reprice(tx, await price_snapshot(tx))
+        prices = await price_snapshot(tx)
+        repriced = await reprice(tx, prices) + await reprice_runs(tx, prices)
     await audit.record(request, 'observability.price_override', model)
     return {'model': model, **entry, 'repriced': repriced}
 
@@ -291,7 +337,9 @@ async def _sync(app: FastAPI, request: Request | None = None) -> dict:
                 await require_current_role(request, 'admin', tx)
             for model, entry in entries.items():
                 await _save_layer(tx, model, 'live', entry)
-            await reprice(tx, await price_snapshot(tx))
+            prices = await price_snapshot(tx)
+            await reprice(tx, prices)
+            await reprice_runs(tx, prices)
             state = await _state(tx)
             state.update(last_attempt=timestamp, last_success=timestamp, failures=0,
                          last_error=None, next_attempt=time.time()+REFRESH_SECONDS,

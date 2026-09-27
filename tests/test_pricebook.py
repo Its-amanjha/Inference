@@ -54,12 +54,14 @@ async def test_seed_is_offline_idempotent_and_documented(book):
     first = await book.db.fetchall('SELECT * FROM price_book ORDER BY model')
     await pricebook.seed_prices(book.db)
     assert await book.db.fetchall('SELECT * FROM price_book ORDER BY model') == first
-    assert len(first) == 2
+    assert len(first) == len(pricebook.BUNDLED)
     assert not book.calls
-    entry = json.loads(first[0]['value_json'])['bundled']
-    assert entry['source'] == 'bundled'
-    assert entry['source_url'].startswith('https://developers.openai.com/')
-    assert entry['updated_at'].startswith('2026-09-08')
+    # Every bundled price names the page it was checked on and when.
+    for row in first:
+        entry = json.loads(row['value_json'])['bundled']
+        assert entry['source'] == 'bundled' and entry['estimated'] is True
+        assert entry['source_url'].startswith('https://developers.openai.com/api/docs/models/')
+        assert entry['updated_at'][:10] in ('2026-09-08', '2026-09-27')
 
 
 async def test_sync_converts_exact_rates_uses_no_credentials_and_persists_opt_in(book):
