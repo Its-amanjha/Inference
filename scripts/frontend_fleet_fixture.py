@@ -18,6 +18,9 @@ REPAIR_WORKFLOW_ID = 'wf-orders'
 REPAIR_EXECUTION_ID = '4821'
 REPAIR_ERROR_MESSAGE = 'Request failed with status code 404'
 AI_EXECUTION_ID = '4830'
+FAILED_EXECUTION_IDS = ('4831', '4832')
+# Sits in the failed runs' error description and stack, which must never be stored or shown.
+FAILED_SECRET = 'sk-fixture-failed-run-secret-0123456789'
 # Prompt and answer text of the AI run; it must never reach a browser.
 AI_PRIVATE_TEXT = 'fixture-private-invoice-text'
 # n8n 2.19 public API workflow PUT: required writable fields, read-only fields, closed settings object.
@@ -219,6 +222,21 @@ def ai_execution():
             'workflowData': {'id': 'wf-invoices', 'name': 'Invoice summary', 'active': True, 'nodes': nodes, 'connections': connections, 'settings': {}}}
 
 
+def failed_executions():
+    """Two runs of Invoice summary that failed the same way at the same step; only their order numbers differ."""
+    runs = []
+    for index, (identifier, order) in enumerate(zip(FAILED_EXECUTION_IDS, (1042, 1043))):
+        started = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(minutes=20 - index * 10)
+        error = {'name': 'NodeApiError', 'message': f'Invoice {order} was rejected: Request failed with status code 422',
+                 'description': f'POST https://billing.example/invoices/{order} Authorization: Bearer {FAILED_SECRET}',
+                 'stack': f'NodeApiError at send ({FAILED_SECRET})', 'node': {'name': 'Send invoice', 'type': 'n8n-nodes-base.httpRequest'}}
+        runs.append({'id': identifier, 'finished': False, 'mode': 'webhook', 'retryOf': None, 'retrySuccessId': None, 'status': 'error',
+                     'startedAt': _iso(started), 'stoppedAt': _iso(started + timedelta(seconds=2)), 'workflowId': 'wf-invoices', 'waitTill': None,
+                     'data': {'resultData': {'error': error, 'runData': {}, 'lastNodeExecuted': 'Send invoice'}},
+                     'workflowData': {'id': 'wf-invoices', 'name': 'Invoice summary', 'active': True, 'nodes': [], 'connections': {}, 'settings': {}}})
+    return runs
+
+
 def enable_repair(state):
     """Expose wf-orders and its failed execution on the source instance. Call only after the fleet assertions,
     which count workflows, executions and Activate buttons."""
@@ -319,7 +337,7 @@ def fleet_fixture():
     # ai_runs: list the AI run on the source instance (only after the fleet assertions, which count executions).
     state = {'source': deepcopy(original), 'target': None, 'writes': [],
              'repair': new_repair_state(), 'provider': {'script': [], 'requests': [], 'content_hash': None},
-             'ai_runs': False, 'ai_execution': ai_execution()}
+             'ai_runs': False, 'ai_execution': ai_execution(), 'failed_executions': failed_executions()}
     lock = Lock()
 
     class Handler(BaseHTTPRequestHandler):
@@ -412,14 +430,16 @@ def fleet_fixture():
             workflow = state[instance]
             body = None
             repair_on = instance == 'source' and state['repair']['enabled']
-            if instance == 'source' and state['ai_runs'] and self.command == 'GET' and endpoint in ('executions', 'executions/' + AI_EXECUTION_ID):
+            ai_views = {run['id']: run for run in [state['ai_execution'], *state['failed_executions']]}
+            if instance == 'source' and state['ai_runs'] and self.command == 'GET' and (endpoint == 'executions' or endpoint.split('/')[-1] in ai_views):
                 if endpoint == 'executions':
-                    listed = [execution_view(state['ai_execution'], False)]
+                    listed = [execution_view(run, False) for run in [state['ai_execution'], *reversed(state['failed_executions'])]]
                     if repair_on:
                         listed.append(execution_view(state['repair']['execution'], False))
                     self.reply(200, {'data': listed, 'nextCursor': None})
                 else:
-                    self.reply(200, execution_view(state['ai_execution'], parse_qs(urlsplit(self.path).query).get('includeData') == ['true']))
+                    run = ai_views[endpoint.split('/')[-1]]
+                    self.reply(200, execution_view(run, parse_qs(urlsplit(self.path).query).get('includeData') == ['true']))
                 return
             if repair_on and self.handle_repair(endpoint):
                 return

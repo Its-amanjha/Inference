@@ -6,6 +6,7 @@ import {loadingState,loadFailure} from './payload.js';
 import {instanceName,relativeTime,relativePhrase,parseTimestamp,runBadge,n8nUrl} from './triage.js';
 import {openPeek,peekFacts,peekSection,peekCopy} from './peek.js';
 import {rowMenu} from './row-menu.js';
+import {checkRuns} from './run-scan.js';
 import {state,pageSize,can} from '../state.js';
 
 // A USD amount (a decimal string) for reading, always in dollars: cents from $1, four decimal places below it
@@ -57,7 +58,7 @@ export function runCosts({api, signal, instanceId}) {
   const olderRuns = button('Older runs', () => loadRuns(listCursor), 'ghost');
   const checkOlder = button('Check older runs in n8n', () => check(true), 'ghost');
   olderRuns.hidden = checkOlder.hidden = true;
-  const action = button('Check for new runs', () => check(false), 'ghost');
+  const action = button('Check for new runs', () => check(false, true), 'ghost');
   const node = el('div', {class: 'stack run-costs'}, strip, messages, notes,
     el('section', {class: 'card result-card', 'aria-label': 'AI cost by workflow', hidden: true}, byWorkflow),
     el('section', {class: 'card result-card', 'aria-label': 'Runs with AI calls', hidden: true}, runs,
@@ -184,32 +185,20 @@ export function runCosts({api, signal, instanceId}) {
     }
   }
 
-  // One check per instance, in turn: n8n answers one request at a time per instance anyway.
-  async function checkInstances(older) {
-    const results = [];
-    for (const instance of scope) {
-      if (older && !scanCursors.get(instance)) continue;
-      try {
-        const result = await api('/api/otel/runs/scan', {method: 'POST', signal,
-          json: {instance_id: instance, ...(older ? {cursor: scanCursors.get(instance)} : {})}});
-        scanCursors.set(instance, result.next_cursor || null);
-        results.push({instance, result});
-      } catch (error) {
-        if (signal.aborted || error.name === 'AbortError') throw error;
-        results.push({instance, error});
-      }
-    }
+  async function checkInstances(older, force) {
+    const results = await checkRuns(api, scope, {signal, force, cursors: older ? scanCursors : null});
+    for (const {instance, result} of results) if (result) scanCursors.set(instance, result.next_cursor || null);
     return results;
   }
 
-  async function check(older = false) {
+  async function check(older = false, force = false) {
     if (busy || signal.aborted) return;
     busy = true;
     action.disabled = checkOlder.disabled = true;
     messages.replaceChildren(el('p', {class: 'load-progress', role: 'status'},
       older ? 'Reading older runs from n8n…' : `Reading new runs from n8n for ${scopeName}…`));
     try {
-      const results = scope.length ? await checkInstances(older) : [];
+      const results = scope.length ? await checkInstances(older, force) : [];
       const params = new URLSearchParams({days: String(DAYS)});
       if (instanceId) params.set('instance_id', instanceId);
       const [summary, listed] = await Promise.all([api('/api/otel/runs/summary?' + params, {signal}), loadRuns()]);

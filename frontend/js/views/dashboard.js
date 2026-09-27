@@ -5,6 +5,7 @@ import {icon,registerIcons} from '../lib/icons.js';
 import {severityPill,relativeTime,instanceName,explainHref,repairHref,n8nUrl,runBadge,runDuration as duration} from '../lib/triage.js';
 import {loadingState,loadFailure,asOf,cachedProbe,fleetMetrics} from '../lib/payload.js';
 import {rowMenu} from '../lib/row-menu.js';
+import {checkRuns} from '../lib/run-scan.js';
 
 
 // Adapted Lucide SVG paths, kept local and rendered at the shared UI stroke width.
@@ -50,6 +51,8 @@ export async function render(container) {
     ...(state.instances.length?[el('div',{class:'dashboard-columns'},panel('Investigation queue',wrap(2),'View all errors','#errors','overview-queue'),panel('Connected instances',fleet,'All instances','#instances','overview-server')),
       panel('Recent executions',wrap(0),'Open Observability','#observe','observe')]:[onboarding()]));
   const scoped=instance?state.instances.filter(row=>row.id===instance):state.instances;
+  // Failed runs are read from n8n as the Overview opens; new ones arrive as a live update.
+  if(scoped.length)checkRuns(api,scoped.map(row=>row.id),{signal:controller.signal}).catch(()=>{});
   function renderFleet(metrics) {
     fleet.replaceChildren();
     if(!scoped.length){fleet.append(empty('Connect your first instance','Connect your automation environment to see workflows and execution history.',[el('a',{class:'button ghost',href:'#instances'},icon('add'),'Open instances')],'instances'));return;}

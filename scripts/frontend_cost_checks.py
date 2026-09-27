@@ -5,7 +5,7 @@ import re
 
 from playwright.sync_api import expect
 
-from frontend_fleet_fixture import AI_PRIVATE_TEXT, choose_instance
+from frontend_fleet_fixture import AI_PRIVATE_TEXT, FAILED_SECRET, choose_instance
 
 
 def exercise_ai_cost(page, state, artifacts):
@@ -14,7 +14,7 @@ def exercise_ai_cost(page, state, artifacts):
     finished = []
 
     def keep(request):
-        if '/api/otel/runs' in request.url:
+        if '/api/otel/runs' in request.url or '/api/errors' in request.url:
             finished.append(request)
     page.on('requestfinished', keep)
     try:
@@ -25,6 +25,9 @@ def exercise_ai_cost(page, state, artifacts):
         choose_instance(page, '')
         page.evaluate("location.hash = 'observe'")
         expect(page.get_by_role('button', name='AI cost', exact=True)).to_have_attribute('aria-pressed', 'true')
+        # Opening a view reuses a check of n8n made in the last minute (earlier views made one before the
+        # simulated runs existed), so ask for a new one.
+        page.get_by_role('button', name='Check for new runs', exact=True).click()
         strip = page.get_by_role('region', name='AI cost, last 7 days')
         # 4,000 input tokens at $2, 8,000 cached at $0.50 and 900 output at $8 per million (gpt-4.1's bundled
         # price) is $0.0192; the gpt-4o-mini call has no price here, so the total is a lower bound.
@@ -66,15 +69,31 @@ def exercise_ai_cost(page, state, artifacts):
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'), 'AI cost overflows on a phone'
         page.screenshot(path=str(artifacts / 'ai-cost-mobile.png'), full_page=True)
         page.set_viewport_size({'width': 1440, 'height': 1000})
+        # The two failed runs read from n8n (no telemetry) are one problem in Errors, seen twice.
+        page.evaluate("location.hash = 'errors'")
+        problem = page.get_by_role('row').filter(has_text='Send invoice')
+        expect(problem).to_have_count(1)
+        expect(problem).to_contain_text('Invoice summary')
+        expect(problem).to_contain_text('Request failed with status code 422')
+        expect(problem).to_contain_text('2 occurrences')
+        problem.locator('.triage-open').click()
+        details = page.get_by_role('dialog', name='Invoice summary')
+        expect(details).to_contain_text('First seen')
+        expect(details).to_contain_text('Latest execution')
+        expect(details).to_contain_text('4832')
+        page.screenshot(path=str(artifacts / 'errors-grouped.png'))
+        details.get_by_role('button', name='Close details', exact=True).click()
+        assert FAILED_SECRET not in page.content()
         # Only counts, models and prices leave the server: no prompt or answer text.
         assert AI_PRIVATE_TEXT not in page.content()
         assert finished, 'no AI cost request finished'
         for request in finished:
             response = request.response()
             if response and response.ok:
-                assert AI_PRIVATE_TEXT not in response.text(), request.url
+                assert AI_PRIVATE_TEXT not in response.text() and FAILED_SECRET not in response.text(), request.url
     finally:
         page.remove_listener('requestfinished', keep)
         state['ai_runs'] = False
     print('PASS: AI cost read from n8n executions without telemetry: HTTP Request usage priced with cached input, '
-          'an unpriced n8n model shown as a lower bound, per-workflow totals, run panel, tabs, phone layout, no payload text.', flush=True)
+          'an unpriced n8n model shown as a lower bound, per-workflow totals, run panel, tabs, phone layout; two failed runs '
+          'grouped as one error with 2 occurrences; no payload text or secret.', flush=True)

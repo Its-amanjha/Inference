@@ -538,3 +538,32 @@ session/CSRF, the trace panel counting HTTP Request calls, and the v7 to v8 migr
 "At least 1.92 ¢", the per-call panel, tabs, phone layout, no payload text in the page or API responses).
 Desktop and 390px screenshots of both tabs and the run panel inspected. Not verified: a scan through the live
 app against the VPS n8n (the parser and prices were checked read-only against its two real runs).
+
+
+## 2026-09-28 — Errors grouped by problem, and read from n8n without telemetry
+
+The user found Errors indistinguishable from Traces: every failed run was its own error row (the `count`
+column was never above 1), and errors came only from telemetry, which their VPS n8n does not send. Also found:
+nothing on the server ever sent the `errors.changed` event the frontend listens for.
+
+- Grouping (`backend/modules/errors/grouping.py`, schema v9 `errors.group_key` with an index): same instance,
+  workflow, step, error type and message (run-specific values masked; three-digit codes kept) are one error.
+  `GET /api/errors` returns one row per group (count in retention, first and last seen, latest execution,
+  `returned` when it came back after a resolve); resolve closes every open occurrence; reopen restores exactly
+  what the latest resolve closed. A late root span that fills in a workflow ID re-groups the record.
+- n8n as a source: the run scan records failed and crashed runs (step and masked message only; description,
+  stack and run data never kept). One record per run whichever source reports first (`run_error_key`).
+- `errors.changed` is now broadcast after telemetry, classification and scans record new failures.
+- UI: Overview, Errors and Observability check n8n for new runs as they open (shared `lib/run-scan.js`, at most
+  once a minute per instance per tab); the Errors details panel shows first seen, latest execution and "came
+  back"; rows that came back carry a "Back after resolve" badge.
+- Background checks while no page is open still need the poller switched on; it has no UI switch yet.
+
+Verification: full Windows backend suite **940 passed, 11 skipped** (6 new in `tests/test_error_groups.py`:
+message masking, one error across runs with resolve/undo/come-back, failures read from n8n with the secret in
+message, description and stack never stored, one record per run whichever source is first, the live event,
+and the v8 to v9 migration with regrouping; the identity test now expects one error seen twice). Complete
+`scripts/smoke_frontend.py` **19/19 PASS**; the AI cost check now also finds two simulated failed runs as one
+error with 2 occurrences, first and last seen and the latest execution, with no secret in the page or API
+responses. First smoke run failed because the AI cost check reused a check made under a minute earlier, before
+the simulated runs existed; the check now asks for a new one.

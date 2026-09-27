@@ -7,6 +7,7 @@ import {askText,confirmAction} from '../lib/confirm.js';
 import {rowMenu} from '../lib/row-menu.js';
 import {segmented} from '../lib/select-menu.js';
 import {openPeek,peekFacts,peekSection,peekCopy,closePeek} from '../lib/peek.js';
+import {checkRuns} from '../lib/run-scan.js';
 
 const SORT_COL_KEYS = ['severity', 'workflow', 'instance', 'count', 'when'];
 // Severity sorts by weight, not by its label: execution errors, silent failures, then warnings.
@@ -499,10 +500,12 @@ export async function render(container){
       meta: `${node} · ${instanceName(row.instance_id)}`,
       sections: [
         el('p', { class: 'peek-message' }, row.error_message ? String(row.error_message) : el('span', { class: 'triage-missing' }, 'Message unavailable')),
+        row.returned ? el('p', { class: 'coverage-partial', role: 'status' }, icon('info'), el('span', {}, 'This came back after it was marked resolved.')) : null,
         peekFacts([
           ['Last seen', relativeTime(row.occurred_at)],
+          ['First seen', row.count > 1 && row.first_seen ? relativeTime(row.first_seen) : null],
           ['Occurrences', row.count === null || row.count === undefined ? null : String(row.count)],
-          ['Execution', row.execution_id ? peekCopy(row.execution_id, 'execution ID') : 'Not recorded'],
+          [row.count > 1 ? 'Latest execution' : 'Execution', row.execution_id ? peekCopy(row.execution_id, 'execution ID') : 'Not recorded'],
           ['Workflow', row.workflow_id ? el('span', { class: 'peek-inline' }, peekCopy(row.workflow_id, 'workflow ID'), workflowLink ? external(workflowLink, 'Open in n8n', 'peek-link') : null) : null],
           ['Status', row.status === 'resolved' ? (resolvedAt ? `Resolved ${resolvedAt.toLocaleString()}` : 'Resolved') : 'Open'],
         ]),
@@ -647,7 +650,8 @@ export async function render(container){
     }
 
     const severity = severityOf(row.error_type);
-    const subjectCell = cell('Error','triage-subject',el('div',{class:'triage-subject-body'},open,message(row.error_message)));
+    const subjectCell = cell('Error','triage-subject',el('div',{class:'triage-subject-body'},open,message(row.error_message),
+      row.returned?el('span',{class:'badge warning triage-returned'},'Back after resolve'):null));
     subjectCell._rowMeta = { workflow, node, severity: severity.label };
     const occurred = parseTimestamp(row.occurred_at);
     const known = row.count !== null && row.count !== undefined;
@@ -737,6 +741,11 @@ export async function render(container){
   }
 
   await load();
+  // Failed runs are read from n8n as the page opens, so Errors works without telemetry. New ones arrive as a
+  // live update; an empty list, with nothing on screen to disturb, is simply loaded again.
+  checkRuns(api, instance ? [instance] : state.instances.map(item => item.id), {signal}).then(results => {
+    if (!signal.aborted && !rows.length && results.some(({result}) => result?.errors)) load();
+  }, () => {});
   // #errors?focus=<id> (from the Overview) opens that error's details once it is loaded.
   const focusId = initialParams.get('focus');
   const focused = focusId && !controller.signal.aborted ? rows.find(row => String(row.id) === focusId) : null;
