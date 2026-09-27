@@ -259,6 +259,8 @@ def main() -> None:
                         # real dashboard budget; its own dashboard visit is served from a fixture.
                         from frontend_repair_checks import exercise_repair
                         exercise_repair(page, fixture_url, fixture_state, artifacts)
+                        from frontend_cost_checks import exercise_ai_cost
+                        exercise_ai_cost(page, fixture_state, artifacts)
                     exercise_admin(page)
                     from frontend_design_checks import exercise_design
                     exercise_design(page, artifacts)

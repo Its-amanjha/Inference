@@ -14,7 +14,7 @@ export function actionIcon(label) {
   if(typeof label!=='string')return null;
   const match=[[/^(Connect model|Connect provider)/i,'test'],[/^(Providers and remote tools)/i,'settings'],[/^(Context and privacy|What the AI sees)/i,'shield'],[/^(Assistant settings|Configure|Settings)/i,'settings'],
     // Each verb gets its own glyph: previewing changes, checking again and testing a connection are different acts.
-    [/^Repair/i,'wrench'],[/^(AI workspace|Conversation|Explain|Continue)/i,'assistant'],[/^(Code editor|CodeLab)/i,'codelab'],[/^Check changes/i,'eye'],[/^(Check again|Check fleet|Check target state|Reload|Refresh|Retry|Reconcile|Restore)/i,'refresh'],
+    [/^Repair/i,'wrench'],[/^(AI workspace|Conversation|Explain|Continue)/i,'assistant'],[/^(Code editor|CodeLab)/i,'codelab'],[/^Check changes/i,'eye'],[/^(Check again|Check fleet|Check target state|Check for new|Reload|Refresh|Retry|Reconcile|Restore)/i,'refresh'],
     [/^(Check tool calling|Re-check|Test)/i,'test'],[/^(Provision)/i,'containers'],[/^(Preview|View|Inspect|Details)/i,'eye'],[/^Shortcuts/i,'help'],[/^Replace/i,'edit'],[/^Undo/i,'history'],[/^(Open|Load|Resume)/i,'arrow'],
     [/^(Send)/i,'send'],[/^(Copy)/i,'copy'],[/^(Clear|Reset)/i,'close'],[/^(Filter)/i,'filter'],[/^(Save|Create admin)/i,'save'],[/^(Add|New|Create)/i,'add'],[/^Edit/i,'edit'],[/^(Delete|Remove|Purge)/i,'delete'],
     [/^(Activate|Start|Run now)/i,'play'],[/^(Deactivate|Stop|Disable)/i,'stop'],[/^(Confirm|Mark resolved|Enable|Done)/i,'check'],[/^Cancel/i,'close'],[/^(Download|Export)/i,'download'],[/^(Search|Discover)/i,'search'],[/^Sign out/i,'logout'],[/^(Deploy|Promote)/i,'promote']].find(([pattern])=>pattern.test(label));

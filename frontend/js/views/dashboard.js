@@ -48,7 +48,7 @@ export async function render(container) {
   container.append(el('div',{class:'page-heading-row'},heading('Fleet overview',`${scope} · Execution health and findings that need attention.`),actions),
     sections[1].feedback,sections[1].stamp,stats,coverage,
     ...(state.instances.length?[el('div',{class:'dashboard-columns'},panel('Investigation queue',wrap(2),'View all errors','#errors','overview-queue'),panel('Connected instances',fleet,'All instances','#instances','overview-server')),
-      panel('Recent executions',wrap(0),'View traces','#observe')]:[onboarding()]));
+      panel('Recent executions',wrap(0),'View traces','#observe?tab=traces')]:[onboarding()]));
   const scoped=instance?state.instances.filter(row=>row.id===instance):state.instances;
   function renderFleet(metrics) {
     fleet.replaceChildren();

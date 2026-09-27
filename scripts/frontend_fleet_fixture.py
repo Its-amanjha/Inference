@@ -17,6 +17,9 @@ REPAIR_SECRET = 'sk-fixture-secret'
 REPAIR_WORKFLOW_ID = 'wf-orders'
 REPAIR_EXECUTION_ID = '4821'
 REPAIR_ERROR_MESSAGE = 'Request failed with status code 404'
+AI_EXECUTION_ID = '4830'
+# Prompt and answer text of the AI run; it must never reach a browser.
+AI_PRIVATE_TEXT = 'fixture-private-invoice-text'
 # n8n 2.19 public API workflow PUT: required writable fields, read-only fields, closed settings object.
 PUT_REQUIRED = ('name', 'nodes', 'connections', 'settings')
 PUT_WRITABLE = frozenset(PUT_REQUIRED) | {'staticData'}
@@ -187,6 +190,35 @@ def execution_view(execution, include_data):
     return view
 
 
+def ai_execution():
+    """A finished run that called OpenAI twice: with the HTTP Request node (the service's own usage block, a
+    model with a bundled price) and with an n8n chat-model sub-node (n8n's tokenUsage, a model with no price)."""
+    started = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(minutes=5)
+    nodes = [
+        {'id': 'hook', 'name': 'Webhook', 'type': 'n8n-nodes-base.webhook', 'typeVersion': 2, 'position': [0, 0], 'parameters': {'path': 'invoice'}},
+        {'id': 'ask', 'name': 'Summarize invoice', 'type': 'n8n-nodes-base.httpRequest', 'typeVersion': 4.2, 'position': [200, 0],
+         'parameters': {'method': 'POST', 'url': 'https://api.openai.com/v1/responses'}},
+        {'id': 'agent', 'name': 'Classify invoice', 'type': '@n8n/n8n-nodes-langchain.agent', 'typeVersion': 2, 'position': [400, 0], 'parameters': {}},
+        {'id': 'model', 'name': 'OpenAI Chat Model', 'type': '@n8n/n8n-nodes-langchain.lmChatOpenAi', 'typeVersion': 1.2, 'position': [400, 200],
+         'parameters': {'model': {'__rl': True, 'value': 'gpt-4o-mini', 'mode': 'list'}}}]
+    connections = {'Webhook': {'main': [[{'node': 'Summarize invoice', 'type': 'main', 'index': 0}]]},
+                   'Summarize invoice': {'main': [[{'node': 'Classify invoice', 'type': 'main', 'index': 0}]]},
+                   'OpenAI Chat Model': {'ai_languageModel': [[{'node': 'Classify invoice', 'type': 'ai_languageModel', 'index': 0}]]}}
+    answer = {'object': 'response', 'model': 'gpt-4.1-2025-04-14', 'output': [{'content': [{'text': AI_PRIVATE_TEXT}]}],
+              'usage': {'input_tokens': 12000, 'input_tokens_details': {'cached_tokens': 8000}, 'output_tokens': 900,
+                        'output_tokens_details': {'reasoning_tokens': 0}, 'total_tokens': 12900}}
+    run_data = {
+        'Webhook': [{'data': {'main': [[{'json': {'body': {'invoice': AI_PRIVATE_TEXT}}}]]}}],
+        'Summarize invoice': [{'data': {'main': [[{'json': answer}]]}}],
+        'OpenAI Chat Model': [{'data': {'ai_languageModel': [[{'json': {'response': {'generations': [[{'text': AI_PRIVATE_TEXT}]]},
+                                                                         'tokenUsage': {'promptTokens': 600, 'completionTokens': 40, 'totalTokens': 640}}}]]}}],
+        'Classify invoice': [{'data': {'main': [[{'json': {'output': AI_PRIVATE_TEXT}}]]}}]}
+    return {'id': AI_EXECUTION_ID, 'finished': True, 'mode': 'webhook', 'retryOf': None, 'retrySuccessId': None, 'status': 'success',
+            'startedAt': _iso(started), 'stoppedAt': _iso(started + timedelta(seconds=4)), 'workflowId': 'wf-invoices', 'waitTill': None,
+            'data': {'resultData': {'runData': run_data}},
+            'workflowData': {'id': 'wf-invoices', 'name': 'Invoice summary', 'active': True, 'nodes': nodes, 'connections': connections, 'settings': {}}}
+
+
 def enable_repair(state):
     """Expose wf-orders and its failed execution on the source instance. Call only after the fleet assertions,
     which count workflows, executions and Activate buttons."""
@@ -284,8 +316,10 @@ def fleet_fixture():
         'nodes': [{'id': 'code', 'name': 'Code', 'type': 'n8n-nodes-base.code',
                    'typeVersion': 2, 'position': [0, 0], 'parameters': {'jsCode': 'return items;'}}],
         'connections': {}, 'settings': {}}
+    # ai_runs: list the AI run on the source instance (only after the fleet assertions, which count executions).
     state = {'source': deepcopy(original), 'target': None, 'writes': [],
-             'repair': new_repair_state(), 'provider': {'script': [], 'requests': [], 'content_hash': None}}
+             'repair': new_repair_state(), 'provider': {'script': [], 'requests': [], 'content_hash': None},
+             'ai_runs': False, 'ai_execution': ai_execution()}
     lock = Lock()
 
     class Handler(BaseHTTPRequestHandler):
@@ -378,6 +412,15 @@ def fleet_fixture():
             workflow = state[instance]
             body = None
             repair_on = instance == 'source' and state['repair']['enabled']
+            if instance == 'source' and state['ai_runs'] and self.command == 'GET' and endpoint in ('executions', 'executions/' + AI_EXECUTION_ID):
+                if endpoint == 'executions':
+                    listed = [execution_view(state['ai_execution'], False)]
+                    if repair_on:
+                        listed.append(execution_view(state['repair']['execution'], False))
+                    self.reply(200, {'data': listed, 'nextCursor': None})
+                else:
+                    self.reply(200, execution_view(state['ai_execution'], parse_qs(urlsplit(self.path).query).get('includeData') == ['true']))
+                return
             if repair_on and self.handle_repair(endpoint):
                 return
             if self.command == 'GET':

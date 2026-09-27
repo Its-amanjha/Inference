@@ -507,3 +507,34 @@ did not keep, re-pricing on a new override and removal, stopping the refresh); c
 `scripts/smoke_frontend.py` **18/18 PASS** with a new check that adds a price, rejects a malformed number
 and removes it; desktop and 390px screenshots of Settings › AI prices and the trace panel inspected. Not
 verified: usage read against a live n8n AI execution, and the Docker image with the smaller lock.
+
+
+## 2026-09-27 — AI cost from n8n runs, without telemetry
+
+The user's VPS n8n sends no telemetry (it cannot reach Inference on 127.0.0.1) and calls OpenAI through an HTTP
+Request node, which n8n counts nothing for, so no AI cost appeared. Checked read-only against the two real runs
+(executions 2027 and 2028, `gpt-4.1-2025-04-14` via the Responses API): $0.078726 and $0.08887 (the second had
+28,416 cached input tokens).
+
+- Parser (`usage.py`): one list of AI calls per execution for both paths (trace panel and run costs). HTTP
+  Request answers are read from their usage block (OpenAI Chat Completions/Responses and compatible services,
+  Anthropic with cache reads/writes as input, Gemini with thinking as output, Ollama); the service comes from the
+  URL's literal host, anything else is `openai-compatible`. Code nodes are not read (no double counting).
+- Pricing: explicit OpenAI snapshot names priced as their model (`SNAPSHOTS`, recorded as `priced_as`) and nine
+  more bundled snapshot prices, each checked on its OpenAI model page 2026-09-27; `gpt-4o-2024-05-13` excluded.
+- Storage and routes: schema v8 table `run_costs` (per run: counts, models, prices; FK cascade with its
+  instance, telemetry retention by start time); `POST /api/otel/runs/scan`, `GET /api/otel/runs`,
+  `GET /api/otel/runs/summary`. Finished runs are read once; missing or oversized ones are recorded as
+  unreadable; other failures stop the check and are reported; new prices re-price calls that had none.
+- UI: Observability has "AI cost" (default) and "Traces" tabs on one bar with the tab's action on the right.
+  AI cost shows 7-day totals, per-workflow totals, runs with AI calls and a panel with each call; partial data
+  (unreachable instance, unreadable or running runs) uses the dashed partial-data note.
+
+Verification: full Windows backend suite **934 passed, 11 skipped** (11 new: response shapes, non-AI JSON,
+HTTP Request calls by host and model with Code nodes ignored, snapshot pricing limits, scan/list/summary with
+running and missing runs, a failed read that stops and resumes, retention, re-pricing, instance deletion,
+session/CSRF, the trace panel counting HTTP Request calls, and the v7 to v8 migration); complete
+`scripts/smoke_frontend.py` **19/19 PASS** with the new `scripts/frontend_cost_checks.py` (simulated AI run:
+"At least 1.92 ¢", the per-call panel, tabs, phone layout, no payload text in the page or API responses).
+Desktop and 390px screenshots of both tabs and the run panel inspected. Not verified: a scan through the live
+app against the VPS n8n (the parser and prices were checked read-only against its two real runs).

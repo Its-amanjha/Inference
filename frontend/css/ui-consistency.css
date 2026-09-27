@@ -225,3 +225,25 @@
 /* The trace panel's AI cost: the total, then its notes close beneath it. */
 .trace-cost { display:flex; flex-direction:column; gap:8px; }
 .trace-cost p { margin:0; }
+
+/* Observability › AI cost: cost read from n8n's executions, by workflow and by run. */
+.run-costs>:empty { display:none; }
+.run-costs .observe-summary-strip { margin:0; }
+.run-costs .observe-metric-cell .metric-hint { margin:0; font-size:12px; line-height:1.4; color:var(--color-smoke); }
+.run-costs .observe-metric-cell .metric-hint:empty { display:none; }
+.run-cost-notes { display:flex; flex-direction:column; gap:8px; }
+.run-cost-notes .coverage-partial { margin:0; padding:10px 14px; }
+.run-cost-notes .coverage-partial>.icon { flex:none; width:16px; height:16px; margin-top:2px; }
+.result-card-title { margin:0; padding:14px 16px 4px; font-size:14px; font-weight:600; }
+.run-cost-source { display:block; font-size:12px; color:var(--color-smoke); }
+/* Two paging buttons: the foot shows while either is visible. */
+.run-costs .result-card-foot:has(> button[hidden]) { display:flex; gap:8px; }
+.run-costs .result-card-foot:not(:has(> button:not([hidden]))) { display:none; }
+.run-calls { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px; }
+.run-calls>li { display:flex; flex-direction:column; gap:4px; padding:12px 14px; border:1px solid var(--border); border-radius:12px; }
+.run-calls p { margin:0; font-size:13px; overflow-wrap:anywhere; }
+.run-calls code { font-size:12px; }
+.run-call-head { display:flex; justify-content:space-between; align-items:baseline; gap:12px; }
+.run-call-cost { flex:none; font-variant-numeric:tabular-nums; font-weight:600; }
+/* Both Observability tabs start their content the same distance under the tab bar. */
+#observe-traces>.observe-summary-strip { margin-top:0; }

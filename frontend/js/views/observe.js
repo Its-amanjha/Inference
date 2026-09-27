@@ -7,24 +7,12 @@ import {instanceName,relativeLabel,relativePhrase,n8nUrl,repairHref} from '../li
 import {openPeek,peekFacts,peekSection,peekCopy,closePeek} from '../lib/peek.js';
 import {rowMenu} from '../lib/row-menu.js';
 import {segmented} from '../lib/select-menu.js';
+import {cents,runCosts} from '../lib/run-costs.js';
 
 registerIcons({
   'span-failed':'M12 3 2 20h20L12 3z M12 10v4 M12 17h.01',
   alert:'M12 9v4 M12 17h.01 M10.3 2.8 1.8 17.5A2 2 0 0 0 3.5 20.5h17a2 2 0 0 0 1.7-3L13.7 2.8a2 2 0 0 0-3.4 0z'
 });
-
-// Decimal-point shifting preserves every digit of server-priced costs.
-// A USD amount (a decimal string) for reading: dollars from $1, cents below, and two significant digits for
-// fractions of a cent so a real cost never reads as zero. The exact amount stays in the data.
-export function cents(value) {
-  if (value === null || value === undefined) return 'Unknown';
-  const usd = Number(value);
-  if (!Number.isFinite(usd)) return `${value} USD`;
-  if (usd === 0) return '$0';
-  if (Math.abs(usd) >= 1) return `$${usd.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-  const c = usd * 100;
-  return `${Math.abs(c) >= 1 ? c.toLocaleString('en-US', {maximumFractionDigits: 2}) : c.toLocaleString('en-US', {maximumSignificantDigits: 2})} ¢`;
-}
 
 // Recorded nanosecond spans rendered as readable elapsed time; negative ranges are reported as unknown.
 function elapsed(ns) {
@@ -77,18 +65,40 @@ export async function render(container) {
     {value: 'errors', label: 'Errors only', glyph: 'errors'},
   ], value: 'all', onChange: (next) => setFilter(next)});
 
-  // The filter stays out of the way until the first successful read finds traces; Refresh is always there.
-  const toolbar = el('div', {class: 'observe-toolbar'}, traceFilter.node, refresh);
-  traceFilter.node.hidden = true;
+  // The filter stays out of the way until the first successful read finds traces.
+  const toolbar = el('div', {class: 'observe-toolbar'}, traceFilter.node);
+  toolbar.hidden = traceFilter.node.hidden = true;
+
+  // Two tabs on one bar with the open tab's action on the right, like the AI workspace. AI cost comes
+  // first: it reads n8n's own executions, so it works before any telemetry exporter is set up.
+  const costs = runCosts({api, signal: controller.signal, instanceId: instance});
+  const panels = {
+    cost: el('section', {id: 'observe-cost'}, costs.node),
+    traces: el('section', {id: 'observe-traces'}, summaryStrip, toolbar, messages,
+      // Traces and their pagination share one card, like the error list.
+      el('section', {class: 'card result-card'}, list, el('div', {class: 'result-card-foot'}, next)), announcer),
+  };
+  const tabs = {cost: button('AI cost', () => show('cost'), 'ghost'), traces: button('Traces', () => show('traces'), 'ghost')};
+  const actions = el('div', {class: 'actions'});
+  let costsLoaded = false;
+  function show(tab) {
+    for (const [name, panel] of Object.entries(panels)) {
+      panel.hidden = name !== tab;
+      tabs[name].setAttribute('aria-pressed', String(name === tab));
+      tabs[name].setAttribute('aria-controls', panel.id);
+    }
+    actions.replaceChildren(tab === 'cost' ? costs.action : refresh);
+    if (tab === 'cost' && !costsLoaded) {
+      costsLoaded = true;
+      costs.load();
+    }
+  }
 
   container.append(
     heading('Observability', 'Runs of your workflows, and what the AI steps cost.'),
-    summaryStrip,
-    toolbar,
-    messages,
-    // Traces and their pagination share one card, like the error list.
-    el('section', {class: 'card result-card'}, list, el('div', {class: 'result-card-foot'}, next)),
-    announcer
+    el('div', {class: 'studio-bar'}, el('nav', {class: 'studio-tabs', 'aria-label': 'Observability'}, tabs.cost, tabs.traces), actions),
+    panels.cost,
+    panels.traces
   );
 
   function setFilter(filter) {
@@ -401,13 +411,13 @@ export async function render(container) {
           ? result.data.filter(r => Number(r.error_spans || 0) > 0)
           : result.data;
         tracesTable.appendRows(filteredNewRows.map(row => formatTableRow(row, metas.get(row.instance_id + ':' + row.trace_id))));
-        traceFilter.node.hidden = !allRowsData.length;
+        toolbar.hidden = traceFilter.node.hidden = !allRowsData.length;
       } else {
         // Initial or refreshed traces table
         allRowsData = result.data;
         await enrich(result.data);
         if (controller.signal.aborted) return;
-        traceFilter.node.hidden = !allRowsData.length;
+        toolbar.hidden = traceFilter.node.hidden = !allRowsData.length;
         if (result.data.length) {
           const displayRows = currentFilter === 'errors'
             ? allRowsData.filter(r => Number(r.error_spans || 0) > 0)
@@ -436,6 +446,7 @@ export async function render(container) {
     }
   }
 
+  show(new URLSearchParams(location.hash.split('?')[1] || '').get('tab') === 'traces' ? 'traces' : 'cost');
   load();
   return () => {
     controller.abort();

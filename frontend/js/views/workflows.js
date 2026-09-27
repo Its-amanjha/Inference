@@ -180,7 +180,7 @@ export async function render(container) {
       const list=result.data||[];
       return list.length?el('div',{class:'peek-stack'},el('ul',{class:'peek-runs'},list.map(trace=>el('li',{},when(trace.start_ns),
           el('span',{class:'peek-run-meta'},`${trace.span_count} step${trace.span_count===1?'':'s'} traced`),
-          trace.error_spans?el('span',{class:'badge error'},`${trace.error_spans} failed`):null))),el('a',{href:'#observe'},'Open Observability'))
+          trace.error_spans?el('span',{class:'badge error'},`${trace.error_spans} failed`):null))),el('a',{href:'#observe?tab=traces'},'Open Observability'))
         :el('p',{class:'muted'},'No telemetry from this workflow yet.');
     });
     if(promotions)fill(promotions,api('/api/n8n_promote/runs?'+new URLSearchParams({source_instance_id:instance.id,workflow_id:row.id,limit:'3'}),{signal}),result=>{
