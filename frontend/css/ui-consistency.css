@@ -247,3 +247,5 @@
 .run-call-cost { flex:none; font-variant-numeric:tabular-nums; font-weight:600; }
 /* Both Observability tabs start their content the same distance under the tab bar. */
 #observe-traces>.observe-summary-strip { margin-top:0; }
+/* The note under Recent executions lines up with the table's cells. */
+.dashboard .run-note { margin:0; padding:12px 24px 16px; font-size:12px; }

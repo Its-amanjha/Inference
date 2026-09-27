@@ -7,7 +7,7 @@ import {instanceName,relativeLabel,relativePhrase,n8nUrl,repairHref} from '../li
 import {openPeek,peekFacts,peekSection,peekCopy,closePeek} from '../lib/peek.js';
 import {rowMenu} from '../lib/row-menu.js';
 import {segmented} from '../lib/select-menu.js';
-import {cents,runCosts} from '../lib/run-costs.js';
+import {dollars,runCosts} from '../lib/run-costs.js';
 
 registerIcons({
   'span-failed':'M12 3 2 20h20L12 3z M12 10v4 M12 17h.01',
@@ -256,7 +256,7 @@ export async function render(container) {
           el('span', {class: 'waterfall-name'},
             failed ? el('span', {className: 'span-failed'}, icon('span-failed'), 'Failed') : null,
             el('span', {class: 'waterfall-node'}, nodeLabel),
-            ai ? el('span', {class: 'waterfall-cost'}, cents(span.cost_exact)) : null),
+            ai ? el('span', {class: 'waterfall-cost'}, dollars(span.cost_exact)) : null),
           el('span', {class: 'waterfall-track'}, bar)),
         failed && (span.error_summary || span.error_type)
           ? el('div', {class: 'instance-diagnostic-box is-unreachable'}, icon('alert'),
@@ -326,7 +326,7 @@ export async function render(container) {
           if (!aiSteps) running.replaceChildren(...(usageNote ? [el('p', {className: 'muted'}, usageNote)] : []));
           else running.replaceChildren(el('div', {class: 'trace-cost'},
             peekFacts([
-              ['AI cost', !unpriced ? cents(result.known_cost_usd) : known ? `At least ${cents(result.known_cost_usd)} · ${unpricedText}` : `Unknown · ${unpricedText}`],
+              ['AI cost', !unpriced ? dollars(result.known_cost_usd) : known ? `At least ${dollars(result.known_cost_usd)} · ${unpricedText}` : `Unknown · ${unpricedText}`],
             ]),
             el('p', {className: 'muted'}, 'All AI steps of this run. Other steps carry no price.'),
             unpriced ? el('p', {className: 'muted'}, can('admin')

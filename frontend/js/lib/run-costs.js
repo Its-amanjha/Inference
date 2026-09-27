@@ -8,16 +8,19 @@ import {openPeek,peekFacts,peekSection,peekCopy} from './peek.js';
 import {rowMenu} from './row-menu.js';
 import {state,pageSize,can} from '../state.js';
 
-// A USD amount (a decimal string) for reading: dollars from $1, cents below, and two significant digits for
-// fractions of a cent so a real cost never reads as zero. The exact amount stays in the data.
-export function cents(value) {
+// A USD amount (a decimal string) for reading, always in dollars: cents from $1, four decimal places below it
+// (one AI call often costs a fraction of a cent), and two significant digits under $0.0001 so a real cost
+// never reads as $0. The exact amount stays in the data.
+export function dollars(value) {
   if (value === null || value === undefined) return 'Unknown';
   const usd = Number(value);
   if (!Number.isFinite(usd)) return `${value} USD`;
   if (usd === 0) return '$0';
-  if (Math.abs(usd) >= 1) return `$${usd.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-  const c = usd * 100;
-  return `${Math.abs(c) >= 1 ? c.toLocaleString('en-US', {maximumFractionDigits: 2}) : c.toLocaleString('en-US', {maximumSignificantDigits: 2})} ¢`;
+  const size = Math.abs(usd);
+  const text = size >= 1 ? usd.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})
+    : size >= 0.0001 ? usd.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 4})
+    : usd.toLocaleString('en-US', {maximumSignificantDigits: 2});
+  return `$${text}`;
 }
 
 const DAYS = 7;
@@ -32,8 +35,8 @@ const plural = (value, one, many = `${one}s`) => `${count(value)} ${Number(value
 // A cost that may be partly unknown: the whole amount, "At least" what is priced, or Unknown.
 function costText({cost_usd: cost, known_cost_usd: known, unpriced_calls: unpriced, ai_calls: calls}) {
   if (!Number(calls)) return '—';
-  if (cost !== null && cost !== undefined) return cents(cost);
-  return Number(known) > 0 ? `At least ${cents(known)}` : 'No price yet';
+  if (cost !== null && cost !== undefined) return dollars(cost);
+  return Number(known) > 0 ? `At least ${dollars(known)}` : 'No price yet';
 }
 
 export function runCosts({api, signal, instanceId}) {
@@ -112,7 +115,7 @@ export function runCosts({api, signal, instanceId}) {
       const priced = call.cost_usd !== null && call.cost_usd !== undefined;
       const source = priced ? SOURCES[call.pricing?.pricing_source] || call.pricing?.pricing_source || '' : 'no price for this model';
       return el('li', {},
-        el('div', {class: 'run-call-head'}, el('strong', {}, call.node), el('span', {class: 'run-call-cost'}, priced ? cents(call.cost_usd) : 'No price')),
+        el('div', {class: 'run-call-head'}, el('strong', {}, call.node), el('span', {class: 'run-call-cost'}, priced ? dollars(call.cost_usd) : 'No price')),
         el('p', {}, `${SERVICES[call.provider] || call.provider || 'Unknown service'} · `, el('code', {}, call.model || 'model not reported')),
         el('p', {class: 'muted'}, `${count(call.tokens_in)} in${call.cached_tokens ? ` (${count(call.cached_tokens)} cached)` : ''} · ${count(call.tokens_out)} out`
           + `${call.reasoning_tokens ? ` (${count(call.reasoning_tokens)} reasoning)` : ''} · ${source}${priced && call.pricing?.estimated ? ', estimate' : ''}`));

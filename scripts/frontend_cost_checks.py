@@ -27,8 +27,8 @@ def exercise_ai_cost(page, state, artifacts):
         expect(page.get_by_role('button', name='AI cost', exact=True)).to_have_attribute('aria-pressed', 'true')
         strip = page.get_by_role('region', name='AI cost, last 7 days')
         # 4,000 input tokens at $2, 8,000 cached at $0.50 and 900 output at $8 per million (gpt-4.1's bundled
-        # price) is 1.92 cents; the gpt-4o-mini call has no price here, so the total is a lower bound.
-        expect(strip).to_contain_text('At least 1.92 ¢')
+        # price) is $0.0192; the gpt-4o-mini call has no price here, so the total is a lower bound.
+        expect(strip).to_contain_text('At least $0.0192')
         expect(strip.locator('.observe-metric-cell').filter(has_text='Without a price').locator('.metric-number')).to_have_text('1')
         by_workflow = page.get_by_role('region', name='AI cost by workflow')
         expect(by_workflow.get_by_role('cell', name='Invoice summary', exact=True)).to_have_count(1)
@@ -39,7 +39,7 @@ def exercise_ai_cost(page, state, artifacts):
         calls = panel.locator('.run-calls > li')
         expect(calls).to_have_count(2)
         summarize = calls.filter(has_text='Summarize invoice')
-        expect(summarize).to_contain_text('1.92 ¢')
+        expect(summarize).to_contain_text('$0.0192')
         expect(summarize).to_contain_text('OpenAI · gpt-4.1-2025-04-14')
         expect(summarize).to_contain_text('12,000 in (8,000 cached) · 900 out · bundled price')
         expect(calls.filter(has_text='OpenAI Chat Model')).to_contain_text('No price')
@@ -50,7 +50,7 @@ def exercise_ai_cost(page, state, artifacts):
         # A run on record is not read again; the totals stay the same.
         page.get_by_role('button', name='Check for new runs', exact=True).click()
         expect(page.locator('#observe-cost .load-progress')).to_have_count(0)
-        expect(strip).to_contain_text('At least 1.92 ¢')
+        expect(strip).to_contain_text('At least $0.0192')
         page.screenshot(path=str(artifacts / 'ai-cost-desktop.png'), full_page=True)
         # Traces stay one tab away, and a link can open them directly.
         page.get_by_role('button', name='Traces', exact=True).click()
@@ -62,7 +62,7 @@ def exercise_ai_cost(page, state, artifacts):
         expect(page.get_by_role('button', name='Traces', exact=True)).to_have_attribute('aria-pressed', 'true')
         page.set_viewport_size({'width': 390, 'height': 844})
         page.get_by_role('button', name='AI cost', exact=True).click()
-        expect(page.get_by_role('region', name='AI cost, last 7 days')).to_contain_text('At least 1.92 ¢')
+        expect(page.get_by_role('region', name='AI cost, last 7 days')).to_contain_text('At least $0.0192')
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'), 'AI cost overflows on a phone'
         page.screenshot(path=str(artifacts / 'ai-cost-mobile.png'), full_page=True)
         page.set_viewport_size({'width': 1440, 'height': 1000})
