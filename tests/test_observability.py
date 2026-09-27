@@ -298,9 +298,11 @@ async def test_a_failure_keeps_its_run_identity_whichever_span_arrives_first(fle
     await send(fleet,token['token'],_otlp(_span('d'*32,'6'*16,'node HTTP Request',2,'Request failed',node,parent='7'*16)))
     await send(fleet,token['token'],_otlp(_span('d'*32,'7'*16,'workflow.execute',2,'Workflow failed',
                                                 [('n8n.workflow.id','wf-1'),('n8n.workflow.name','Orders'),('n8n.execution.id','ex2')])))
-    assert sorted(await _records(fleet,instance))==[('HTTP Request','ex1','wf-1'),('HTTP Request','ex2','wf-1')]
+    records=await fleet.app.state.db.fetchall('SELECT node_name,execution_id,workflow_id FROM errors WHERE instance_id=? ORDER BY execution_id',(instance,))
+    assert [(row['node_name'],row['execution_id'],row['workflow_id']) for row in records]==[('HTTP Request','ex1','wf-1'),('HTTP Request','ex2','wf-1')]
+    # The same failure in both runs is one error seen twice, once the late root gave the second its workflow.
     filtered=(await fleet.client.get('/api/errors',params={'instance_id':instance,'workflow_id':'wf-1'})).json()['data']
-    assert len(filtered)==2
+    assert [(row['count'],row['execution_id']) for row in filtered]==[(2,'ex2')]
 
 
 async def test_classification_does_not_add_back_a_recorded_failure(fleet):

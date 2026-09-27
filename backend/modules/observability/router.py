@@ -15,6 +15,7 @@ from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTrace
 from backend import audit
 from backend.auth_gate import fail, require_current_role, require_role, token_hash
 from backend.database import _settle
+from backend.modules.errors.grouping import group_key, run_error_key
 from backend.modules.n8n_proxy.client import N8nClient, instance_guard
 from .ingest import IngestError, parse_traces
 from .classifier import classify, _terminal_ns
@@ -110,7 +111,8 @@ async def read_body(request):
 
 async def span_error(tx,span):
     """One error per failure. n8n marks both the failing node's span and the workflow's root span as
-    errors; the node's record wins, and a workflow-level record stands only while no node span failed."""
+    errors; the node's record wins, and a workflow-level record stands only while no node span failed.
+    Returns whether a new failure was recorded."""
     summary=span.get('status_message') or GENERIC_ERROR
     workflow_key=hashlib.sha256(f"{span['instance_id']}:{span['trace_id']}:workflow".encode()).hexdigest()
     if span.get('node_name') or span.get('node_id'):
@@ -120,15 +122,14 @@ async def span_error(tx,span):
                                     (span['instance_id'],span['trace_id']))
             if known:
                 span={**span,**{key:span.get(key) or known[key] for key in ('workflow_id','workflow_name','execution_id')}}
-        await error_record(tx,span,summary=summary)
+        recorded=await error_record(tx,span,summary=summary)
         # The root span may have arrived first, in an earlier batch.
         await tx.execute('DELETE FROM errors WHERE error_key=?',(workflow_key,))
-        return
+        return recorded
     failed_nodes=await tx.fetchall("SELECT span_id FROM otel_spans WHERE instance_id=? AND trace_id=? AND status='error' AND (node_name<>'' OR node_id<>'')",
                                    (span['instance_id'],span['trace_id']))
     if not failed_nodes:
-        await error_record(tx,span,summary=summary,key=workflow_key)
-        return
+        return await error_record(tx,span,summary=summary,key=workflow_key)
     # The failure is already on record under its node; give that record the identity this root carries.
     for row in failed_nodes:
         key=hashlib.sha256(f"{span['instance_id']}:{span['trace_id']}:{row['span_id']}".encode()).hexdigest()
@@ -136,15 +137,38 @@ async def span_error(tx,span):
                          "workflow_name=CASE WHEN COALESCE(workflow_name,'') IN ('','Unknown Workflow') AND ?<>'' THEN ? ELSE workflow_name END,"
                          "execution_id=CASE WHEN COALESCE(execution_id,'')='' THEN ? ELSE execution_id END WHERE error_key=?",
                          (span.get('workflow_id',''),span.get('workflow_name',''),span.get('workflow_name',''),span.get('execution_id',''),key))
+        await regroup(tx,key)
+    return False
+
+
+async def regroup(tx,key):
+    """Keep a record's group in step with an identity learned later. A run already recorded from n8n's own
+    execution data keeps that record, so it is not counted twice."""
+    row=await tx.fetchone('SELECT id,instance_id,workflow_id,node_name,error_type,error_message,execution_id FROM errors WHERE error_key=?',(key,))
+    if not row:
+        return
+    if row['execution_id'] and key!=run_error_key(row['instance_id'],row['execution_id']) and \
+            await tx.fetchone('SELECT 1 FROM errors WHERE error_key=?',(run_error_key(row['instance_id'],row['execution_id']),)):
+        await tx.execute('DELETE FROM errors WHERE id=?',(row['id'],))
+        return
+    await tx.execute('UPDATE errors SET group_key=? WHERE id=?',
+                     (group_key(row['instance_id'],row['workflow_id'],row['node_name'],row['error_type'],row['error_message']),row['id']))
 
 
 GENERIC_ERROR='A node reported an execution error.'
 
 
 async def error_record(tx,span,error_type='ExecutionError',summary=GENERIC_ERROR,key=None):
+    """Record one failure; False when it is already on record (the same span, or its run read from n8n)."""
     key=key or hashlib.sha256(f"{span['instance_id']}:{span['trace_id']}:{span['span_id']}".encode()).hexdigest()
-    await tx.execute('INSERT INTO errors(instance_id,workflow_id,workflow_name,execution_id,node_name,error_type,error_message,error_key) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(error_key) DO NOTHING',
-                     (span['instance_id'],span.get('workflow_id',''),span.get('workflow_name',''),span.get('execution_id',''),span.get('node_name') or span['name'],error_type,summary,key))
+    if span.get('execution_id') and await tx.fetchone('SELECT 1 FROM errors WHERE error_key=?',(run_error_key(span['instance_id'],span['execution_id']),)):
+        return False
+    node=span.get('node_name') or span['name']
+    inserted=await tx.fetchone('INSERT INTO errors(instance_id,workflow_id,workflow_name,execution_id,node_name,error_type,error_message,error_key,group_key) '
+                               'VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(error_key) DO NOTHING RETURNING id',
+                               (span['instance_id'],span.get('workflow_id',''),span.get('workflow_name',''),span.get('execution_id',''),node,error_type,summary,key,
+                                group_key(span['instance_id'],span.get('workflow_id',''),node,error_type,summary)))
+    return inserted is not None
 
 
 @router.post('/v1/traces')
@@ -162,6 +186,7 @@ async def ingest(request: Request):
             parsed=await _settle(asyncio.to_thread(parse_traces,body,content_type,request.headers.get('content-encoding','identity')))
         except IngestError as exc:
             fail(exc.status,exc.code,str(exc))
+        recorded=False
         async with request.app.state.db.transaction() as tx:
             identity=await machine_auth(request,tx)
             prices=await price_snapshot(tx)
@@ -176,7 +201,9 @@ async def ingest(request: Request):
                 columns=('instance_id','trace_id','span_id','parent_id','name','kind','start_ns','end_ns','status','attributes_json','workflow_id','workflow_name','execution_id','node_id','node_name','model','tokens_in','tokens_out','output_items','input_items','cost_exact','cost_usd','pricing_json','health_status')
                 inserted=await tx.fetchone(f"INSERT INTO otel_spans({','.join(columns)}) VALUES({','.join('?' for _ in columns)}) ON CONFLICT(instance_id,trace_id,span_id) DO NOTHING RETURNING id",tuple(span.get(key) for key in columns))
                 if inserted and span['status']=='error':
-                    await span_error(tx,span)
+                    recorded=await span_error(tx,span) or recorded
+        if recorded:
+            await request.app.state.hub.broadcast({'event':'errors.changed','instance_id':identity['instance_id']})
     rejected=parsed['rejected_spans']
     if content_type=='application/x-protobuf':
         response=ExportTraceServiceResponse()
@@ -290,6 +317,9 @@ async def cleanup(db):
         await tx.execute("DELETE FROM documents WHERE key LIKE 'trace_usage:%' AND datetime(json_extract(value_json,'$.checked_at'))<datetime('now',?)",(f'-{days} days',))
         # Run costs keep n8n's start time in one sortable UTC format (2026-09-24T03:15:41.764Z).
         await tx.execute("DELETE FROM run_costs WHERE started_at<strftime('%Y-%m-%dT%H:%M:%fZ','now',?)",(f'-{days} days',))
+        for row in await tx.fetchall('SELECT id,instance_id,workflow_id,node_name,error_type,error_message FROM errors WHERE group_key IS NULL LIMIT 5000'):
+            await tx.execute('UPDATE errors SET group_key=? WHERE id=?',
+                             (group_key(row['instance_id'],row['workflow_id'],row['node_name'],row['error_type'],row['error_message']),row['id']))
 
 
 async def maintenance(app):
@@ -384,7 +414,7 @@ async def classify_execution(body: Classification,request: Request):
 
 
 async def classify_instance(body,request,client,authorize,generation=None):
-    calls=[]
+    calls,recorded=[],False
     async with instance_guard(request,body.instance_id):
         spans=await request.app.state.db.fetchall('SELECT * FROM otel_spans WHERE instance_id=? AND execution_id=? ORDER BY id LIMIT 2001',(body.instance_id,body.execution_id))
         if len(spans)>2000:
@@ -441,6 +471,8 @@ async def classify_instance(body,request,client,authorize,generation=None):
             for span,result in zip(spans,results,strict=True):
                 await tx.execute("UPDATE otel_spans SET health_status=?,error_type=?,error_summary=?,silent=?,checked_at=datetime('now') WHERE id=?",(result['health_status'],result.get('error_type'),result.get('error_summary'),int(result.get('silent',False)),span['id']))
                 if result['health_status']=='error' and span['status']!='error':
-                    await error_record(tx,span,result.get('error_type') or 'ExecutionError',result.get('error_summary') or 'Execution failure confirmed.')
+                    recorded=await error_record(tx,span,result.get('error_type') or 'ExecutionError',result.get('error_summary') or 'Execution failure confirmed.') or recorded
+    if recorded:
+        await request.app.state.hub.broadcast({'event':'errors.changed','instance_id':body.instance_id})
     await audit.record(request,'telemetry.classified',body.instance_id,{'execution_id':body.execution_id})
     return {'data':results}

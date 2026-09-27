@@ -236,7 +236,7 @@ async def test_a_version_7_database_gains_the_run_costs_table(tmp_path):
     for _ in range(2):
         await database.open()
         try:
-            assert (await database.fetchone('PRAGMA user_version'))['user_version'] == SCHEMA_VERSION == 8
+            assert (await database.fetchone('PRAGMA user_version'))['user_version'] == SCHEMA_VERSION >= 8
             indexes = {row['name'] for row in await database.fetchall("PRAGMA index_list('run_costs')")}
             assert {'idx_run_costs_instance', 'idx_run_costs_started'} <= indexes
         finally:

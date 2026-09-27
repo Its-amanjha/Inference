@@ -4,6 +4,9 @@ The execution list and each finished run's data come from n8n's public API (the 
 Workflows and Errors views), so no telemetry exporter is needed. A finished run is read once and kept for
 the telemetry retention period; only its AI calls' counts, model, provider and node names are stored.
 A run that is still going is read on a later check.
+
+A run that failed is also recorded in Errors (the failing step and its message, secrets masked), unless
+telemetry already recorded that run, so Errors works without telemetry too.
 """
 from __future__ import annotations
 
@@ -17,7 +20,10 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.auth_gate import fail, require_current_role, require_role
+from backend.modules.assistant.repair_context import cap_text
+from backend.modules.errors.grouping import group_key, run_error_key
 from backend.modules.n8n_proxy.client import N8nClient
+from .ingest import mask_error_text
 from .pricebook import price_snapshot
 from .usage import TERMINAL, call_totals, execution_calls, plain, price_calls
 
@@ -54,12 +60,55 @@ def _text(value: Any, limit: int = 256) -> str:
     return value[:limit] if isinstance(value, str) else str(value)[:limit] if isinstance(value, int) and not isinstance(value, bool) else ''
 
 
-async def _store(request: Request, instance_id: str, item: dict, state: str, calls: list[dict], workflow: dict) -> None:
+def _dict(value: Any) -> dict:
+    return value if isinstance(value, dict) else {}
+
+
+FAILED = ('error', 'crashed')
+
+
+def run_error(execution: Any, status: Any) -> dict | None:
+    """The failure n8n recorded for a run that did not succeed: its step and message, secrets masked.
+    Descriptions, stacks and run data are never kept. None for a run that did not fail."""
+    if status not in FAILED:
+        return None
+    result = _dict(_dict(_dict(execution).get('data')).get('resultData'))
+    error = _dict(result.get('error'))
+    message = error.get('message') if isinstance(error.get('message'), str) and error['message'].strip() else None
+    if not message:
+        message = ('n8n stopped while this run was going.' if status == 'crashed' else
+                   'The run failed; Inference could not read its error from n8n.' if not execution else 'The run failed without an error message.')
+    return {'node_name': _text(_dict(error.get('node')).get('name')) or _text(result.get('lastNodeExecuted')),
+            'error_message': cap_text(mask_error_text(message), 300)[0]}
+
+
+def _sqlite_time(*values: Any) -> str:
+    """The first readable ISO time as the errors table stores times (UTC, YYYY-MM-DD HH:MM:SS), or now."""
+    for value in values:
+        instant = _instant(value)
+        if instant:
+            return instant[:19].replace('T', ' ')
+    return datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+
+
+async def _store(request: Request, instance_id: str, item: dict, state: str, calls: list[dict], workflow: dict,
+                 failure: dict | None = None) -> bool:
+    """Keep a run's AI calls, and its failure in Errors; returns whether a new failure was recorded."""
     execution_id = _text(item.get('id'), 128)
     totals = call_totals(calls)
+    recorded = False
     async with request.app.state.db.transaction() as tx:
         # The read took time; the reader must still hold the role before the result is kept.
         await require_current_role(request, 'viewer', tx)
+        if failure and not await tx.fetchone('SELECT 1 FROM errors WHERE instance_id=? AND execution_id=?', (instance_id, execution_id)):
+            workflow_id, name = _text(workflow.get('id') or item.get('workflowId'), 128), _text(workflow.get('name'))
+            inserted = await tx.fetchone(
+                'INSERT INTO errors(instance_id,workflow_id,workflow_name,execution_id,node_name,error_type,error_message,occurred_at,error_key,group_key) '
+                'VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(error_key) DO NOTHING RETURNING id',
+                (instance_id, workflow_id, name, execution_id, failure['node_name'], 'ExecutionError', failure['error_message'],
+                 _sqlite_time(item.get('stoppedAt'), item.get('startedAt')), run_error_key(instance_id, execution_id),
+                 group_key(instance_id, workflow_id, failure['node_name'], 'ExecutionError', failure['error_message'])))
+            recorded = inserted is not None
         await tx.execute(
             'INSERT INTO run_costs(key,instance_id,execution_id,workflow_id,workflow_name,status,started_at,read_state,calls_json,'
             'ai_calls,unpriced_calls,known_cost,cost_exact,checked_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(key) DO NOTHING',
@@ -68,6 +117,7 @@ async def _store(request: Request, instance_id: str, item: dict, state: str, cal
              _text(item.get('status'), 32), _instant(item.get('startedAt')) or _instant(datetime.now(timezone.utc).isoformat()),
              state, json.dumps(calls), totals['ai_calls'], totals['unpriced_calls'], totals['known_cost'], totals['cost_exact'],
              datetime.now(timezone.utc).isoformat()))
+    return recorded
 
 
 @router.post('/runs/scan')
@@ -96,7 +146,7 @@ async def scan_runs(body: Scan, request: Request) -> dict:
     cutoff = _instant((datetime.now(timezone.utc) - timedelta(days=await retention_days(request.app.state.db))).isoformat())
     prices = await price_snapshot(request.app.state.db)
     deadline = time.monotonic() + SCAN_SECONDS
-    counts = {'read': 0, 'known': 0, 'running': 0, 'unreadable': 0}
+    counts = {'read': 0, 'known': 0, 'running': 0, 'unreadable': 0, 'errors': 0}
     error, finished, expired = None, True, False
     for item, identifier in zip(items, ids):
         started = _instant(item.get('startedAt'))
@@ -114,7 +164,7 @@ async def scan_runs(body: Scan, request: Request) -> dict:
         if time.monotonic() > deadline:
             finished = False
             break
-        state, calls, workflow = 'read', [], {}
+        state, calls, workflow, remote = 'read', [], {}, None
         try:
             remote = await client.request(body.instance_id, 'GET', f'/executions/{identifier}', params={'includeData': 'true'})
         except HTTPException as failure:
@@ -129,7 +179,10 @@ async def scan_runs(body: Scan, request: Request) -> dict:
             workflow = remote.get('workflowData') if isinstance(remote.get('workflowData'), dict) else {}
             calls = [{key: call[key] for key in CALL_FIELDS} for call in execution_calls(remote)]
             counts['read'] += 1
-        await _store(request, body.instance_id, item, state, price_calls(calls, prices), workflow)
+        failure = run_error(remote, (remote or {}).get('status') or item.get('status'))
+        counts['errors'] += await _store(request, body.instance_id, item, state, price_calls(calls, prices), workflow, failure)
+    if counts['errors']:
+        await request.app.state.hub.broadcast({'event': 'errors.changed', 'instance_id': body.instance_id})
     more = listed.get('nextCursor') if isinstance(listed.get('nextCursor'), str) and not expired else None
     return {'instance_id': body.instance_id, 'listed': len(items), **counts, 'error': error,
             # Only a fully handled page moves on to older runs; otherwise the same page is checked again.

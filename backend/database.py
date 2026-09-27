@@ -21,7 +21,7 @@ import aiosqlite
 Params = Sequence[Any] | Mapping[str, Any]
 Row = dict[str, Any]
 T = TypeVar("T")
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 # Bundled skill library, synced from backend/skills/ at boot. Disk is the source of truth; this table
 # is the queryable cache the API and the assistant's get_skill tool both read.
@@ -44,6 +44,9 @@ _RUN_COSTS = {
         'cost_exact': 'TEXT', 'checked_at': 'TEXT NOT NULL',
     },
 }
+
+# Errors of one kind share a group key: the Errors view lists the group, with its occurrences counted.
+_ERROR_GROUPS = {'errors': {'group_key': 'TEXT'}}
 
 _BACKUPS = {
     'backup_schedules': {
@@ -354,6 +357,14 @@ async def _initialize(connection: aiosqlite.Connection) -> None:
             await _execute(connection, 'CREATE INDEX IF NOT EXISTS idx_run_costs_instance ON run_costs(instance_id,started_at)')
             await _execute(connection, 'CREATE INDEX IF NOT EXISTS idx_run_costs_started ON run_costs(started_at)')
             await _execute(connection, 'PRAGMA user_version=8')
+            current = 8
+        if current == 8:
+            error_columns = await _fetchall(connection, 'PRAGMA table_info(errors)')
+            if not any(column['name'] == 'group_key' for column in error_columns):
+                await _execute(connection, 'ALTER TABLE errors ADD COLUMN group_key TEXT')
+            await _execute(connection, 'CREATE INDEX IF NOT EXISTS idx_errors_group ON errors(group_key,status)')
+            await _execute(connection, 'PRAGMA user_version=9')
+        await _validate_tables(connection, _ERROR_GROUPS)
         await _validate_tables(connection, _RUN_COSTS)
         await _validate_tables(connection, _SKILLS)
         await _validate_tables(connection, _BACKUPS)
