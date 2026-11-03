@@ -171,7 +171,7 @@ To send traces, create an ingestion token in Observability and point the n8n OTL
 
 All settings are environment variables. `.env.example` lists and explains the ones meant to be changed.
 
-| Variable | Default | Meaning |
+| Variable  | Default  | Meaning  |
 |---|---|---|
 | `INFERENCE_HOST` | `127.0.0.1` | Bind address. Used by `scripts/run_local.py` only. |
 | `INFERENCE_PORT` | `3000` | Listen port for `scripts/run_local.py`; Compose uses it as the host port. |
