@@ -158,7 +158,7 @@ export async function render(container) {
       actions:[
         link?external(link,'Open in n8n','button'):null,
         can('operator')?el('a',{class:'button ghost',href:repairHref({instance_id:entry.instance.id,workflow_id:row.id})},'Repair with AI'):null,
-        rowMenu([can('operator')?{label:'Promote',href:promoteHref(entry,row)}:null,{label:'Open in CodeLab',glyph:'codelab',href:codelabHref(entry,row)}],`More actions for ${name}`),
+        rowMenu([can('operator')?{label:'Promote',href:promoteHref(entry,row)}:null,can('operator')?{label:'Open in CodeLab',glyph:'codelab',href:codelabHref(entry,row)}:null],`More actions for ${name}`),
         can('operator')&&typeof row.active==='boolean'?button(row.active?'Deactivate':'Activate',()=>{closePeek();return setActive(entry,[row],!row.active);},row.active?'danger':'ghost',{'aria-label':`${row.active?'Deactivate':'Activate'} workflow ${name} on ${entry.instance.name}`}):null,
       ],
     });
@@ -215,7 +215,7 @@ export async function render(container) {
       const menu=rowMenu([
         link?{label:'Open in n8n',href:link,external:true}:null,
         can('operator')?{label:'Promote',href:promoteHref(entry,row)}:null,
-        {label:'Open in CodeLab',glyph:'codelab',href:codelabHref(entry,row)},
+        can('operator')?{label:'Open in CodeLab',glyph:'codelab',href:codelabHref(entry,row)}:null,
         can('operator')?{label:'Repair with AI',href:repairHref({instance_id:instance.id,workflow_id:row.id})}:null,
         can('operator')&&typeof row.active==='boolean'?{label:row.active?'Deactivate':'Activate',danger:row.active,onSelect:()=>setActive(entry,[row],!row.active)}:null,
       ],`More actions for ${name} on ${instance.name}`);

@@ -567,3 +567,14 @@ and the v8 to v9 migration with regrouping; the identity test now expects one er
 error with 2 occurrences, first and last seen and the latest execution, with no secret in the page or API
 responses. First smoke run failed because the AI cost check reused a check made under a minute earlier, before
 the simulated runs existed; the check now asks for a new one.
+
+
+## 2026-11-13 — CodeLab read limited to operators (security)
+
+Reported: a viewer could read unmasked Code node source through `GET /api/n8n_proxy/workflows/{id}/nodes/{node}`
+(CodeLab's editor read), while the Workflows endpoints mask secrets for the same node. Keys written into code
+(`const apiKey = "sk-live-..."`) leaked to read-only accounts. Fix: the editor read now requires the operator
+role, the same as saving; CodeLab tells viewers to read masked code in Workflows; "Open in CodeLab" is offered
+to operators only. New test `test_a_viewer_never_reads_a_key_written_into_code` fails on the old code (200)
+and passes with the fix (403, no request reaches n8n); the old CodeLab viewer test now expects 403.
+Verification: full backend suite 941 passed, 11 skipped; browser smoke 19/19.

@@ -76,12 +76,13 @@ async def test_invalid_targets_never_write(lab, change):
     assert not any(call.method == 'PUT' for call in lab.calls)
 
 
-async def test_viewer_reads_but_cannot_write_and_csrf_required(lab):
+async def test_viewer_cannot_read_or_write_and_csrf_required(lab):
     old_hash = await snapshot(lab)
     result = await lab.client.put(lab.url, json={'expected_hash': old_hash, 'code': ''})
     assert result.status_code == 403
     await lab.app.state.db.execute("UPDATE users SET role='viewer' WHERE username='owner'")
-    assert await snapshot(lab) == old_hash
+    # The editor's read is unmasked, so it needs the role that may edit; viewers read masked code elsewhere.
+    assert (await lab.client.get(lab.url)).status_code == 403
     assert (await save(lab, old_hash)).status_code == 403
     assert not any(call.method == 'PUT' for call in lab.calls)
 

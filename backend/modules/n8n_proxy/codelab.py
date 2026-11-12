@@ -72,8 +72,10 @@ def node_view(workflow: dict[str, Any], node_id: str, instance_id: str) -> dict[
 @router.get('/workflows/{workflow_id}/nodes/{node_id}')
 async def read_code(workflow_id: str, node_id: str, request: Request,
                     instance_id: str = Query(min_length=1, max_length=128)) -> dict[str, Any]:
+    """The node's real code, unmasked, because the editor writes it back. Code often holds keys typed into
+    it, so reading it needs the role that may edit it; viewers read masked code on the Workflows endpoints."""
     from .router import resource_id
-    require_role(request, 'viewer')
+    require_role(request, 'operator')
     resource_id(workflow_id)
     workflow = await N8nClient(request).request(instance_id, 'GET', f'/workflows/{workflow_id}')
     return node_view(workflow, node_id, instance_id)

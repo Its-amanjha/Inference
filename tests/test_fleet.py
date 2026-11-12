@@ -199,6 +199,27 @@ async def test_viewer_can_read_but_cannot_modify_instances_or_workflows(fleet):
     assert len(fleet.calls)==before
 
 
+async def test_a_viewer_never_reads_a_key_written_into_code(fleet):
+    # Reported 2026-11-13: CodeLab's read returned unmasked code to viewers, while Workflows masked it.
+    instance=await add(fleet)
+    secret='sk-live-CODELAB-VIEWER-LEAK-0123456789'
+    document={'id':'wf','name':'Order sync','active':False,'connections':{},'settings':{},'nodes':[
+        {'id':'c1','name':'Code','type':'n8n-nodes-base.code','typeVersion':2,'position':[0,0],
+         'parameters':{'jsCode':f'const apiKey = "{secret}";\nreturn items;'}}]}
+    fleet.replies[('alpha.example','GET','/api/v1/workflows/wf')]=httpx.Response(200,json=document)
+    fleet.replies[('alpha.example','GET','/api/v1/workflows')]=httpx.Response(200,json={'data':[document],'nextCursor':None})
+    await fleet.client.post('/api/admin/users',headers=fleet.headers,json={'username':'reader','password':'test password of sufficient length','role':'viewer'})
+    await fleet.client.post('/api/auth/logout',headers=fleet.headers)
+    await fleet.client.post('/api/auth/login',json={'username':'reader','password':'test password of sufficient length'})
+    before=len(fleet.calls)
+    code=await fleet.client.get('/api/n8n_proxy/workflows/wf/nodes/c1',params={'instance_id':instance})
+    assert code.status_code==403 and secret not in code.text
+    assert len(fleet.calls)==before  # refused before n8n is asked
+    for path in ('/api/n8n_proxy/workflows/wf','/api/n8n_proxy/workflows'):
+        masked=await fleet.client.get(path,params={'instance_id':instance})
+        assert masked.status_code==200 and secret not in masked.text
+
+
 async def test_fleet_health_keeps_healthy_instances_when_one_fails(fleet):
     alpha=await add(fleet)
     beta=await add(fleet,'Beta','https://beta.example','beta-secret-key')
